@@ -1,5 +1,5 @@
 const apkUrl =
-  "https://github.com/lokejohnathan-Wellpath/WedgeCLOCKin/releases/latest/download/Wedge-worksbeta1.01.apk";
+  "https://github.com/lokejohnathan-Wellpath/WedgeCLOCKin/releases/download/v1.0.0-beta/Wedge-worksbeta1.01.apk";
 
 export default function Home() {
   return (
