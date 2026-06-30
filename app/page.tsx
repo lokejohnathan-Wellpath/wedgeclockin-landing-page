@@ -1,7 +1,5 @@
 const apkUrl =
-  "https://github.com/lokejohnathan-Wellpath/WedgeCLOCKin/releases/latest/download/WedgeCLOCKin-Android-Beta.apk"
-
-export default function Home() {
+  "https://github.com/lokejohnathan-Wellpath/WedgeCLOCKin/releases/latest/download/Wedge-worksbeta1.01.apk";
   return (
     <main className="min-h-screen bg-[#101416] text-[#f4efe6]">
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
