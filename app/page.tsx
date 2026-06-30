@@ -1,23 +1,39 @@
 const apkUrl =
   "https://github.com/lokejohnathan-Wellpath/WedgeCLOCKin/releases/download/v1.0.0-beta/Wedge-worksbeta1.01.apk";
 
+const pills = ["Face Recognition", "GPS Attendance", "Leave Management", "Payroll Export"];
+
+const features = [
+  ["Face Recognition Clock In", "Employees clock in with a glance. Fast, contactless, and harder to fake."],
+  ["GPS Verification", "Confirm every check-in happens on-site with location verification."],
+  ["Leave Management", "Approve, track, and balance leave requests in seconds."],
+  ["Payroll Export", "Turn attendance records into payroll-ready exports."],
+  ["Employee Dashboard", "Give staff a clear view of hours, shifts, and leave."],
+  ["Secure Cloud Sync", "Keep attendance records safe and available everywhere."],
+];
+
 export default function Home() {
   return (
     <main className="min-h-screen bg-[#101416] text-[#f4efe6]">
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
-        <div className="text-lg font-bold">🕒 WedgeCLOCKin</div>
+        <div className="flex items-center gap-3 text-lg font-bold">
+          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#d4ad63] text-black">
+            ◷
+          </span>
+          WedgeCLOCKin
+        </div>
 
         <nav className="hidden gap-8 text-sm text-white/60 md:flex">
-          <a href="#features">Features</a>
-          <a href="#industries">Industries</a>
-          <a href="#why">Why us</a>
+          <a href="#features" className="hover:text-white">Features</a>
+          <a href="#industries" className="hover:text-white">Industries</a>
+          <a href="#why" className="hover:text-white">Why us</a>
         </nav>
 
         <a
           href={apkUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="rounded-full bg-[#d4ad63] px-5 py-2 text-sm font-semibold text-black"
+          className="rounded-full bg-[#d4ad63] px-5 py-2 text-sm font-semibold text-black hover:bg-[#e4bf75]"
         >
           Download Beta
         </a>
@@ -25,29 +41,24 @@ export default function Home() {
 
       <section className="mx-auto grid max-w-6xl items-center gap-12 px-6 py-20 md:grid-cols-2">
         <div>
-          <div className="mb-8 inline-block rounded-full border border-white/10 px-4 py-2 text-sm text-white/60">
-            • Now in Android Beta
+          <div className="mb-8 inline-block rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/60">
+            <span className="text-[#d4ad63]">•</span> Now in Android Beta
           </div>
 
-          <h1 className="text-6xl font-bold tracking-tight text-[#f0dfbd]">
+          <h1 className="text-6xl font-bold tracking-tight text-[#f0dfbd] md:text-7xl">
             WedgeCLOCKin
           </h1>
 
-          <p className="mt-6 text-3xl font-semibold leading-tight">
+          <p className="mt-6 max-w-xl text-3xl font-semibold leading-tight">
             Smart Workforce Attendance for Modern Businesses.
           </p>
 
           <div className="mt-8 flex flex-wrap gap-3 text-sm text-white/60">
-            {["Face Recognition", "GPS Attendance", "Leave Management", "Payroll Export"].map(
-              (item) => (
-                <span
-                  key={item}
-                  className="rounded-full border border-white/10 px-4 py-2"
-                >
-                  {item}
-                </span>
-              )
-            )}
+            {pills.map((item) => (
+              <span key={item} className="rounded-full border border-white/10 bg-white/5 px-4 py-2">
+                {item}
+              </span>
+            ))}
           </div>
 
           <div className="mt-12 flex flex-col gap-4 sm:flex-row">
@@ -55,7 +66,7 @@ export default function Home() {
               href={apkUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="rounded-full bg-[#d4ad63] px-8 py-4 text-center font-semibold text-black"
+              className="rounded-full bg-[#d4ad63] px-8 py-4 text-center font-semibold text-black hover:bg-[#e4bf75]"
             >
               Download Android Beta
             </a>
@@ -69,12 +80,12 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="mx-auto w-[300px] rounded-[3rem] border-8 border-[#252d31] bg-[#111417] p-6 shadow-2xl">
-          <div className="text-center text-sm font-bold">WedgeCLOCKin</div>
+        <div className="mx-auto w-[320px] rounded-[3rem] border-[14px] border-[#252d31] bg-[#111417] p-6 shadow-2xl">
+          <div className="mb-8 text-center text-sm font-bold">WedgeCLOCKin</div>
 
-          <div className="mt-8 rounded-3xl border border-[#d4ad63]/30 bg-[#2b241b] p-5">
-            <div className="text-xl font-bold">Face verified</div>
-            <div className="text-sm text-white/50">KL HQ · within zone</div>
+          <div className="rounded-3xl border border-[#d4ad63]/30 bg-[#2b241b] p-6">
+            <div className="text-2xl font-bold">Face verified</div>
+            <div className="mt-1 text-sm text-white/50">KL HQ · within zone</div>
           </div>
 
           <div className="mt-5 grid grid-cols-2 gap-4">
@@ -91,16 +102,14 @@ export default function Home() {
 
           <div className="mt-5 rounded-2xl bg-white/5 p-5">
             <div className="mb-4 font-bold">Today&apos;s shift</div>
-            {["Employee 1", "Employee 2", "Employee 3", "Employee 4"].map(
-              (name, i) => (
-                <div key={name} className="flex justify-between py-2 text-sm">
-                  <span>{name}</span>
-                  <span className="text-[#d4ad63]">
-                    {i === 2 ? "Leave" : `09:0${i}`}
-                  </span>
-                </div>
-              )
-            )}
+            {["Employee 1", "Employee 2", "Employee 3", "Employee 4"].map((name, i) => (
+              <div key={name} className="flex justify-between py-2 text-sm">
+                <span>{name}</span>
+                <span className="text-[#d4ad63]">
+                  {i === 2 ? "Leave" : i === 0 ? "08:58" : i === 1 ? "09:02" : "09:11"}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -115,14 +124,7 @@ export default function Home() {
         </h2>
 
         <div className="mt-16 grid gap-6 md:grid-cols-3">
-          {[
-            ["Face Recognition Clock In", "Employees clock in with a glance."],
-            ["GPS Verification", "Confirm every check-in happens on-site."],
-            ["Leave Management", "Approve and track leave requests easily."],
-            ["Payroll Export", "Turn attendance into payroll-ready exports."],
-            ["Employee Dashboard", "Give staff a clear view of hours and leave."],
-            ["Secure Cloud Sync", "Keep records safe and available everywhere."],
-          ].map(([title, text]) => (
+          {features.map(([title, text]) => (
             <div
               key={title}
               className="rounded-[2rem] border border-white/10 bg-white/5 p-8"
