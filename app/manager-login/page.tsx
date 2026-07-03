@@ -1,53 +1,72 @@
 export default function ManagerLoginPage() {
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        background: "#101416",
-        color: "#f4efe6",
-        fontFamily: "Arial, sans-serif",
-      }}
-    >
-      <div
-        style={{
-          maxWidth: 600,
-          padding: 40,
-          borderRadius: 24,
-          background: "#1e2428",
-          border: "1px solid #d4ad63",
-          textAlign: "center",
-        }}
-      >
-        <h1 style={{ color: "#d4ad63" }}>Manager PC Dashboard</h1>
+    <main className="min-h-screen bg-[#101416] text-[#f4efe6]">
+      <section className="mx-auto flex min-h-screen max-w-6xl items-center justify-center px-6 py-12">
+        <div className="w-full max-w-md rounded-[2rem] border border-[#d4ad63]/40 bg-[#1e2428] p-8 shadow-2xl">
+          <div className="mb-8 text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#d4ad63] text-2xl text-black">
+              ◷
+            </div>
 
-        <p style={{ marginTop: 20 }}>
-          Payroll Entry, Payroll Summary and CSV Export
-          will be available here.
-        </p>
+            <p className="text-sm tracking-[0.3em] text-[#d4ad63]">
+              WEDGECLOCKIN
+            </p>
 
-        <p style={{ marginTop: 10, opacity: 0.7 }}>
-          Coming Soon
-        </p>
+            <h1 className="mt-3 text-3xl font-bold text-[#f0dfbd]">
+              Manager Portal
+            </h1>
 
-        <a
-          href="/"
-          style={{
-            display: "inline-block",
-            marginTop: 30,
-            padding: "12px 28px",
-            borderRadius: 999,
-            background: "#d4ad63",
-            color: "#000",
-            textDecoration: "none",
-            fontWeight: 600,
-          }}
-        >
-          Back to Home
-        </a>
-      </div>
+            <p className="mt-3 text-sm text-white/55">
+              View employee face status, attendance status, payroll, payslip,
+              leave and CSV export.
+            </p>
+          </div>
+
+          <form className="space-y-5">
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-white/70">
+                Company Registration Number
+              </label>
+              <input
+                type="text"
+                placeholder="Example: 202401001234"
+                className="w-full rounded-xl border border-white/10 bg-[#101416] px-4 py-3 text-white outline-none focus:border-[#d4ad63]"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-white/70">
+                Manager Password
+              </label>
+              <input
+                type="password"
+                placeholder="Enter manager password"
+                className="w-full rounded-xl border border-white/10 bg-[#101416] px-4 py-3 text-white outline-none focus:border-[#d4ad63]"
+              />
+            </div>
+
+            <a
+              href="/manager-dashboard"
+              className="block w-full rounded-full bg-[#d4ad63] px-6 py-4 text-center font-bold text-black hover:bg-[#e4bf75]"
+            >
+              Manager Login
+            </a>
+          </form>
+
+          <div className="mt-8 rounded-2xl border border-white/10 bg-white/5 p-5 text-sm text-white/55">
+            Secure multi-company access. Managers can only view employees, face
+            registration status, attendance records, leave, payroll and payslip
+            data within their own company.
+          </div>
+
+          <a
+            href="/"
+            className="mt-6 block text-center text-sm text-[#d4ad63] hover:underline"
+          >
+            Back to WedgeCLOCKin
+          </a>
+        </div>
+      </section>
     </main>
   );
 }
