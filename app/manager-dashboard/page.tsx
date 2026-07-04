@@ -1,3 +1,8 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+
 const stats = [
   ["Employees", "—"],
   ["Present", "—"],
@@ -19,6 +24,33 @@ const modules = [
 ];
 
 export default function ManagerDashboardPage() {
+  const router = useRouter();
+  const [companyCode, setCompanyCode] = useState("");
+  const [companyName, setCompanyName] = useState("");
+
+  useEffect(() => {
+    const token = localStorage.getItem("wc_manager_token");
+    const storedCompanyCode = localStorage.getItem("wc_company_code");
+    const storedCompanyName = localStorage.getItem("wc_company_name");
+
+    if (!token) {
+      router.push("/manager-login");
+      return;
+    }
+
+    setCompanyCode(storedCompanyCode || "");
+    setCompanyName(storedCompanyName || "");
+  }, [router]);
+
+  function handleLogout() {
+    localStorage.removeItem("wc_manager_token");
+    localStorage.removeItem("wc_company_id");
+    localStorage.removeItem("wc_company_code");
+    localStorage.removeItem("wc_company_name");
+    localStorage.removeItem("wc_manager_id");
+    router.push("/manager-login");
+  }
+
   return (
     <main className="min-h-screen bg-[#101416] text-[#f4efe6]">
       <section className="mx-auto max-w-7xl px-6 py-8">
@@ -34,14 +66,20 @@ export default function ManagerDashboardPage() {
               Secure company dashboard for attendance, face status, employees,
               leave, payroll and payslips.
             </p>
+
+            {(companyCode || companyName) && (
+              <p className="mt-3 text-sm text-[#d4ad63]">
+                Company: {companyName || companyCode}
+              </p>
+            )}
           </div>
 
-          <a
-            href="/manager-login"
+          <button
+            onClick={handleLogout}
             className="rounded-full border border-[#d4ad63]/50 px-6 py-3 text-center font-semibold text-[#f0dfbd] hover:bg-white/5"
           >
             Logout
-          </a>
+          </button>
         </div>
 
         <div className="mt-8 rounded-[2rem] border border-[#d4ad63]/30 bg-[#1e2428] p-5 text-sm text-white/60">
