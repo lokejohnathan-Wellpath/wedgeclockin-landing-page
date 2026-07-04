@@ -263,10 +263,21 @@ export default function ManagerAttendancePage() {
                         </span>
                       </td>
 
-                      {formatMalaysiaTime(row.clockIn)}
-                      {formatMalaysiaTime(row.restOut)}
-                      {formatMalaysiaTime(row.restIn)}
-                      {formatMalaysiaTime(row.clockOut)}
+                      <td className="px-5 py-4 text-white/60">
+                        {formatMalaysiaTime(row.clockIn)}
+                      </td>
+
+                      <td className="px-5 py-4 text-white/60">
+                        {formatMalaysiaTime(row.restOut)}
+                      </td>
+
+                      <td className="px-5 py-4 text-white/60">
+                        {formatMalaysiaTime(row.restIn)}
+                      </td>
+
+                      <td className="px-5 py-4 text-white/60">
+                        {formatMalaysiaTime(row.clockOut)}
+                      </td>
 
                       <td className="px-5 py-4">
                         <span className={badge(row.gpsStatus)}>
