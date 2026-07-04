@@ -20,7 +20,12 @@ type AttendanceRow = {
 function time(value: string | null) {
   if (!value) return "—";
 
-  return new Date(value).toLocaleTimeString("en-MY", {
+  const normalizedValue =
+    value.endsWith("Z") || value.includes("+")
+      ? value
+      : `${value}Z`;
+
+  return new Date(normalizedValue).toLocaleTimeString("en-MY", {
     timeZone: "Asia/Kuala_Lumpur",
     hour: "2-digit",
     minute: "2-digit",
