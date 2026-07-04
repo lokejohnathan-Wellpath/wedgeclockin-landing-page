@@ -22,18 +22,59 @@ type AttendanceRecord = {
 };
 
 const modules = [
-  ["Live Attendance", "View clock in, rest out, rest in and clock out status."],
-  ["Face Status", "Check which employees have completed face registration."],
-  ["Employee Management", "Add, view and manage company employees."],
-  ["Leave Approval", "Approve leave and review leave balances."],
-  ["Payroll", "Enter salary, review payroll and generate payslips."],
-  ["Payslip", "Employee payslip view, download and history."],
-  ["CSV / Excel Export", "Export attendance, payroll and payslip records."],
-  ["Workplace GPS", "Manage workplace location and GPS verification."],
+  {
+    title: "Live Attendance",
+    text: "View clock in, rest out, rest in and clock out status.",
+    href: "/manager-dashboard",
+    ready: false,
+  },
+  {
+    title: "Face Status",
+    text: "Check which employees have completed face registration.",
+    href: "/manager-dashboard",
+    ready: false,
+  },
+  {
+    title: "Employee Management",
+    text: "View and manage company employees.",
+    href: "/manager-dashboard/employees",
+    ready: true,
+  },
+  {
+    title: "Leave Approval",
+    text: "Approve leave and review leave balances.",
+    href: "/manager-dashboard",
+    ready: false,
+  },
+  {
+    title: "Payroll",
+    text: "Enter salary, review payroll and generate payslips.",
+    href: "/manager-dashboard",
+    ready: false,
+  },
+  {
+    title: "Payslip",
+    text: "Employee payslip view, download and history.",
+    href: "/manager-dashboard",
+    ready: false,
+  },
+  {
+    title: "CSV / Excel Export",
+    text: "Export attendance, payroll and employee records.",
+    href: "/manager-dashboard",
+    ready: false,
+  },
+  {
+    title: "Workplace GPS",
+    text: "Manage workplace location and GPS verification.",
+    href: "/manager-dashboard",
+    ready: false,
+  },
 ];
 
 function formatTime(value: string | null) {
   if (!value) return "—";
+
   return new Date(value).toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
@@ -66,7 +107,7 @@ export default function ManagerDashboardPage() {
       setCompanyName(storedCompanyName || "");
 
       if (!apiBaseUrl) {
-        setError("API base URL is not configured.");
+        setError("Service is not ready. Please try again later.");
         setIsLoading(false);
         return;
       }
@@ -81,15 +122,13 @@ export default function ManagerDashboardPage() {
         const data = await response.json();
 
         if (!response.ok) {
-          throw new Error(data?.message || "Dashboard data failed to load.");
+          throw new Error(data?.message || "Dashboard could not be loaded.");
         }
 
         setStats(data.stats);
         setAttendance(data.attendance || []);
-      } catch (err) {
-        setError(
-          err instanceof Error ? err.message : "Dashboard data failed to load."
-        );
+      } catch {
+        setError("Dashboard could not be loaded.");
       } finally {
         setIsLoading(false);
       }
@@ -104,7 +143,14 @@ export default function ManagerDashboardPage() {
     localStorage.removeItem("wc_company_code");
     localStorage.removeItem("wc_company_name");
     localStorage.removeItem("wc_manager_id");
+
     router.push("/manager-login");
+  }
+
+  function handleModuleClick(href: string, ready: boolean) {
+    if (ready) {
+      router.push(href);
+    }
   }
 
   const statCards = [
@@ -124,12 +170,14 @@ export default function ManagerDashboardPage() {
             <p className="text-sm tracking-[0.35em] text-[#d4ad63]">
               WEDGECLOCKIN
             </p>
+
             <h1 className="mt-2 text-4xl font-bold text-[#f0dfbd]">
               Manager Control Centre
             </h1>
+
             <p className="mt-2 text-white/55">
-              Secure company dashboard for attendance, face status, employees,
-              leave, payroll and payslips.
+              Company dashboard for attendance, employees, leave, payroll and
+              payslips.
             </p>
 
             {(companyCode || companyName) && (
@@ -149,10 +197,10 @@ export default function ManagerDashboardPage() {
 
         <div className="mt-8 rounded-[2rem] border border-[#d4ad63]/30 bg-[#1e2428] p-5 text-sm text-white/60">
           {isLoading
-            ? "Loading live company data..."
+            ? "Loading company data..."
             : error
               ? error
-              : "Live company data loaded securely from MongoDB Atlas."}
+              : "Company data loaded successfully."}
         </div>
 
         <div className="mt-8 grid gap-4 md:grid-cols-3 xl:grid-cols-6">
@@ -174,10 +222,12 @@ export default function ManagerDashboardPage() {
                 <p className="text-sm tracking-[0.25em] text-[#d4ad63]">
                   TODAY
                 </p>
+
                 <h2 className="mt-2 text-2xl font-bold">
                   Live Attendance Status
                 </h2>
               </div>
+
               <p className="text-sm text-white/45">
                 {isLoading ? "Loading..." : "Today"}
               </p>
@@ -187,8 +237,9 @@ export default function ManagerDashboardPage() {
               {attendance.length === 0 ? (
                 <div className="p-8 text-center">
                   <p className="text-lg font-semibold text-[#f0dfbd]">
-                    No attendance data loaded
+                    No attendance records yet
                   </p>
+
                   <p className="mt-3 text-sm text-white/50">
                     Today&apos;s clock in, rest out, rest in and clock out
                     records will appear here.
@@ -206,6 +257,7 @@ export default function ManagerDashboardPage() {
                         <th className="px-5 py-4">Clock Out</th>
                       </tr>
                     </thead>
+
                     <tbody>
                       {attendance.map((record) => (
                         <tr key={record.id} className="border-b border-white/5">
@@ -237,14 +289,15 @@ export default function ManagerDashboardPage() {
             <p className="text-sm tracking-[0.25em] text-[#d4ad63]">
               SECURITY
             </p>
-            <h2 className="mt-2 text-2xl font-bold">Isolation Rules</h2>
+
+            <h2 className="mt-2 text-2xl font-bold">Access Rules</h2>
+
             <ul className="mt-5 space-y-3 text-sm text-white/60">
-              <li>✓ Company data must be filtered by companyId.</li>
-              <li>✓ Managers must only see their own company data.</li>
-              <li>✓ Employees must only see their own records.</li>
-              <li>✓ Payslips must be private per employeeId.</li>
-              <li>✓ MongoDB sync must never create login sessions.</li>
-              <li>✓ Attendance writes must stay lightweight for peak times.</li>
+              <li>✓ Managers can only view their own company.</li>
+              <li>✓ Employees can only view their own records.</li>
+              <li>✓ Payslips are private to each employee.</li>
+              <li>✓ Data sync must never bypass login security.</li>
+              <li>✓ Attendance must stay fast during peak clock-in hours.</li>
             </ul>
           </section>
         </div>
@@ -255,14 +308,29 @@ export default function ManagerDashboardPage() {
           </p>
 
           <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-            {modules.map(([title, text]) => (
-              <div
-                key={title}
-                className="rounded-[1.5rem] border border-white/10 bg-white/5 p-6"
+            {modules.map((module) => (
+              <button
+                key={module.title}
+                type="button"
+                onClick={() => handleModuleClick(module.href, module.ready)}
+                className={`rounded-[1.5rem] border border-white/10 bg-white/5 p-6 text-left transition ${
+                  module.ready
+                    ? "cursor-pointer hover:border-[#d4ad63]/60 hover:bg-white/10"
+                    : "cursor-not-allowed opacity-70"
+                }`}
               >
-                <h3 className="text-lg font-bold text-[#f0dfbd]">{title}</h3>
-                <p className="mt-3 text-sm text-white/55">{text}</p>
-              </div>
+                <div className="flex items-start justify-between gap-3">
+                  <h3 className="text-lg font-bold text-[#f0dfbd]">
+                    {module.title}
+                  </h3>
+
+                  <span className="rounded-full border border-white/10 px-3 py-1 text-xs text-white/45">
+                    {module.ready ? "Open" : "Soon"}
+                  </span>
+                </div>
+
+                <p className="mt-3 text-sm text-white/55">{module.text}</p>
+              </button>
             ))}
           </div>
         </section>
