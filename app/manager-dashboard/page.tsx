@@ -3,14 +3,23 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-const stats = [
-  ["Employees", "—"],
-  ["Present", "—"],
-  ["On Leave", "—"],
-  ["Absent", "—"],
-  ["Face Registered", "—"],
-  ["Pending Face", "—"],
-];
+type DashboardStats = {
+  employees: number;
+  present: number;
+  onLeave: number;
+  absent: number;
+  faceRegistered: number;
+  pendingFace: number;
+};
+
+type AttendanceRecord = {
+  id: string;
+  employeeName: string;
+  clockIn: string | null;
+  restOut: string | null;
+  restIn: string | null;
+  clockOut: string | null;
+};
 
 const modules = [
   ["Live Attendance", "View clock in, rest out, rest in and clock out status."],
@@ -23,23 +32,70 @@ const modules = [
   ["Workplace GPS", "Manage workplace location and GPS verification."],
 ];
 
+function formatTime(value: string | null) {
+  if (!value) return "—";
+  return new Date(value).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export default function ManagerDashboardPage() {
   const router = useRouter();
+
   const [companyCode, setCompanyCode] = useState("");
   const [companyName, setCompanyName] = useState("");
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    const token = localStorage.getItem("wc_manager_token");
-    const storedCompanyCode = localStorage.getItem("wc_company_code");
-    const storedCompanyName = localStorage.getItem("wc_company_name");
+    async function loadDashboard() {
+      const token = localStorage.getItem("wc_manager_token");
+      const storedCompanyCode = localStorage.getItem("wc_company_code");
+      const storedCompanyName = localStorage.getItem("wc_company_name");
+      const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
 
-    if (!token) {
-      router.push("/manager-login");
-      return;
+      if (!token) {
+        router.push("/manager-login");
+        return;
+      }
+
+      setCompanyCode(storedCompanyCode || "");
+      setCompanyName(storedCompanyName || "");
+
+      if (!apiBaseUrl) {
+        setError("API base URL is not configured.");
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/manager/dashboard`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data?.message || "Dashboard data failed to load.");
+        }
+
+        setStats(data.stats);
+        setAttendance(data.attendance || []);
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Dashboard data failed to load."
+        );
+      } finally {
+        setIsLoading(false);
+      }
     }
 
-    setCompanyCode(storedCompanyCode || "");
-    setCompanyName(storedCompanyName || "");
+    loadDashboard();
   }, [router]);
 
   function handleLogout() {
@@ -50,6 +106,15 @@ export default function ManagerDashboardPage() {
     localStorage.removeItem("wc_manager_id");
     router.push("/manager-login");
   }
+
+  const statCards = [
+    ["Employees", stats?.employees ?? "—"],
+    ["Present", stats?.present ?? "—"],
+    ["On Leave", stats?.onLeave ?? "—"],
+    ["Absent", stats?.absent ?? "—"],
+    ["Face Registered", stats?.faceRegistered ?? "—"],
+    ["Pending Face", stats?.pendingFace ?? "—"],
+  ];
 
   return (
     <main className="min-h-screen bg-[#101416] text-[#f4efe6]">
@@ -83,12 +148,15 @@ export default function ManagerDashboardPage() {
         </div>
 
         <div className="mt-8 rounded-[2rem] border border-[#d4ad63]/30 bg-[#1e2428] p-5 text-sm text-white/60">
-          Dashboard shell is ready. Live company data will appear here after
-          secure manager authentication is wired to the API.
+          {isLoading
+            ? "Loading live company data..."
+            : error
+              ? error
+              : "Live company data loaded securely from MongoDB Atlas."}
         </div>
 
         <div className="mt-8 grid gap-4 md:grid-cols-3 xl:grid-cols-6">
-          {stats.map(([label, value]) => (
+          {statCards.map(([label, value]) => (
             <div
               key={label}
               className="rounded-2xl border border-[#d4ad63]/25 bg-white/5 p-5"
@@ -110,18 +178,58 @@ export default function ManagerDashboardPage() {
                   Live Attendance Status
                 </h2>
               </div>
-              <p className="text-sm text-white/45">Awaiting secure API data</p>
+              <p className="text-sm text-white/45">
+                {isLoading ? "Loading..." : "Today"}
+              </p>
             </div>
 
-            <div className="mt-6 rounded-2xl border border-white/10 bg-[#101416] p-8 text-center">
-              <p className="text-lg font-semibold text-[#f0dfbd]">
-                No attendance data loaded
-              </p>
-              <p className="mt-3 text-sm text-white/50">
-                Once manager authentication is connected, this area will show
-                each employee&apos;s clock in, rest out, rest in, clock out,
-                face status and GPS verification.
-              </p>
+            <div className="mt-6 overflow-hidden rounded-2xl border border-white/10 bg-[#101416]">
+              {attendance.length === 0 ? (
+                <div className="p-8 text-center">
+                  <p className="text-lg font-semibold text-[#f0dfbd]">
+                    No attendance data loaded
+                  </p>
+                  <p className="mt-3 text-sm text-white/50">
+                    Today&apos;s clock in, rest out, rest in and clock out
+                    records will appear here.
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead className="border-b border-white/10 text-white/45">
+                      <tr>
+                        <th className="px-5 py-4">Employee</th>
+                        <th className="px-5 py-4">Clock In</th>
+                        <th className="px-5 py-4">Rest Out</th>
+                        <th className="px-5 py-4">Rest In</th>
+                        <th className="px-5 py-4">Clock Out</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {attendance.map((record) => (
+                        <tr key={record.id} className="border-b border-white/5">
+                          <td className="px-5 py-4 text-[#f0dfbd]">
+                            {record.employeeName}
+                          </td>
+                          <td className="px-5 py-4 text-white/60">
+                            {formatTime(record.clockIn)}
+                          </td>
+                          <td className="px-5 py-4 text-white/60">
+                            {formatTime(record.restOut)}
+                          </td>
+                          <td className="px-5 py-4 text-white/60">
+                            {formatTime(record.restIn)}
+                          </td>
+                          <td className="px-5 py-4 text-white/60">
+                            {formatTime(record.clockOut)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </section>
 
