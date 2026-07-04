@@ -19,11 +19,15 @@ type AttendanceRow = {
 
 function time(value: string | null) {
   if (!value) return "—";
-  return new Date(value).toLocaleTimeString([], {
+
+  return new Date(value).toLocaleTimeString("en-MY", {
+    timeZone: "Asia/Kuala_Lumpur",
     hour: "2-digit",
     minute: "2-digit",
+    hour12: false,
   });
 }
+
 
 function badge(text: string) {
   if (text === "Working" || text === "Registered" || text === "Recorded") {
