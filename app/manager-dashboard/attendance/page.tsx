@@ -37,7 +37,7 @@ function formatMalaysiaTime(value: string | null) {
 
 function badge(text: string) {
   const base =
-    "inline-flex whitespace-nowrap rounded-full px-3 py-1 text-xs leading-none";
+    "inline-flex items-center justify-center whitespace-nowrap rounded-full px-2.5 py-1 text-xs leading-none";
 
   if (text === "Working" || text === "Registered" || text === "Recorded") {
     return `${base} border border-green-400/30 bg-green-500/10 text-green-200`;
@@ -230,26 +230,26 @@ export default function ManagerAttendancePage() {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[1150px] table-fixed text-left text-sm">
+            <div className="w-full">
+              <table className="w-full table-auto text-left text-sm">
                 <thead className="border-b border-white/10 text-white/45">
                   <tr>
-                    <th className="w-[260px] px-5 py-4">Employee</th>
-                    <th className="w-[140px] px-5 py-4">Department</th>
-                    <th className="w-[150px] px-5 py-4">Face</th>
-                    <th className="w-[120px] px-5 py-4">Clock In</th>
-                    <th className="w-[120px] px-5 py-4">Rest Out</th>
-                    <th className="w-[120px] px-5 py-4">Rest In</th>
-                    <th className="w-[120px] px-5 py-4">Clock Out</th>
-                    <th className="w-[160px] px-5 py-4">GPS</th>
-                    <th className="w-[180px] px-5 py-4">Status</th>
+                    <th className="px-3 py-4">Employee</th>
+                    <th className="px-3 py-4">Department</th>
+                    <th className="px-3 py-4">Face</th>
+                    <th className="px-3 py-4 whitespace-nowrap">Clock In</th>
+                    <th className="px-3 py-4 whitespace-nowrap">Rest Out</th>
+                    <th className="px-3 py-4 whitespace-nowrap">Rest In</th>
+                    <th className="px-3 py-4 whitespace-nowrap">Clock Out</th>
+                    <th className="px-3 py-4">GPS</th>
+                    <th className="px-3 py-4">Status</th>
                   </tr>
                 </thead>
 
                 <tbody>
                   {rows.map((row) => (
                     <tr key={row.employeeId} className="border-b border-white/5">
-                      <td className="px-5 py-4 align-middle">
+                      <td className="px-3 py-4 align-middle">
                         <p className="font-semibold text-[#f0dfbd]">
                           {row.employeeName}
                         </p>
@@ -258,11 +258,11 @@ export default function ManagerAttendancePage() {
                         </p>
                       </td>
 
-                      <td className="px-5 py-4 align-middle text-white/60">
+                      <td className="px-3 py-4 align-middle text-white/60">
                         {row.department || "—"}
                       </td>
 
-                      <td className="px-5 py-4 align-middle">
+                      <td className="px-3 py-4 align-middle">
                         <span
                           className={badge(
                             row.faceRegistered ? "Registered" : "Pending"
@@ -272,29 +272,29 @@ export default function ManagerAttendancePage() {
                         </span>
                       </td>
 
-                      <td className="px-5 py-4 align-middle whitespace-nowrap text-white/60">
+                      <td className="px-3 py-4 align-middle whitespace-nowrap text-white/60">
                         {formatMalaysiaTime(row.clockIn)}
                       </td>
 
-                      <td className="px-5 py-4 align-middle whitespace-nowrap text-white/60">
+                      <td className="px-3 py-4 align-middle whitespace-nowrap text-white/60">
                         {formatMalaysiaTime(row.restOut)}
                       </td>
 
-                      <td className="px-5 py-4 align-middle whitespace-nowrap text-white/60">
+                      <td className="px-3 py-4 align-middle whitespace-nowrap text-white/60">
                         {formatMalaysiaTime(row.restIn)}
                       </td>
 
-                      <td className="px-5 py-4 align-middle whitespace-nowrap text-white/60">
+                      <td className="px-3 py-4 align-middle whitespace-nowrap text-white/60">
                         {formatMalaysiaTime(row.clockOut)}
                       </td>
 
-                      <td className="px-5 py-4 align-middle">
+                      <td className="px-3 py-4 align-middle">
                         <span className={badge(row.gpsStatus)}>
                           {row.gpsStatus}
                         </span>
                       </td>
 
-                      <td className="px-5 py-4 align-middle">
+                      <td className="px-3 py-4 align-middle">
                         <span className={badge(row.todayStatus)}>
                           {row.todayStatus}
                         </span>
