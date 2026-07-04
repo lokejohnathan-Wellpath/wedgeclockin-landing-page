@@ -70,13 +70,22 @@ const modules: ModuleCard[] = [
   },
 ];
 
-function formatTime(value: string | null) {
+function formatMalaysiaTime(value: string | null) {
   if (!value) return "—";
 
-  return new Date(value).toLocaleTimeString([], {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
+
+  return new Intl.DateTimeFormat("en-MY", {
+    timeZone: "Asia/Kuala_Lumpur",
     hour: "2-digit",
     minute: "2-digit",
-  });
+    second: "2-digit",
+    hour12: false,
+  }).format(date);
 }
 
 export default function ManagerDashboardPage() {
@@ -260,16 +269,16 @@ export default function ManagerDashboardPage() {
                             {record.employeeName}
                           </td>
                           <td className="px-5 py-4 text-white/60">
-                            {formatTime(record.clockIn)}
+                            {formatMalaysiaTime(record.clockIn)}
                           </td>
                           <td className="px-5 py-4 text-white/60">
-                            {formatTime(record.restOut)}
+                            {formatMalaysiaTime(record.restOut)}
                           </td>
                           <td className="px-5 py-4 text-white/60">
-                            {formatTime(record.restIn)}
+                            {formatMalaysiaTime(record.restIn)}
                           </td>
                           <td className="px-5 py-4 text-white/60">
-                            {formatTime(record.clockOut)}
+                            {formatMalaysiaTime(record.clockOut)}
                           </td>
                         </tr>
                       ))}

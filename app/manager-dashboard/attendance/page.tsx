@@ -17,22 +17,23 @@ type AttendanceRow = {
   todayStatus: string;
 };
 
-function time(value: string | null) {
+function formatMalaysiaTime(value: string | null) {
   if (!value) return "—";
 
-  const normalizedValue =
-    value.endsWith("Z") || value.includes("+")
-      ? value
-      : `${value}Z`;
+  const date = new Date(value);
 
-  return new Date(normalizedValue).toLocaleTimeString("en-MY", {
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
+
+  return new Intl.DateTimeFormat("en-MY", {
     timeZone: "Asia/Kuala_Lumpur",
     hour: "2-digit",
     minute: "2-digit",
+    second: "2-digit",
     hour12: false,
-  });
+  }).format(date);
 }
-
 
 function badge(text: string) {
   if (text === "Working" || text === "Registered" || text === "Recorded") {
@@ -262,21 +263,10 @@ export default function ManagerAttendancePage() {
                         </span>
                       </td>
 
-                      <td className="px-5 py-4 text-white/60">
-                        {time(row.clockIn)}
-                      </td>
-
-                      <td className="px-5 py-4 text-white/60">
-                        {time(row.restOut)}
-                      </td>
-
-                      <td className="px-5 py-4 text-white/60">
-                        {time(row.restIn)}
-                      </td>
-
-                      <td className="px-5 py-4 text-white/60">
-                        {time(row.clockOut)}
-                      </td>
+                      {formatMalaysiaTime(row.clockIn)}
+                      {formatMalaysiaTime(row.restOut)}
+                      {formatMalaysiaTime(row.restIn)}
+                      {formatMalaysiaTime(row.clockOut)}
 
                       <td className="px-5 py-4">
                         <span className={badge(row.gpsStatus)}>
