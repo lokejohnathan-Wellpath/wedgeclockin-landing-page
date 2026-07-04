@@ -36,27 +36,30 @@ function formatMalaysiaTime(value: string | null) {
 }
 
 function badge(text: string) {
+  const base =
+    "inline-flex whitespace-nowrap rounded-full px-3 py-1 text-xs leading-none";
+
   if (text === "Working" || text === "Registered" || text === "Recorded") {
-    return "rounded-full border border-green-400/30 bg-green-500/10 px-3 py-1 text-xs text-green-200";
+    return `${base} border border-green-400/30 bg-green-500/10 text-green-200`;
   }
 
   if (text === "On Rest" || text === "Pending") {
-    return "rounded-full border border-yellow-400/30 bg-yellow-500/10 px-3 py-1 text-xs text-yellow-200";
+    return `${base} border border-yellow-400/30 bg-yellow-500/10 text-yellow-200`;
   }
 
   if (text === "Clocked Out") {
-    return "rounded-full border border-blue-400/30 bg-blue-500/10 px-3 py-1 text-xs text-blue-200";
+    return `${base} border border-blue-400/30 bg-blue-500/10 text-blue-200`;
   }
 
-  if (text === "On Leave") {
-    return "rounded-full border border-purple-400/30 bg-purple-500/10 px-3 py-1 text-xs text-purple-200";
+  if (text === "Approved Leave" || text === "On Leave") {
+    return `${base} border border-purple-400/30 bg-purple-500/10 text-purple-200`;
   }
 
   if (text === "Absent") {
-    return "rounded-full border border-red-400/30 bg-red-500/10 px-3 py-1 text-xs text-red-200";
+    return `${base} border border-red-400/30 bg-red-500/10 text-red-200`;
   }
 
-  return "rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/60";
+  return `${base} border border-white/10 bg-white/5 text-white/60`;
 }
 
 export default function ManagerAttendancePage() {
@@ -97,10 +100,12 @@ export default function ManagerAttendancePage() {
 
       setRows(data.attendance || []);
       setLastUpdated(
-        new Date().toLocaleTimeString([], {
+        new Intl.DateTimeFormat("en-MY", {
+          timeZone: "Asia/Kuala_Lumpur",
           hour: "2-digit",
           minute: "2-digit",
-        })
+          hour12: true,
+        }).format(new Date())
       );
       setError("");
     } catch {
@@ -125,7 +130,11 @@ export default function ManagerAttendancePage() {
       total: rows.length,
       working: rows.filter((row) => row.todayStatus === "Working").length,
       rest: rows.filter((row) => row.todayStatus === "On Rest").length,
-      leave: rows.filter((row) => row.todayStatus === "On Leave").length,
+      leave: rows.filter(
+        (row) =>
+          row.todayStatus === "On Leave" ||
+          row.todayStatus === "Approved Leave"
+      ).length,
       absent: rows.filter((row) => row.todayStatus === "Absent").length,
     };
   }, [rows]);
@@ -222,25 +231,25 @@ export default function ManagerAttendancePage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
+              <table className="w-full min-w-[1150px] table-fixed text-left text-sm">
                 <thead className="border-b border-white/10 text-white/45">
                   <tr>
-                    <th className="px-5 py-4">Employee</th>
-                    <th className="px-5 py-4">Department</th>
-                    <th className="px-5 py-4">Face</th>
-                    <th className="px-5 py-4">Clock In</th>
-                    <th className="px-5 py-4">Rest Out</th>
-                    <th className="px-5 py-4">Rest In</th>
-                    <th className="px-5 py-4">Clock Out</th>
-                    <th className="px-5 py-4">GPS</th>
-                    <th className="px-5 py-4">Status</th>
+                    <th className="w-[260px] px-5 py-4">Employee</th>
+                    <th className="w-[140px] px-5 py-4">Department</th>
+                    <th className="w-[150px] px-5 py-4">Face</th>
+                    <th className="w-[120px] px-5 py-4">Clock In</th>
+                    <th className="w-[120px] px-5 py-4">Rest Out</th>
+                    <th className="w-[120px] px-5 py-4">Rest In</th>
+                    <th className="w-[120px] px-5 py-4">Clock Out</th>
+                    <th className="w-[160px] px-5 py-4">GPS</th>
+                    <th className="w-[180px] px-5 py-4">Status</th>
                   </tr>
                 </thead>
 
                 <tbody>
                   {rows.map((row) => (
                     <tr key={row.employeeId} className="border-b border-white/5">
-                      <td className="px-5 py-4">
+                      <td className="px-5 py-4 align-middle">
                         <p className="font-semibold text-[#f0dfbd]">
                           {row.employeeName}
                         </p>
@@ -249,11 +258,11 @@ export default function ManagerAttendancePage() {
                         </p>
                       </td>
 
-                      <td className="px-5 py-4 text-white/60">
+                      <td className="px-5 py-4 align-middle text-white/60">
                         {row.department || "—"}
                       </td>
 
-                      <td className="px-5 py-4">
+                      <td className="px-5 py-4 align-middle">
                         <span
                           className={badge(
                             row.faceRegistered ? "Registered" : "Pending"
@@ -263,29 +272,29 @@ export default function ManagerAttendancePage() {
                         </span>
                       </td>
 
-                      <td className="px-5 py-4 text-white/60">
+                      <td className="px-5 py-4 align-middle whitespace-nowrap text-white/60">
                         {formatMalaysiaTime(row.clockIn)}
                       </td>
 
-                      <td className="px-5 py-4 text-white/60">
+                      <td className="px-5 py-4 align-middle whitespace-nowrap text-white/60">
                         {formatMalaysiaTime(row.restOut)}
                       </td>
 
-                      <td className="px-5 py-4 text-white/60">
+                      <td className="px-5 py-4 align-middle whitespace-nowrap text-white/60">
                         {formatMalaysiaTime(row.restIn)}
                       </td>
 
-                      <td className="px-5 py-4 text-white/60">
+                      <td className="px-5 py-4 align-middle whitespace-nowrap text-white/60">
                         {formatMalaysiaTime(row.clockOut)}
                       </td>
 
-                      <td className="px-5 py-4">
+                      <td className="px-5 py-4 align-middle">
                         <span className={badge(row.gpsStatus)}>
                           {row.gpsStatus}
                         </span>
                       </td>
 
-                      <td className="px-5 py-4">
+                      <td className="px-5 py-4 align-middle">
                         <span className={badge(row.todayStatus)}>
                           {row.todayStatus}
                         </span>
