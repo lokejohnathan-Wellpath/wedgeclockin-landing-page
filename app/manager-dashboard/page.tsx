@@ -21,54 +21,52 @@ type AttendanceRecord = {
   clockOut: string | null;
 };
 
-const modules = [
+type ModuleCard = {
+  title: string;
+  text: string;
+  href: string;
+};
+
+const modules: ModuleCard[] = [
   {
     title: "Live Attendance",
-    text: "View clock in, rest out, rest in and clock out status.",
-    href: "/manager-dashboard",
-    ready: false,
+    text: "View today’s clock in, rest, clock out, face and GPS status.",
+    href: "/manager-dashboard/attendance",
   },
   {
     title: "Face Status",
-    text: "Check which employees have completed face registration.",
-    href: "/manager-dashboard",
-    ready: false,
+    text: "Check registered and pending employee face setup.",
+    href: "/manager-dashboard/faces",
   },
   {
     title: "Employee Management",
     text: "View and manage company employees.",
     href: "/manager-dashboard/employees",
-    ready: true,
   },
   {
     title: "Leave Approval",
-    text: "Approve leave and review leave balances.",
-    href: "/manager-dashboard",
-    ready: false,
+    text: "Review pending leave and employee balances.",
+    href: "/manager-dashboard/leaves",
   },
   {
     title: "Payroll",
-    text: "Enter salary, review payroll and generate payslips.",
-    href: "/manager-dashboard",
-    ready: false,
+    text: "Review salary records and monthly payroll.",
+    href: "/manager-dashboard/payroll",
   },
   {
     title: "Payslip",
-    text: "Employee payslip view, download and history.",
-    href: "/manager-dashboard",
-    ready: false,
+    text: "View employee payslip records and history.",
+    href: "/manager-dashboard/payslips",
   },
   {
     title: "CSV / Excel Export",
-    text: "Export attendance, payroll and employee records.",
-    href: "/manager-dashboard",
-    ready: false,
+    text: "Export attendance, employee, leave and payroll records.",
+    href: "/manager-dashboard/export",
   },
   {
     title: "Workplace GPS",
-    text: "Manage workplace location and GPS verification.",
-    href: "/manager-dashboard",
-    ready: false,
+    text: "Review workplace location and attendance radius.",
+    href: "/manager-dashboard/gps",
   },
 ];
 
@@ -143,15 +141,10 @@ export default function ManagerDashboardPage() {
     localStorage.removeItem("wc_company_code");
     localStorage.removeItem("wc_company_name");
     localStorage.removeItem("wc_manager_id");
-
     router.push("/manager-login");
   }
 
-  function handleModuleClick(href: string, ready: boolean) {
-    if (ready) {
-      router.push(href);
-    }
-  }
+  const companyDisplayName = companyName || companyCode || "Company";
 
   const statCards = [
     ["Employees", stats?.employees ?? "—"],
@@ -176,18 +169,16 @@ export default function ManagerDashboardPage() {
             </h1>
 
             <p className="mt-2 text-white/55">
-              Company dashboard for attendance, employees, leave, payroll and
-              payslips.
+              Attendance, employees, leave, payroll and payslip management.
             </p>
 
-            {(companyCode || companyName) && (
-              <p className="mt-3 text-sm text-[#d4ad63]">
-                Company: {companyName || companyCode}
-              </p>
-            )}
+            <p className="mt-3 text-sm text-[#d4ad63]">
+              Company: {companyDisplayName}
+            </p>
           </div>
 
           <button
+            type="button"
             onClick={handleLogout}
             className="rounded-full border border-[#d4ad63]/50 px-6 py-3 text-center font-semibold text-[#f0dfbd] hover:bg-white/5"
           >
@@ -228,9 +219,13 @@ export default function ManagerDashboardPage() {
                 </h2>
               </div>
 
-              <p className="text-sm text-white/45">
-                {isLoading ? "Loading..." : "Today"}
-              </p>
+              <button
+                type="button"
+                onClick={() => router.push("/manager-dashboard/attendance")}
+                className="text-sm font-semibold text-[#d4ad63] hover:underline"
+              >
+                Open Attendance
+              </button>
             </div>
 
             <div className="mt-6 overflow-hidden rounded-2xl border border-white/10 bg-[#101416]">
@@ -241,8 +236,8 @@ export default function ManagerDashboardPage() {
                   </p>
 
                   <p className="mt-3 text-sm text-white/50">
-                    Today&apos;s clock in, rest out, rest in and clock out
-                    records will appear here.
+                    Today&apos;s clock in, rest and clock out records will appear
+                    here.
                   </p>
                 </div>
               ) : (
@@ -312,20 +307,16 @@ export default function ManagerDashboardPage() {
               <button
                 key={module.title}
                 type="button"
-                onClick={() => handleModuleClick(module.href, module.ready)}
-                className={`rounded-[1.5rem] border border-white/10 bg-white/5 p-6 text-left transition ${
-                  module.ready
-                    ? "cursor-pointer hover:border-[#d4ad63]/60 hover:bg-white/10"
-                    : "cursor-not-allowed opacity-70"
-                }`}
+                onClick={() => router.push(module.href)}
+                className="rounded-[1.5rem] border border-white/10 bg-white/5 p-6 text-left transition hover:border-[#d4ad63]/60 hover:bg-white/10"
               >
                 <div className="flex items-start justify-between gap-3">
                   <h3 className="text-lg font-bold text-[#f0dfbd]">
                     {module.title}
                   </h3>
 
-                  <span className="rounded-full border border-white/10 px-3 py-1 text-xs text-white/45">
-                    {module.ready ? "Open" : "Soon"}
+                  <span className="rounded-full border border-[#d4ad63]/30 px-3 py-1 text-xs text-[#d4ad63]">
+                    Open
                   </span>
                 </div>
 
