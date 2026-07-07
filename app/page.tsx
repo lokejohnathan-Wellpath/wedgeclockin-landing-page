@@ -12,6 +12,14 @@ const features = [
   ["Secure Cloud Sync", "Keep attendance records safe and available everywhere."],
 ];
 
+const wedgeIInsights = [
+  "Weekly Business Health Score",
+  "Sales and profit trend",
+  "Cashflow risk warning",
+  "Labour cost analysis",
+  "AI recommendations before month-end",
+];
+
 export default function Home() {
   return (
     <main className="min-h-screen bg-[#101416] text-[#f4efe6]">
@@ -20,37 +28,35 @@ export default function Home() {
           <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#d4ad63] text-black">
             ◷
           </span>
-          WedgeCLOCKin
+          Wedge Works
         </div>
 
         <nav className="hidden gap-8 text-sm text-white/60 md:flex">
-          <a href="#features" className="hover:text-white">Features</a>
-          <a href="#manager-pc" className="hover:text-white">Manager PC</a>
+          <a href="#features" className="hover:text-white">WedgeCLOCKin</a>
+          <a href="#wedge-i" className="hover:text-white">Wedge-i</a>
           <a href="#why" className="hover:text-white">Why us</a>
         </nav>
 
         <a
-          href={apkUrl}
-          target="_blank"
-          rel="noopener noreferrer"
+          href="/manager-login"
           className="rounded-full bg-[#d4ad63] px-5 py-2 text-sm font-semibold text-black hover:bg-[#e4bf75]"
         >
-          Download Beta
+          Manager PC Login
         </a>
       </header>
 
       <section className="mx-auto grid max-w-6xl items-center gap-12 px-6 py-20 md:grid-cols-2">
         <div>
           <div className="mb-8 inline-block rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/60">
-            <span className="text-[#d4ad63]">•</span> Now in Android Beta
+            <span className="text-[#d4ad63]">•</span> WedgeCLOCKin now in Android Beta
           </div>
 
           <h1 className="text-6xl font-bold tracking-tight text-[#f0dfbd] md:text-7xl">
-            WedgeCLOCKin
+            Wedge Works
           </h1>
 
           <p className="mt-6 max-w-xl text-3xl font-semibold leading-tight">
-            Smart Workforce Attendance for Modern Businesses.
+            Smart workforce and AI business tools for modern SMEs.
           </p>
 
           <div className="mt-8 flex flex-wrap gap-3 text-sm text-white/60">
@@ -72,10 +78,10 @@ export default function Home() {
             </a>
 
             <a
-              href="/manager-login"
+              href="#wedge-i"
               className="rounded-full border border-[#d4ad63]/50 px-8 py-4 text-center font-semibold text-[#f0dfbd] hover:bg-white/5"
             >
-              Manager PC Login
+              Explore Wedge-i
             </a>
           </div>
         </div>
@@ -114,31 +120,39 @@ export default function Home() {
         </div>
       </section>
 
-      <section id="manager-pc" className="mx-auto max-w-6xl px-6 pb-10">
+      <section id="wedge-i" className="mx-auto max-w-6xl px-6 pb-10">
         <div className="rounded-[2rem] border border-[#d4ad63]/30 bg-[#1e2428] p-8 md:flex md:items-center md:justify-between">
           <div>
-            <p className="text-sm tracking-[0.3em] text-[#d4ad63]">FOR MANAGERS</p>
+            <p className="text-sm tracking-[0.3em] text-[#d4ad63]">INTRODUCING WEDGE-i</p>
             <h2 className="mt-3 text-3xl font-bold text-[#f0dfbd]">
-              Payroll and CSV export on PC
+              AI Business Intelligence for SMEs
             </h2>
             <p className="mt-3 max-w-2xl text-white/55">
-              Use the mobile app for clock-in. Use the PC dashboard for salary entry,
-              payroll review, and export-ready records.
+              Track business health before month-end. Wedge-i helps owners understand
+              sales, labour, cashflow, and profit risk every week.
             </p>
+
+            <div className="mt-6 flex flex-wrap gap-3 text-sm text-white/60">
+              {wedgeIInsights.map((item) => (
+                <span key={item} className="rounded-full border border-white/10 bg-white/5 px-4 py-2">
+                  {item}
+                </span>
+              ))}
+            </div>
           </div>
 
           <a
-            href="/manager-login"
-            className="mt-6 inline-block rounded-full bg-[#d4ad63] px-8 py-4 text-center font-semibold text-black hover:bg-[#e4bf75] md:mt-0"
+            href="#"
+            className="mt-8 inline-block rounded-full bg-[#d4ad63] px-8 py-4 text-center font-semibold text-black hover:bg-[#e4bf75] md:mt-0"
           >
-            Manager PC Login
+            Launch Wedge-i
           </a>
         </div>
       </section>
 
       <section id="features" className="mx-auto max-w-6xl px-6 py-20">
         <p className="text-center text-sm tracking-[0.4em] text-[#d4ad63]">
-          EVERYTHING YOU NEED
+          WEDGECLOCKIN
         </p>
 
         <h2 className="mx-auto mt-6 max-w-2xl text-center text-5xl font-bold">
