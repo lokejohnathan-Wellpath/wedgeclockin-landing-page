@@ -115,26 +115,75 @@ export default function Home() {
       </section>
 
       <section id="manager-pc" className="mx-auto max-w-6xl px-6 pb-10">
-        <div className="rounded-[2rem] border border-[#d4ad63]/30 bg-[#1e2428] p-8 md:flex md:items-center md:justify-between">
+  <div className="rounded-[2rem] border border-[#d4ad63]/30 bg-[#1e2428] p-8">
+    <p className="text-sm tracking-[0.3em] text-[#d4ad63]">
+      INTRODUCING WEDGE-I
+    </p>
+
+    <div className="mt-6 grid gap-8 md:grid-cols-2 md:items-center">
+      <div>
+        <h2 className="text-3xl font-bold text-[#f0dfbd]">
+          AI Business Intelligence for SMEs
+        </h2>
+
+        <p className="mt-3 max-w-2xl text-white/55">
+          Wedge-i turns attendance, payroll, revenue, labour cost, inventory,
+          and cashflow into a clear business health dashboard for managers.
+        </p>
+
+        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/60">
+            Business Health Score
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/60">
+            Cashflow Analysis
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/60">
+            Profit Forecast
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/60">
+            Labour Intelligence
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-[2rem] border border-[#d4ad63]/20 bg-[#101416] p-6">
+        <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm tracking-[0.3em] text-[#d4ad63]">FOR MANAGERS</p>
-            <h2 className="mt-3 text-3xl font-bold text-[#f0dfbd]">
-              Payroll and CSV export on PC
-            </h2>
-            <p className="mt-3 max-w-2xl text-white/55">
-              Use the mobile app for clock-in. Use the PC dashboard for salary entry,
-              payroll review, and export-ready records.
-            </p>
+            <p className="text-sm text-white/40">Business Health</p>
+            <p className="text-4xl font-bold text-[#d4ad63]">87</p>
           </div>
 
-          <a
-            href="/manager-login"
-            className="mt-6 inline-block rounded-full bg-[#d4ad63] px-8 py-4 text-center font-semibold text-black hover:bg-[#e4bf75] md:mt-0"
-          >
-            Manager PC Login
-          </a>
+          <span className="rounded-full bg-[#d4ad63]/15 px-4 py-2 text-sm text-[#d4ad63]">
+            Strong
+          </span>
         </div>
-      </section>
+
+        <div className="mt-6 space-y-4">
+          {[
+            ["Revenue", "RM 48,200"],
+            ["Profit Forecast", "+18%"],
+            ["Labour Cost", "22%"],
+            ["Cashflow", "Healthy"],
+          ].map(([label, value]) => (
+            <div
+              key={label}
+              className="flex justify-between border-t border-white/10 pt-4"
+            >
+              <span className="text-white/45">{label}</span>
+              <span className="font-semibold text-[#f0dfbd]">{value}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-6 rounded-2xl bg-white/5 p-4 text-sm text-white/55">
+          AI Executive Summary: Your business is operating in a healthy range.
+          Labour cost is stable, cashflow is positive, and profit is improving.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
 
       <section id="features" className="mx-auto max-w-6xl px-6 py-20">
         <p className="text-center text-sm tracking-[0.4em] text-[#d4ad63]">
