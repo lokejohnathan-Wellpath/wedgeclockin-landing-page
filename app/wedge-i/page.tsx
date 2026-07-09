@@ -1,41 +1,485 @@
+"use client";
+
+import { FormEvent, useMemo, useState } from "react";
+
+type BusinessType = "Retail" | "F&B" | "Service" | "Manufacturing" | "General SME";
+
+type Benchmark = {
+  idealLabourMin: number;
+  idealLabourMax: number;
+  healthyMargin: number;
+  inventoryLimit: number;
+  baseGrowth: number;
+};
+
+type Scenario = {
+  label: string;
+  revenue: number;
+  profit: number;
+  cash: number;
+};
+
+type Result = {
+  healthScore: number;
+  rating: string;
+  cashflowStatus: string;
+  labourPercent: number;
+  profitMargin: number;
+  monthlyProfit: number;
+  revenuePerStaff: number;
+  scenarios: Scenario[];
+  executiveSummary: string;
+  chartSuggestion: string;
+  nextWeekActions: string[];
+  meetingChecklist: string[];
+};
+
+const benchmarks: Record<BusinessType, Benchmark> = {
+  Retail: {
+    idealLabourMin: 10,
+    idealLabourMax: 22,
+    healthyMargin: 12,
+    inventoryLimit: 0.65,
+    baseGrowth: 0.06,
+  },
+  "F&B": {
+    idealLabourMin: 18,
+    idealLabourMax: 32,
+    healthyMargin: 10,
+    inventoryLimit: 0.35,
+    baseGrowth: 0.05,
+  },
+  Service: {
+    idealLabourMin: 20,
+    idealLabourMax: 40,
+    healthyMargin: 18,
+    inventoryLimit: 0.2,
+    baseGrowth: 0.07,
+  },
+  Manufacturing: {
+    idealLabourMin: 15,
+    idealLabourMax: 30,
+    healthyMargin: 15,
+    inventoryLimit: 0.75,
+    baseGrowth: 0.04,
+  },
+  "General SME": {
+    idealLabourMin: 15,
+    idealLabourMax: 30,
+    healthyMargin: 12,
+    inventoryLimit: 0.5,
+    baseGrowth: 0.05,
+  },
+};
+
 export default function WedgeIPage() {
+  const [businessType, setBusinessType] = useState<BusinessType>("Retail");
+  const [companyName, setCompanyName] = useState("");
+  const [revenue, setRevenue] = useState("");
+  const [expenses, setExpenses] = useState("");
+  const [payroll, setPayroll] = useState("");
+  const [staffCount, setStaffCount] = useState("");
+  const [cash, setCash] = useState("");
+  const [inventory, setInventory] = useState("");
+  const [result, setResult] = useState<Result | null>(null);
+
+  const benchmark = useMemo(() => benchmarks[businessType], [businessType]);
+
+  function toNumber(value: string) {
+    return Number(value || 0);
+  }
+
+  function formatRM(value: number) {
+    return `RM ${Math.round(value).toLocaleString()}`;
+  }
+
+  function analyseBusiness(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const monthlyRevenue = toNumber(revenue);
+    const monthlyExpenses = toNumber(expenses);
+    const monthlyPayroll = toNumber(payroll);
+    const totalStaff = toNumber(staffCount);
+    const cashInBank = toNumber(cash);
+    const inventoryValue = toNumber(inventory);
+
+    const totalCost = monthlyExpenses + monthlyPayroll;
+    const monthlyProfit = monthlyRevenue - totalCost;
+    const profitMargin = monthlyRevenue > 0 ? (monthlyProfit / monthlyRevenue) * 100 : 0;
+    const labourPercent = monthlyRevenue > 0 ? (monthlyPayroll / monthlyRevenue) * 100 : 0;
+    const cashRunway = totalCost > 0 ? cashInBank / totalCost : 0;
+    const revenuePerStaff = totalStaff > 0 ? monthlyRevenue / totalStaff : 0;
+    const inventoryPressure = monthlyRevenue > 0 ? inventoryValue / monthlyRevenue : 0;
+
+    let healthScore = 60;
+
+    if (profitMargin >= benchmark.healthyMargin) healthScore += 18;
+    else if (profitMargin > 0) healthScore += 8;
+    else healthScore -= 22;
+
+    if (
+      labourPercent >= benchmark.idealLabourMin &&
+      labourPercent <= benchmark.idealLabourMax
+    ) {
+      healthScore += 15;
+    } else if (labourPercent > benchmark.idealLabourMax) {
+      healthScore -= 15;
+    }
+
+    if (cashRunway >= 2) healthScore += 15;
+    else if (cashRunway >= 1) healthScore += 8;
+    else if (cashRunway < 0.5) healthScore -= 18;
+
+    if (inventoryPressure > benchmark.inventoryLimit) healthScore -= 10;
+    else healthScore += 5;
+
+    if (revenuePerStaff >= 6000) healthScore += 7;
+    else if (totalStaff > 0 && revenuePerStaff < 3500) healthScore -= 8;
+
+    healthScore = Math.max(0, Math.min(100, Math.round(healthScore)));
+
+    const conservativeGrowth = Math.max(0.01, benchmark.baseGrowth - 0.03);
+    const baseGrowth = benchmark.baseGrowth;
+    const growthCase = benchmark.baseGrowth + 0.04;
+
+    const q1Revenue = monthlyRevenue * 3;
+    const q1Profit = monthlyProfit * 3;
+
+    const q2Revenue = q1Revenue * (1 + baseGrowth);
+    const q2Profit = q1Profit * (1 + baseGrowth + 0.03);
+
+    const q3Revenue = q2Revenue * (1 + growthCase);
+    const q3Profit = q2Profit * (1 + growthCase + 0.03);
+
+    const scenarios: Scenario[] = [
+      {
+        label: "Q1 Current",
+        revenue: q1Revenue,
+        profit: q1Profit,
+        cash: cashInBank,
+      },
+      {
+        label: "Q2 Base Forecast",
+        revenue: q2Revenue,
+        profit: q2Profit,
+        cash: cashInBank + q2Profit,
+      },
+      {
+        label: "Q3 Growth Projection",
+        revenue: q3Revenue,
+        profit: q3Profit,
+        cash: cashInBank + q2Profit + q3Profit,
+      },
+    ];
+
+    const nextWeekActions: string[] = [];
+    const meetingChecklist: string[] = [];
+
+    if (profitMargin < benchmark.healthyMargin) {
+      nextWeekActions.push("Review top 3 expense categories and reduce at least one non-essential cost.");
+      meetingChecklist.push("Which expenses increased this month and why?");
+    }
+
+    if (labourPercent > benchmark.idealLabourMax) {
+      nextWeekActions.push("Adjust roster, overtime, or part-time allocation to reduce labour cost.");
+      meetingChecklist.push("Which shifts have low sales but high staffing?");
+    }
+
+    if (cashRunway < 1) {
+      nextWeekActions.push("Delay non-critical purchases and collect outstanding payments faster.");
+      meetingChecklist.push("How many weeks can current cash cover expenses?");
+    }
+
+    if (inventoryPressure > benchmark.inventoryLimit) {
+      nextWeekActions.push("Run a clearance plan for slow-moving inventory before new stock purchases.");
+      meetingChecklist.push("Which inventory items are not converting into sales?");
+    }
+
+    if (revenuePerStaff < 3500 && totalStaff > 0) {
+      nextWeekActions.push("Increase revenue per staff through upselling, better scheduling, or higher-value services.");
+      meetingChecklist.push("What is revenue per staff member this week?");
+    }
+
+    if (nextWeekActions.length === 0) {
+      nextWeekActions.push("Maintain current discipline and focus on controlled growth.");
+      nextWeekActions.push("Increase average order value or repeat customer frequency.");
+      nextWeekActions.push("Track revenue, payroll, and cash every week.");
+      meetingChecklist.push("Can we increase revenue without increasing fixed cost?");
+      meetingChecklist.push("Which product, service, or staff action created the best return?");
+    }
+
+    const rating =
+      healthScore >= 85
+        ? "Excellent"
+        : healthScore >= 70
+        ? "Healthy"
+        : healthScore >= 50
+        ? "Watch Closely"
+        : "Critical";
+
+    const cashflowStatus =
+      cashRunway >= 2
+        ? "Strong"
+        : cashRunway >= 1
+        ? "Healthy"
+        : cashRunway >= 0.5
+        ? "Watch Closely"
+        : "Critical";
+
+    const chartSuggestion =
+      businessType === "Retail"
+        ? "Recommended chart: quarterly revenue, inventory pressure, and gross profit movement."
+        : businessType === "F&B"
+        ? "Recommended chart: labour cost percentage, daily sales, and cash runway."
+        : businessType === "Service"
+        ? "Recommended chart: revenue per staff, margin efficiency, and monthly profit."
+        : businessType === "Manufacturing"
+        ? "Recommended chart: production cost, inventory value, and quarterly cash position."
+        : "Recommended chart: quarterly revenue, profit, cashflow, and payroll percentage.";
+
+    const executiveSummary =
+      healthScore >= 85
+        ? `Wedge-CEO view: ${companyName || "This business"} is performing strongly for a ${businessType} business. Profitability, cash runway, and labour efficiency look healthy. The next move is disciplined growth, not aggressive spending.`
+        : healthScore >= 70
+        ? `Wedge-CEO view: ${companyName || "This business"} is in a healthy range, but the next quarter should focus on protecting margin and improving cash discipline before expansion.`
+        : healthScore >= 50
+        ? `Wedge-CEO view: ${companyName || "This business"} is stable but exposed. Cost control, labour efficiency, inventory movement, and cash runway should be reviewed weekly.`
+        : `Wedge-CEO view: ${companyName || "This business"} needs immediate attention. Focus on cash protection, expense reduction, and sales recovery before adding new commitments.`;
+
+    setResult({
+      healthScore,
+      rating,
+      cashflowStatus,
+      labourPercent: Math.round(labourPercent),
+      profitMargin: Math.round(profitMargin),
+      monthlyProfit,
+      revenuePerStaff,
+      scenarios,
+      executiveSummary,
+      chartSuggestion,
+      nextWeekActions,
+      meetingChecklist,
+    });
+  }
+
   return (
     <main className="min-h-screen bg-[#101416] text-[#f4efe6]">
-      <section className="mx-auto flex min-h-screen max-w-7xl items-center justify-center px-6 py-20">
-        <div className="w-full max-w-5xl rounded-[2rem] border border-[#d4ad63]/30 bg-[#1e2428] p-10">
-          <p className="text-sm tracking-[0.3em] text-[#d4ad63]">WEDGE-I</p>
+      <section className="mx-auto max-w-7xl px-6 py-16">
+        <a href="/" className="text-sm text-[#d4ad63] hover:underline">
+          ← Back to WedgeCLOCKin
+        </a>
 
-          <h1 className="mt-4 text-5xl font-bold text-[#f0dfbd]">
-            AI Business Intelligence
-          </h1>
+        <div className="mt-8 grid gap-8 lg:grid-cols-2">
+          <div className="rounded-[2rem] border border-[#d4ad63]/30 bg-[#1e2428] p-8">
+            <p className="text-sm tracking-[0.3em] text-[#d4ad63]">WEDGE-I</p>
 
-          <p className="mt-6 max-w-3xl text-lg text-white/60">
-            Welcome to Wedge-i. This is the future AI executive dashboard for Malaysian SMEs.
-          </p>
+            <h1 className="mt-4 text-4xl font-bold text-[#f0dfbd]">
+              Analyse My Business
+            </h1>
 
-          <div className="mt-10 grid gap-6 md:grid-cols-3">
-            <div className="rounded-2xl bg-white/5 p-6">
-              <p className="text-white/50">Business Health</p>
-              <p className="mt-2 text-4xl font-bold text-[#d4ad63]">87</p>
-            </div>
+            <p className="mt-4 text-white/60">
+              Key in your business numbers once. Wedge-CEO will generate a quarterly
+              executive report with health score, cashflow, forecast, chart suggestion,
+              meeting checklist and next-week improvement areas.
+            </p>
 
-            <div className="rounded-2xl bg-white/5 p-6">
-              <p className="text-white/50">Revenue</p>
-              <p className="mt-2 text-4xl font-bold">RM 48,200</p>
-            </div>
+            <form onSubmit={analyseBusiness} className="mt-8 space-y-4">
+              <input
+                type="text"
+                placeholder="Company Name"
+                value={companyName}
+                onChange={(event) => setCompanyName(event.target.value)}
+                className="w-full rounded-xl border border-white/10 bg-[#101416] px-4 py-3 text-white outline-none focus:border-[#d4ad63]"
+              />
 
-            <div className="rounded-2xl bg-white/5 p-6">
-              <p className="text-white/50">Profit Forecast</p>
-              <p className="mt-2 text-4xl font-bold text-[#d4ad63]">+18%</p>
-            </div>
+              <select
+                value={businessType}
+                onChange={(event) => setBusinessType(event.target.value as BusinessType)}
+                className="w-full rounded-xl border border-white/10 bg-[#101416] px-4 py-3 text-white"
+              >
+                <option>Retail</option>
+                <option>F&B</option>
+                <option>Service</option>
+                <option>Manufacturing</option>
+                <option>General SME</option>
+              </select>
+
+              {[
+                ["Monthly Revenue", revenue, setRevenue],
+                ["Monthly Expenses", expenses, setExpenses],
+                ["Payroll Cost", payroll, setPayroll],
+                ["Staff Count", staffCount, setStaffCount],
+                ["Cash In Bank", cash, setCash],
+                ["Inventory Value", inventory, setInventory],
+              ].map(([label, value, setter]) => (
+                <input
+                  key={label as string}
+                  type="number"
+                  placeholder={label as string}
+                  value={value as string}
+                  onChange={(event) =>
+                    (setter as (value: string) => void)(event.target.value)
+                  }
+                  className="w-full rounded-xl border border-white/10 bg-[#101416] px-4 py-3 text-white outline-none focus:border-[#d4ad63]"
+                />
+              ))}
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                {[
+                  "Business Health Score",
+                  "Cashflow Analysis",
+                  "Profit Forecast",
+                  "Labour Intelligence",
+                ].map((item) => (
+                  <div
+                    key={item}
+                    className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/55"
+                  >
+                    {item}
+                  </div>
+                ))}
+              </div>
+
+              <button
+                type="submit"
+                className="w-full rounded-full bg-[#d4ad63] px-8 py-4 font-bold text-black hover:bg-[#e4bf75]"
+              >
+                Analyse My Business
+              </button>
+            </form>
           </div>
 
-          <a
-            href="/"
-            className="mt-10 inline-block rounded-full border border-[#d4ad63]/40 px-8 py-4 font-semibold text-[#f0dfbd] hover:bg-white/5"
-          >
-            Back to WedgeCLOCKin
-          </a>
+          <div className="rounded-[2rem] border border-[#d4ad63]/20 bg-[#1e2428] p-8">
+            <p className="text-sm tracking-[0.3em] text-[#d4ad63]">
+              WEDGE-CEO CHART
+            </p>
+
+            {!result ? (
+              <p className="mt-6 text-white/55">
+                Your Wedge-CEO executive report will appear here after analysis.
+              </p>
+            ) : (
+              <div className="mt-6 space-y-5">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="rounded-2xl bg-white/5 p-5">
+                    <p className="text-white/45">Business Health</p>
+                    <p className="mt-2 text-4xl font-bold text-[#d4ad63]">
+                      {result.healthScore}
+                    </p>
+                    <p className="mt-1 text-white/45">{result.rating}</p>
+                  </div>
+
+                  <div className="rounded-2xl bg-white/5 p-5">
+                    <p className="text-white/45">Cashflow</p>
+                    <p className="mt-2 text-2xl font-bold">
+                      {result.cashflowStatus}
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl bg-white/5 p-5">
+                    <p className="text-white/45">Monthly Profit</p>
+                    <p className="mt-2 text-2xl font-bold">
+                      {formatRM(result.monthlyProfit)}
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl bg-white/5 p-5">
+                    <p className="text-white/45">Labour Cost</p>
+                    <p className="mt-2 text-2xl font-bold">
+                      {result.labourPercent}%
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-white/5 p-5">
+                  <p className="font-bold text-[#f0dfbd]">
+                    Quarterly Financial Results
+                  </p>
+
+                  <div className="mt-4 space-y-3">
+                    {result.scenarios.map((scenario) => (
+                      <div
+                        key={scenario.label}
+                        className="rounded-xl border border-white/10 bg-[#101416] p-4"
+                      >
+                        <p className="font-semibold text-[#d4ad63]">
+                          {scenario.label}
+                        </p>
+
+                        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                          <p className="text-sm text-white/55">
+                            Revenue
+                            <br />
+                            <span className="font-bold text-[#f0dfbd]">
+                              {formatRM(scenario.revenue)}
+                            </span>
+                          </p>
+
+                          <p className="text-sm text-white/55">
+                            Profit
+                            <br />
+                            <span className="font-bold text-[#f0dfbd]">
+                              {formatRM(scenario.profit)}
+                            </span>
+                          </p>
+
+                          <p className="text-sm text-white/55">
+                            Cash
+                            <br />
+                            <span className="font-bold text-[#f0dfbd]">
+                              {formatRM(scenario.cash)}
+                            </span>
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-white/5 p-5">
+                  <p className="font-bold text-[#f0dfbd]">Executive Summary</p>
+                  <p className="mt-3 text-white/60">{result.executiveSummary}</p>
+                </div>
+
+                <div className="rounded-2xl bg-white/5 p-5">
+                  <p className="font-bold text-[#f0dfbd]">AI Chart Suggestion</p>
+                  <p className="mt-3 text-white/60">{result.chartSuggestion}</p>
+                </div>
+
+                <div className="rounded-2xl bg-white/5 p-5">
+                  <p className="font-bold text-[#f0dfbd]">
+                    Next Week Improvement Areas
+                  </p>
+                  <ul className="mt-3 list-disc space-y-2 pl-5 text-white/60">
+                    {result.nextWeekActions.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="rounded-2xl bg-white/5 p-5">
+                  <p className="font-bold text-[#f0dfbd]">
+                    Owner Meeting Checklist
+                  </p>
+                  <ul className="mt-3 list-disc space-y-2 pl-5 text-white/60">
+                    {result.meetingChecklist.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="rounded-2xl border border-[#d4ad63]/30 bg-[#101416] p-5">
+                  <p className="font-bold text-[#f0dfbd]">
+                    Subscribe to Save Report
+                  </p>
+                  <p className="mt-3 text-sm text-white/55">
+                    Coming next: save this report by email and receive weekly WhatsApp
+                    reminders, checklist follow-ups and improvement tracking.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </section>
     </main>
