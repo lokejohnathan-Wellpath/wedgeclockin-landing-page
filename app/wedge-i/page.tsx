@@ -1,773 +1,1000 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useState } from "react";
 
-type BusinessType =
-  | "Retail"
-  | "F&B"
-  | "Beauty / Aesthetic / Medical"
-  | "Service"
-  | "Manufacturing"
-  | "General SME";
+import type { BusinessType } from "./engine/benchmarks";
+import {
+  generateWedgeCeoReport,
+  type WedgeCeoReport,
+} from "./engine/wedgeCeoEngine";
 
-type Benchmark = {
-  idealLabourMin: number;
-  idealLabourMax: number;
-  healthyMargin: number;
-  inventoryLimit: number;
-  baseGrowth: number;
+type FormState = {
+  companyName: string;
+  businessType: BusinessType;
+  monthlyRevenue: string;
+  monthlyExpenses: string;
+  monthlyPayroll: string;
+  staffCount: string;
+  cashInBank: string;
+  inventoryValue: string;
 };
 
-type Scenario = {
-  label: string;
-  revenue: number;
-  profit: number;
-  cash: number;
-  status: string;
-  commentary: string;
+const initialFormState: FormState = {
+  companyName: "",
+  businessType: "Retail",
+  monthlyRevenue: "",
+  monthlyExpenses: "",
+  monthlyPayroll: "",
+  staffCount: "",
+  cashInBank: "",
+  inventoryValue: "",
 };
 
-type MalaysiaRhythm = {
-  periodName: string;
-  quarterName: string;
-  rhythmNote: string;
-  commercialAngle: string;
-  longWeekendReminder: string;
-  managementFocus: string;
-};
-
-type Result = {
-  preparedDate: string;
-  healthScore: number;
-  rating: string;
-  industryBenchmark: string;
-  confidenceScore: number;
-  cashflowStatus: string;
-  labourPercent: number;
-  profitMargin: number;
-  monthlyProfit: number;
-  operatingCost: number;
-  revenuePerStaff: number;
-  cashRunwayWeeks: number;
-  rhythm: MalaysiaRhythm;
-  scenarios: Scenario[];
-  executiveSummary: string;
-  performanceIndicators: string[];
-  malaysianAdvisor: string[];
-  nextMeetingAgenda: string[];
-};
-
-const benchmarks: Record<BusinessType, Benchmark> = {
-  Retail: {
-    idealLabourMin: 10,
-    idealLabourMax: 22,
-    healthyMargin: 12,
-    inventoryLimit: 0.65,
-    baseGrowth: 0.06,
-  },
-  "F&B": {
-    idealLabourMin: 18,
-    idealLabourMax: 32,
-    healthyMargin: 10,
-    inventoryLimit: 0.35,
-    baseGrowth: 0.05,
-  },
-  "Beauty / Aesthetic / Medical": {
-    idealLabourMin: 18,
-    idealLabourMax: 38,
-    healthyMargin: 20,
-    inventoryLimit: 0.3,
-    baseGrowth: 0.07,
-  },
-  Service: {
-    idealLabourMin: 20,
-    idealLabourMax: 40,
-    healthyMargin: 18,
-    inventoryLimit: 0.2,
-    baseGrowth: 0.06,
-  },
-  Manufacturing: {
-    idealLabourMin: 15,
-    idealLabourMax: 30,
-    healthyMargin: 15,
-    inventoryLimit: 0.75,
-    baseGrowth: 0.04,
-  },
-  "General SME": {
-    idealLabourMin: 15,
-    idealLabourMax: 30,
-    healthyMargin: 12,
-    inventoryLimit: 0.5,
-    baseGrowth: 0.05,
-  },
-};
-
-function getMalaysiaBusinessRhythm(date: Date, businessType: BusinessType): MalaysiaRhythm {
-  const month = date.getMonth();
-  const day = date.getDate();
-  const quarter = Math.floor(month / 3) + 1;
-  const isMonthEnd = day >= 24;
-  const isPaydayWindow = day >= 25 || day <= 7;
-  const isQuarterEnd = [2, 5, 8, 11].includes(month) && day >= 18;
-
-  let periodName = "Normal trading period";
-  let commercialAngle = "Focus on weekly sales quality, margin discipline and customer retention.";
-  let managementFocus = "Review revenue, operating cost, payroll, cash position and next-week action items.";
-
-  if (month === 0 || month === 1) {
-    periodName = "Chinese New Year trading rhythm";
-    commercialAngle =
-      businessType === "Manufacturing"
-        ? "Plan supplier lead time, production cut-off and customer delivery schedules before holiday slowdown."
-        : "Prepare festive bundles, gift sets, family packages and pre-holiday purchase campaigns.";
-    managementFocus = "Monitor stock readiness, staff scheduling, supplier availability and cash collection before the break.";
-  } else if (month === 2 || month === 3) {
-    periodName = "Ramadan / Raya trading rhythm";
-    commercialAngle =
-      businessType === "F&B"
-        ? "Review buka puasa demand, family set offers, delivery platform margin and staff scheduling."
-        : "Prepare Raya-related campaigns, gifting, appointment follow-ups and stock planning.";
-    managementFocus = "Review campaign timing, stock position, manpower, supplier lead time and working capital.";
-  } else if (month === 4 || month === 5) {
-    periodName = "Mid-year demand rhythm";
-    commercialAngle =
-      businessType === "F&B"
-        ? "Use family dining, school-holiday traffic and weekend bundles to improve average receipt."
-        : "Review mid-year package campaigns, customer retention and controlled promotional activity.";
-    managementFocus = "Compare first-half performance against target and correct margin leakage before Q3.";
-  } else if (month === 6 || month === 7) {
-    periodName = "Campaign preparation rhythm";
-    commercialAngle =
-      businessType === "Retail"
-        ? "Prepare national-day themed bundles and clear slow-moving stock before new inventory commitments."
-        : "Prepare campaign material, pricing, stock readiness and manpower before the next demand window.";
-    managementFocus = "Review stock ageing, campaign ROI, payroll ratio and cash runway before committing to expansion.";
-  } else if (month === 8) {
-    periodName = "National campaign rhythm";
-    commercialAngle =
-      businessType === "Manufacturing"
-        ? "Plan production around public holiday disruption, supplier delivery cut-off and customer order deadlines."
-        : "Use national-day traffic, long-weekend demand and local promotional themes to lift basket size.";
-    managementFocus = "Confirm stock, supplies, roster and campaign budget before peak trading days.";
-  } else if (month === 9 || month === 10) {
-    periodName = "Year-end preparation rhythm";
-    commercialAngle =
-      businessType === "Beauty / Aesthetic / Medical"
-        ? "Prepare treatment packages, skincare bundles and appointment follow-up before year-end demand."
-        : "Prepare year-end sales, stock clean-up and margin protection before December commitments.";
-    managementFocus = "Review inventory exposure, campaign profitability and customer pipeline before year-end.";
-  } else if (month === 11) {
-    periodName = "Year-end trading rhythm";
-    commercialAngle =
-      businessType === "Manufacturing"
-        ? "Confirm production schedule, supplier availability, customer delivery deadlines and cash collection before year-end closure."
-        : "Focus on gift bundles, year-end packages, prepaid vouchers and high-margin seasonal offers.";
-    managementFocus = "Close the year with strong cash control, clean stock position and disciplined spending.";
-  }
-
-  if (isMonthEnd) {
-    managementFocus += " Month-end review should include payroll, supplier payments and cash runway.";
-  }
-
-  if (isPaydayWindow && businessType !== "Manufacturing") {
-    commercialAngle += " Payday window may support higher spending if offers are simple and easy to buy.";
-  }
-
-  if (isQuarterEnd) {
-    managementFocus += " Quarter-end review should confirm revenue, margin, inventory and cash position.";
-  }
-
-  const longWeekendReminder =
-    businessType === "Manufacturing"
-      ? "If a public holiday falls on Friday or Monday, plan production, raw material delivery and customer dispatch earlier to avoid long-weekend disruption."
-      : businessType === "F&B" || businessType === "Retail"
-      ? "If a public holiday falls on Friday or Monday, prepare for long-weekend sales by confirming stock, supplies, roster and peak-hour coverage."
-      : "If a public holiday falls on Friday or Monday, confirm appointment slots, staffing and customer follow-ups before the long weekend.";
-
-  return {
-    periodName,
-    quarterName: `Q${quarter} Management Period`,
-    rhythmNote: `${periodName}. ${isQuarterEnd ? "Quarter-end discipline is required." : "Weekly execution remains the priority."}`,
-    commercialAngle,
-    longWeekendReminder,
-    managementFocus,
-  };
-}
+const businessTypes: BusinessType[] = [
+  "Retail",
+  "F&B",
+  "Beauty / Aesthetic / Medical",
+  "Service",
+  "Manufacturing",
+  "General SME",
+];
 
 export default function WedgeIPage() {
-  const [businessType, setBusinessType] = useState<BusinessType>("Retail");
-  const [companyName, setCompanyName] = useState("");
-  const [revenue, setRevenue] = useState("");
-  const [expenses, setExpenses] = useState("");
-  const [payroll, setPayroll] = useState("");
-  const [staffCount, setStaffCount] = useState("");
-  const [cash, setCash] = useState("");
-  const [inventory, setInventory] = useState("");
-  const [result, setResult] = useState<Result | null>(null);
+  const [form, setForm] = useState<FormState>(initialFormState);
+  const [report, setReport] = useState<WedgeCeoReport | null>(null);
+  const [error, setError] = useState("");
 
-  const benchmark = useMemo(() => benchmarks[businessType], [businessType]);
-
-  function toNumber(value: string) {
-    return Number(value || 0);
-  }
-
-  function formatRM(value: number) {
-    return `RM ${Math.round(value).toLocaleString()}`;
-  }
-
-  function getRating(score: number) {
-    if (score >= 85) return "Excellent";
-    if (score >= 70) return "Healthy";
-    if (score >= 50) return "Watch Closely";
-    return "Critical";
-  }
-
-  function getIndustryBenchmark(score: number) {
-    if (score >= 85) return "Above average Malaysian SME benchmark";
-    if (score >= 70) return "Within healthy Malaysian SME benchmark";
-    if (score >= 50) return "Below target but recoverable";
-    return "Immediate management attention required";
-  }
-
-  function getIndustryAdvisor(
-    type: BusinessType,
-    rhythm: MalaysiaRhythm,
-    labourPercent: number,
-    profitMargin: number,
-    cashRunwayMonths: number,
-    inventoryPressure: number,
+  function updateField<Key extends keyof FormState>(
+    key: Key,
+    value: FormState[Key],
   ) {
-    const advisor: string[] = [];
-    const agenda: string[] = [];
-    const indicators: string[] = [];
-
-    advisor.push(rhythm.commercialAngle);
-    advisor.push(rhythm.longWeekendReminder);
-
-    if (type === "F&B") {
-      advisor.push("Improve average receipt through family sets, add-ons, drink bundles or limited-time menu combinations.");
-      advisor.push("Review food wastage, delivery platform commission and best-selling menu margin before increasing discounts.");
-      advisor.push("Adjust manpower by lunch, dinner and weekend sales pattern instead of using a flat roster.");
-
-      agenda.push("Daily sales versus target.");
-      agenda.push("Average receipt per customer.");
-      agenda.push("Best-selling and lowest-margin menu items.");
-      agenda.push("Food wastage and kitchen cost.");
-      agenda.push("Stock and supply readiness for peak trading days.");
-      agenda.push("Labour percentage by shift.");
-
-      indicators.push("Daily sales trend");
-      indicators.push("Average receipt");
-      indicators.push("Labour % versus sales");
-      indicators.push("Food cost / wastage");
-    }
-
-    if (type === "Beauty / Aesthetic / Medical") {
-      advisor.push("Increase gross profit by bundling treatments with home-care products or prepaid packages.");
-      advisor.push("Use WhatsApp follow-up for clients due for repeat treatment, review or product refill.");
-      advisor.push("Review therapist, consultant or room utilisation before hiring additional staff.");
-
-      agenda.push("Average spend per client.");
-      agenda.push("Treatment package conversion.");
-      agenda.push("Product attachment rate.");
-      agenda.push("Client revisit and WhatsApp follow-up list.");
-      agenda.push("Premium service upsell performance.");
-      agenda.push("Therapist / consultant utilisation.");
-
-      indicators.push("Revenue per therapist");
-      indicators.push("Product attachment rate");
-      indicators.push("Package sales");
-      indicators.push("Client return rate");
-    }
-
-    if (type === "Manufacturing") {
-      advisor.push("Improve debtor collection before increasing production volume or raw material purchases.");
-      advisor.push("Review raw material holding, production output, machine downtime and supplier price movement.");
-      advisor.push("Prioritise orders with clearer delivery dates and faster payment terms when cash runway is tight.");
-
-      agenda.push("Outstanding invoices above 30 days.");
-      agenda.push("Inventory holding days.");
-      agenda.push("Supplier price movement.");
-      agenda.push("Production efficiency and downtime.");
-      agenda.push("Cash collection schedule.");
-      agenda.push("Production planning before long weekends.");
-
-      indicators.push("Debtor days");
-      indicators.push("Inventory turnover");
-      indicators.push("Production output");
-      indicators.push("Cash collection trend");
-    }
-
-    if (type === "Retail") {
-      advisor.push("Review slow-moving inventory and create bundles without discounting high-margin products too aggressively.");
-      advisor.push("Improve basket size through add-ons, sets and counter recommendations.");
-      advisor.push("Confirm stock readiness before campaign or long-weekend demand.");
-
-      agenda.push("Slow-moving stock above 60 days.");
-      agenda.push("Top margin product categories.");
-      agenda.push("Basket size and promotion performance.");
-      agenda.push("Campaign stock readiness.");
-      agenda.push("Inventory purchase plan.");
-      agenda.push("High-margin bundle opportunities.");
-
-      indicators.push("Inventory ageing");
-      indicators.push("Revenue by category");
-      indicators.push("Gross profit trend");
-      indicators.push("Cash position");
-    }
-
-    if (type === "Service" || type === "General SME") {
-      advisor.push("Increase revenue per staff through premium packages, better pricing or higher-value service bundles.");
-      advisor.push("Reduce low-margin work before adding headcount.");
-      advisor.push("Track repeat customer frequency and upsell conversion weekly.");
-
-      agenda.push("Revenue per staff member.");
-      agenda.push("Premium package conversion.");
-      agenda.push("Low-margin jobs or services.");
-      agenda.push("Repeat customer pipeline.");
-      agenda.push("Weekly sales target by staff.");
-      agenda.push("Service bundle opportunities.");
-
-      indicators.push("Revenue per staff");
-      indicators.push("Margin efficiency");
-      indicators.push("Weekly sales trend");
-      indicators.push("Repeat customer rate");
-    }
-
-    if (profitMargin < benchmark.healthyMargin) {
-      advisor.unshift("Protect gross profit by reviewing pricing, discounts, supplier cost and low-margin items.");
-    }
-
-    if (labourPercent > benchmark.idealLabourMax) {
-      advisor.unshift("Reduce labour pressure by adjusting roster, overtime and low-sales periods.");
-    }
-
-    if (cashRunwayMonths < 1 && type === "F&B") {
-      advisor.unshift("Protect cash by controlling food purchases, wastage and low-margin delivery promotions.");
-    }
-
-    if (cashRunwayMonths < 1 && type !== "F&B") {
-      advisor.unshift("Protect cashflow by delaying non-critical purchases and improving customer collection.");
-    }
-
-    if (inventoryPressure > benchmark.inventoryLimit) {
-      advisor.unshift("Reduce inventory pressure before buying more stock.");
-    }
-
-    return { advisor, agenda, indicators };
+    setForm((current) => ({
+      ...current,
+      [key]: value,
+    }));
   }
 
   function analyseBusiness(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setError("");
 
-    const monthlyRevenue = toNumber(revenue);
-    const monthlyExpenses = toNumber(expenses);
-    const monthlyPayroll = toNumber(payroll);
-    const totalStaff = toNumber(staffCount);
-    const cashInBank = toNumber(cash);
-    const inventoryValue = toNumber(inventory);
+    const monthlyRevenue = parseNumber(form.monthlyRevenue);
+    const monthlyExpenses = parseNumber(form.monthlyExpenses);
+    const monthlyPayroll = parseNumber(form.monthlyPayroll);
+    const staffCount = parseNumber(form.staffCount);
+    const cashInBank = parseNumber(form.cashInBank);
+    const inventoryValue = parseNumber(form.inventoryValue);
 
-    const operatingCost = monthlyExpenses + monthlyPayroll;
-    const monthlyProfit = monthlyRevenue - operatingCost;
-    const profitMargin =
-      monthlyRevenue > 0 ? (monthlyProfit / monthlyRevenue) * 100 : 0;
-    const labourPercent =
-      monthlyRevenue > 0 ? (monthlyPayroll / monthlyRevenue) * 100 : 0;
-    const cashRunwayMonths = operatingCost > 0 ? cashInBank / operatingCost : 0;
-    const cashRunwayWeeks = cashRunwayMonths * 4;
-    const revenuePerStaff = totalStaff > 0 ? monthlyRevenue / totalStaff : 0;
-    const inventoryPressure =
-      monthlyRevenue > 0 ? inventoryValue / monthlyRevenue : 0;
-
-    let healthScore = 60;
-
-    if (profitMargin >= benchmark.healthyMargin) healthScore += 18;
-    else if (profitMargin > 0) healthScore += 8;
-    else healthScore -= 22;
-
-    if (
-      labourPercent >= benchmark.idealLabourMin &&
-      labourPercent <= benchmark.idealLabourMax
-    ) {
-      healthScore += 15;
-    } else if (labourPercent > benchmark.idealLabourMax) {
-      healthScore -= 15;
+    if (!form.companyName.trim()) {
+      setError("Please enter the company name.");
+      return;
     }
 
-    if (cashRunwayMonths >= 2) healthScore += 15;
-    else if (cashRunwayMonths >= 1) healthScore += 8;
-    else if (cashRunwayMonths < 0.5) healthScore -= 18;
+    if (monthlyRevenue <= 0) {
+      setError("Monthly revenue must be greater than zero.");
+      return;
+    }
 
-    if (inventoryPressure > benchmark.inventoryLimit) healthScore -= 10;
-    else healthScore += 5;
+    if (staffCount <= 0) {
+      setError("Staff count must be greater than zero.");
+      return;
+    }
 
-    if (revenuePerStaff >= 6000) healthScore += 7;
-    else if (totalStaff > 0 && revenuePerStaff < 3500) healthScore -= 8;
+    const generatedReport = generateWedgeCeoReport({
+      companyName: form.companyName,
+      businessType: form.businessType,
+      monthlyRevenue,
+      monthlyExpenses,
+      monthlyPayroll,
+      staffCount,
+      cashInBank,
+      inventoryValue,
+    });
 
-    healthScore = Math.max(0, Math.min(100, Math.round(healthScore)));
+    setReport(generatedReport);
 
-    const rhythm = getMalaysiaBusinessRhythm(new Date(), businessType);
-
-    const q1Revenue = monthlyRevenue * 3;
-    const q1Profit = monthlyProfit * 3;
-    const q2Revenue = q1Revenue * (1 + benchmark.baseGrowth);
-    const q2Profit = q1Profit * (1 + benchmark.baseGrowth + 0.03);
-    const q3Revenue = q2Revenue * (1 + benchmark.baseGrowth + 0.04);
-    const q3Profit = q2Profit * (1 + benchmark.baseGrowth + 0.07);
-
-    const industry = getIndustryAdvisor(
-      businessType,
-      rhythm,
-      labourPercent,
-      profitMargin,
-      cashRunwayMonths,
-      inventoryPressure,
-    );
-
-    const rating = getRating(healthScore);
-    const industryBenchmark = getIndustryBenchmark(healthScore);
-
-    const cashflowStatus =
-      cashRunwayMonths >= 2
-        ? "Strong"
-        : cashRunwayMonths >= 1
-        ? "Healthy"
-        : cashRunwayMonths >= 0.5
-        ? "Watch Closely"
-        : "Critical";
-
-    const businessLabel = companyName || "This business";
-
-    const executiveSummary =
-      healthScore >= 85
-        ? `${businessLabel} is performing strongly for a Malaysian ${businessType} business. Revenue quality, labour discipline and cash position are within a healthy operating range. Management should focus on controlled growth, stronger campaigns and higher gross profit per customer.`
-        : healthScore >= 70
-        ? `${businessLabel} remains in a healthy operating position. The next quarter should focus on protecting margin, improving cash discipline and executing industry-specific sales actions before expanding fixed cost.`
-        : healthScore >= 50
-        ? `${businessLabel} is stable but exposed. Management should review labour cost, inventory pressure, cash movement and weekly sales quality before adding new commitments.`
-        : `${businessLabel} requires immediate management attention. The priority is cash protection, margin recovery and weekly sales action before hiring, expanding or buying more stock.`;
-
-    setResult({
-      preparedDate: new Date().toLocaleDateString("en-MY", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      }),
-      healthScore,
-      rating,
-      industryBenchmark,
-      confidenceScore: Math.min(96, Math.max(72, healthScore + 6)),
-      cashflowStatus,
-      labourPercent: Math.round(labourPercent),
-      profitMargin: Math.round(profitMargin),
-      monthlyProfit,
-      operatingCost,
-      revenuePerStaff,
-      cashRunwayWeeks,
-      rhythm,
-      scenarios: [
-        {
-          label: "Q1 Performance",
-          revenue: q1Revenue,
-          profit: q1Profit,
-          cash: cashInBank,
-          status: monthlyProfit >= 0 ? "On Track" : "Margin Recovery Required",
-          commentary:
-            monthlyProfit >= 0
-              ? "Current quarter performance remains supported by positive operating profit."
-              : "Current quarter requires cost control and revenue recovery.",
-        },
-        {
-          label: "Q2 Management Outlook",
-          revenue: q2Revenue,
-          profit: q2Profit,
-          cash: cashInBank + q2Profit,
-          status: "Base Forecast",
-          commentary: rhythm.managementFocus,
-        },
-        {
-          label: "Q3 Growth Projection",
-          revenue: q3Revenue,
-          profit: q3Profit,
-          cash: cashInBank + q2Profit + q3Profit,
-          status: "Growth Case",
-          commentary:
-            "Projection assumes improved customer value, stable labour cost and stronger campaign conversion.",
-        },
-      ],
-      executiveSummary,
-      performanceIndicators: industry.indicators.slice(0, 4),
-      malaysianAdvisor: industry.advisor.slice(0, 6),
-      nextMeetingAgenda: industry.agenda.slice(0, 6),
+    window.requestAnimationFrame(() => {
+      document
+        .getElementById("executive-report")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   }
 
   return (
-    <main className="min-h-screen bg-[#101416] text-[#f4efe6]">
-      <section className="mx-auto max-w-7xl px-6 py-16">
-        <a href="/" className="text-sm text-[#d4ad63] hover:underline">
-          ← Back to WedgeCLOCKin
-        </a>
+    <main className="min-h-screen bg-[#090d10] text-[#f4efe6]">
+      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_right,rgba(183,145,80,0.12),transparent_34%),radial-gradient(circle_at_bottom_left,rgba(72,89,91,0.13),transparent_30%)]" />
 
-        <div className="mt-8 grid gap-8 lg:grid-cols-2">
-          <div className="rounded-[2rem] border border-[#d4ad63]/30 bg-[#1e2428] p-8">
-            <p className="text-sm tracking-[0.3em] text-[#d4ad63]">WEDGE-CEO</p>
+      <section className="relative mx-auto max-w-[1500px] px-5 py-8 sm:px-8 lg:px-10">
+        <header className="flex flex-col gap-5 border-b border-white/10 pb-7 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <a
+              href="/"
+              className="text-sm font-medium text-[#c8a467] transition hover:text-[#ead3a8]"
+            >
+              ← Back to WedgeCLOCKin
+            </a>
 
-            <h1 className="mt-4 text-4xl font-bold text-[#f0dfbd]">
-              Executive Business Intelligence
-            </h1>
+            <div className="mt-5 flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-full border border-[#c8a467]/40 bg-[#c8a467]/10 font-bold text-[#d9b979]">
+                W
+              </div>
 
-            <p className="mt-4 text-white/60">
-              Key in your numbers once. Wedge-CEO will generate a simplified
-              executive report with key numbers, Malaysian business rhythm,
-              management outlook and next meeting agenda.
-            </p>
+              <div>
+                <p className="text-xs font-semibold tracking-[0.32em] text-[#c8a467]">
+                  WEDGE-CEO
+                </p>
+                <p className="mt-1 text-sm text-white/45">
+                  Executive Intelligence for Malaysian SMEs
+                </p>
+              </div>
+            </div>
+          </div>
 
-            <form onSubmit={analyseBusiness} className="mt-8 space-y-4">
-              <input
-                type="text"
-                placeholder="Company Name"
-                value={companyName}
-                onChange={(event) => setCompanyName(event.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-[#101416] px-4 py-3 text-white outline-none focus:border-[#d4ad63]"
-              />
+          <div className="rounded-full border border-white/10 bg-white/[0.03] px-5 py-2 text-xs tracking-[0.16em] text-white/45">
+            PRIVATE EXECUTIVE DESK
+          </div>
+        </header>
 
-              <select
-                value={businessType}
-                onChange={(event) =>
-                  setBusinessType(event.target.value as BusinessType)
-                }
-                className="w-full rounded-xl border border-white/10 bg-[#101416] px-4 py-3 text-white"
-              >
-                <option>Retail</option>
-                <option>F&B</option>
-                <option>Beauty / Aesthetic / Medical</option>
-                <option>Service</option>
-                <option>Manufacturing</option>
-                <option>General SME</option>
-              </select>
+        <div className="mt-8 grid gap-8 xl:grid-cols-[410px_minmax(0,1fr)]">
+          <aside className="self-start xl:sticky xl:top-8">
+            <div className="overflow-hidden rounded-[28px] border border-[#c8a467]/20 bg-[#12181c]/95 shadow-[0_30px_90px_rgba(0,0,0,0.34)]">
+              <div className="border-b border-white/10 px-7 py-7">
+                <p className="text-xs font-semibold tracking-[0.3em] text-[#c8a467]">
+                  BUSINESS INPUT
+                </p>
 
-              {[
-                ["Monthly Revenue", revenue, setRevenue],
-                ["Monthly Expenses", expenses, setExpenses],
-                ["Payroll Cost", payroll, setPayroll],
-                ["Staff Count", staffCount, setStaffCount],
-                ["Cash In Bank", cash, setCash],
-                ["Inventory Value", inventory, setInventory],
-              ].map(([label, value, setter]) => (
-                <input
-                  key={label as string}
-                  type="number"
-                  placeholder={label as string}
-                  value={value as string}
-                  onChange={(event) =>
-                    (setter as (value: string) => void)(event.target.value)
-                  }
-                  className="w-full rounded-xl border border-white/10 bg-[#101416] px-4 py-3 text-white outline-none focus:border-[#d4ad63]"
-                />
-              ))}
+                <h1 className="mt-4 text-3xl font-semibold leading-tight text-[#f1dfbc]">
+                  Prepare your executive review
+                </h1>
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                {[
-                  "CEO Confidence Index",
-                  "Cash Position",
-                  "Management Outlook",
-                  "Labour Intelligence",
-                ].map((item) => (
-                  <div
-                    key={item}
-                    className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/55"
+                <p className="mt-4 text-sm leading-6 text-white/50">
+                  Enter the latest monthly management numbers. Wedge-CEO will
+                  produce a live financial analysis, quarterly outlook,
+                  executive commentary, advisor priorities and meeting agenda.
+                </p>
+              </div>
+
+              <form onSubmit={analyseBusiness} className="space-y-5 p-7">
+                <FieldLabel label="Company name">
+                  <input
+                    type="text"
+                    value={form.companyName}
+                    onChange={(event) =>
+                      updateField("companyName", event.target.value)
+                    }
+                    placeholder="Example: ABC Retail Sdn Bhd"
+                    className={inputClassName}
+                  />
+                </FieldLabel>
+
+                <FieldLabel label="Business type">
+                  <select
+                    value={form.businessType}
+                    onChange={(event) =>
+                      updateField(
+                        "businessType",
+                        event.target.value as BusinessType,
+                      )
+                    }
+                    className={inputClassName}
                   >
-                    {item}
+                    {businessTypes.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
+                </FieldLabel>
+
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+                  <NumberField
+                    label="Monthly revenue"
+                    value={form.monthlyRevenue}
+                    onChange={(value) =>
+                      updateField("monthlyRevenue", value)
+                    }
+                  />
+
+                  <NumberField
+                    label="Monthly expenses"
+                    value={form.monthlyExpenses}
+                    onChange={(value) =>
+                      updateField("monthlyExpenses", value)
+                    }
+                  />
+
+                  <NumberField
+                    label="Payroll cost"
+                    value={form.monthlyPayroll}
+                    onChange={(value) =>
+                      updateField("monthlyPayroll", value)
+                    }
+                  />
+
+                  <NumberField
+                    label="Staff count"
+                    value={form.staffCount}
+                    onChange={(value) => updateField("staffCount", value)}
+                    step="1"
+                  />
+
+                  <NumberField
+                    label="Cash in bank"
+                    value={form.cashInBank}
+                    onChange={(value) =>
+                      updateField("cashInBank", value)
+                    }
+                  />
+
+                  <NumberField
+                    label="Inventory value"
+                    value={form.inventoryValue}
+                    onChange={(value) =>
+                      updateField("inventoryValue", value)
+                    }
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    "Financial Health",
+                    "Cash Strength",
+                    "Quarter Outlook",
+                    "Meeting Agenda",
+                  ].map((item) => (
+                    <div
+                      key={item}
+                      className="rounded-xl border border-white/8 bg-white/[0.025] px-3 py-3 text-xs text-white/40"
+                    >
+                      {item}
+                    </div>
+                  ))}
+                </div>
+
+                {error ? (
+                  <div className="rounded-xl border border-red-400/25 bg-red-400/10 px-4 py-3 text-sm text-red-200">
+                    {error}
                   </div>
-                ))}
-              </div>
+                ) : null}
 
-              <button
-                type="submit"
-                className="w-full rounded-full bg-[#d4ad63] px-8 py-4 font-bold text-black hover:bg-[#e4bf75]"
-              >
-                Analyse My Business
-              </button>
-            </form>
-          </div>
+                <button
+                  type="submit"
+                  className="w-full rounded-xl bg-[#c8a467] px-6 py-4 text-sm font-bold tracking-[0.08em] text-[#111416] transition hover:bg-[#dfbd7c] focus:outline-none focus:ring-2 focus:ring-[#c8a467]/50"
+                >
+                  GENERATE EXECUTIVE REPORT
+                </button>
 
-          <div className="rounded-[2rem] border border-[#d4ad63]/20 bg-[#1e2428] p-8">
-            <p className="text-sm tracking-[0.3em] text-[#d4ad63]">
-              WEDGE-CEO EXECUTIVE REPORT
-            </p>
+                <p className="text-center text-xs leading-5 text-white/30">
+                  Current preview runs securely in this browser session. No
+                  company information is saved.
+                </p>
+              </form>
+            </div>
+          </aside>
 
-            {!result ? (
-              <p className="mt-6 text-white/55">
-                Your executive report will appear here after analysis.
-              </p>
+          <section
+            id="executive-report"
+            className="min-w-0 scroll-mt-8"
+          >
+            {!report ? (
+              <ExecutiveEmptyState />
             ) : (
-              <div className="mt-6 space-y-5">
-                <div className="rounded-2xl border border-[#d4ad63]/25 bg-[#101416] p-5">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <p className="text-sm text-white/45">CEO Confidence Index</p>
-                      <p className="mt-2 text-5xl font-bold text-[#d4ad63]">
-                        {result.healthScore} / 100
-                      </p>
-                      <p className="mt-1 text-white/55">{result.rating}</p>
-                    </div>
-
-                    <div className="text-sm text-white/50 sm:text-right">
-                      <p>Prepared: {result.preparedDate}</p>
-                      <p>{result.industryBenchmark}</p>
-                      <p>Forecast confidence: {result.confidenceScore}%</p>
-                      <p>{result.rhythm.quarterName}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="rounded-2xl bg-white/5 p-5">
-                    <p className="text-white/45">Revenue</p>
-                    <p className="mt-2 text-2xl font-bold">
-                      {formatRM(toNumber(revenue))}
-                    </p>
-                  </div>
-
-                  <div className="rounded-2xl bg-white/5 p-5">
-                    <p className="text-white/45">Operating Cost</p>
-                    <p className="mt-2 text-2xl font-bold">
-                      {formatRM(result.operatingCost)}
-                    </p>
-                  </div>
-
-                  <div className="rounded-2xl bg-white/5 p-5">
-                    <p className="text-white/45">Operating Profit</p>
-                    <p className="mt-2 text-2xl font-bold">
-                      {formatRM(result.monthlyProfit)}
-                    </p>
-                  </div>
-
-                  <div className="rounded-2xl bg-white/5 p-5">
-                    <p className="text-white/45">Cash Runway</p>
-                    <p className="mt-2 text-2xl font-bold">
-                      {result.cashRunwayWeeks.toFixed(1)} weeks
-                    </p>
-                  </div>
-                </div>
-
-                <div className="rounded-2xl bg-white/5 p-5">
-                  <p className="font-bold text-[#f0dfbd]">Executive Summary</p>
-                  <p className="mt-3 text-white/60">{result.executiveSummary}</p>
-                </div>
-
-                <div className="rounded-2xl bg-white/5 p-5">
-                  <p className="font-bold text-[#f0dfbd]">
-                    Malaysia Business Rhythm
-                  </p>
-                  <p className="mt-3 text-white/60">{result.rhythm.rhythmNote}</p>
-                  <p className="mt-3 text-white/60">
-                    {result.rhythm.managementFocus}
-                  </p>
-                </div>
-
-                <div className="rounded-2xl bg-white/5 p-5">
-                  <p className="font-bold text-[#f0dfbd]">Management Outlook</p>
-
-                  <div className="mt-4 space-y-3">
-                    {result.scenarios.map((scenario) => (
-                      <div
-                        key={scenario.label}
-                        className="rounded-xl border border-white/10 bg-[#101416] p-4"
-                      >
-                        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                          <p className="font-semibold text-[#d4ad63]">
-                            {scenario.label}
-                          </p>
-                          <p className="text-sm text-white/45">{scenario.status}</p>
-                        </div>
-
-                        <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                          <p className="text-sm text-white/55">
-                            Revenue
-                            <br />
-                            <span className="font-bold text-[#f0dfbd]">
-                              {formatRM(scenario.revenue)}
-                            </span>
-                          </p>
-
-                          <p className="text-sm text-white/55">
-                            Profit
-                            <br />
-                            <span className="font-bold text-[#f0dfbd]">
-                              {formatRM(scenario.profit)}
-                            </span>
-                          </p>
-
-                          <p className="text-sm text-white/55">
-                            Cash
-                            <br />
-                            <span className="font-bold text-[#f0dfbd]">
-                              {formatRM(scenario.cash)}
-                            </span>
-                          </p>
-                        </div>
-
-                        <p className="mt-3 text-sm text-white/50">
-                          {scenario.commentary}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl bg-white/5 p-5">
-                  <p className="font-bold text-[#f0dfbd]">
-                    Executive Performance Indicators
-                  </p>
-
-                  <ul className="mt-3 list-disc space-y-2 pl-5 text-white/60">
-                    {result.performanceIndicators.map((item) => (
-                      <li key={item}>{item}</li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div className="rounded-2xl bg-white/5 p-5">
-                  <p className="font-bold text-[#f0dfbd]">
-                    Malaysian Business Advisor
-                  </p>
-
-                  <ul className="mt-3 list-disc space-y-2 pl-5 text-white/60">
-                    {result.malaysianAdvisor.map((item) => (
-                      <li key={item}>{item}</li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div className="rounded-2xl bg-white/5 p-5">
-                  <p className="font-bold text-[#f0dfbd]">
-                    Next Meeting Agenda
-                  </p>
-
-                  <ul className="mt-3 list-disc space-y-2 pl-5 text-white/60">
-                    {result.nextMeetingAgenda.map((item) => (
-                      <li key={item}>{item}</li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div className="rounded-2xl border border-[#d4ad63]/30 bg-[#101416] p-5">
-                  <p className="font-bold text-[#f0dfbd]">
-                    Generated by Wedge-CEO
-                  </p>
-                  <p className="mt-3 text-sm text-white/55">
-                    Weekly executive brief, WhatsApp reminders, PDF board report,
-                    historical trend and action tracking will be available after
-                    subscription.
-                  </p>
-                </div>
-              </div>
+              <ExecutiveReport report={report} />
             )}
-          </div>
+          </section>
         </div>
       </section>
     </main>
   );
 }
+
+function ExecutiveEmptyState() {
+  return (
+    <div className="flex min-h-[720px] items-center justify-center rounded-[32px] border border-white/10 bg-[#10161a]/75 p-8 shadow-[0_30px_90px_rgba(0,0,0,0.28)]">
+      <div className="max-w-xl text-center">
+        <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full border border-[#c8a467]/30 bg-[#c8a467]/10 text-2xl font-semibold text-[#d9b979]">
+          CEO
+        </div>
+
+        <p className="mt-8 text-xs font-semibold tracking-[0.32em] text-[#c8a467]">
+          WEDGE-CEO EXECUTIVE REPORT
+        </p>
+
+        <h2 className="mt-5 text-4xl font-semibold leading-tight text-[#f1dfbc]">
+          Your boardroom view will appear here
+        </h2>
+
+        <p className="mx-auto mt-5 max-w-lg text-base leading-7 text-white/45">
+          Complete the business input once. Wedge-CEO will turn the numbers
+          into a structured management review designed for fast executive
+          reading.
+        </p>
+
+        <div className="mt-10 grid gap-3 sm:grid-cols-3">
+          {[
+            ["01", "Analyse"],
+            ["02", "Forecast"],
+            ["03", "Decide"],
+          ].map(([number, label]) => (
+            <div
+              key={number}
+              className="rounded-2xl border border-white/8 bg-white/[0.025] p-5"
+            >
+              <p className="text-xs text-[#c8a467]">{number}</p>
+              <p className="mt-2 text-sm font-medium text-white/60">
+                {label}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ExecutiveReport({ report }: { report: WedgeCeoReport }) {
+  const quarterly = report.quarterlyReport;
+  const health = quarterly.businessHealth;
+  const financialMetrics = quarterly.financialHighlights.metrics;
+  const keyMetrics = financialMetrics.filter((metric) =>
+    [
+      "revenue",
+      "operating-profit",
+      "profit-margin",
+      "cash-runway",
+      "labour-ratio",
+      "revenue-per-staff",
+    ].includes(metric.key),
+  );
+
+  return (
+    <div className="space-y-6">
+      <section className="overflow-hidden rounded-[32px] border border-[#c8a467]/20 bg-[#11171b] shadow-[0_30px_90px_rgba(0,0,0,0.34)]">
+        <div className="border-b border-white/10 bg-[linear-gradient(135deg,rgba(200,164,103,0.12),transparent_58%)] p-7 sm:p-9">
+          <div className="flex flex-col gap-7 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold tracking-[0.32em] text-[#c8a467]">
+                QUARTERLY EXECUTIVE REVIEW
+              </p>
+
+              <h2 className="mt-4 text-3xl font-semibold text-[#f2dfb9] sm:text-4xl">
+                {quarterly.companyName}
+              </h2>
+
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-white/45">
+                {quarterly.businessType} · {quarterly.reportingPeriod}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-x-7 gap-y-3 text-sm lg:text-right">
+              <MetaValue label="Prepared" value={quarterly.preparedDate} />
+              <MetaValue
+                label="Forecast confidence"
+                value={`${quarterly.quarterlyOutlook.forecastConfidence}%`}
+              />
+              <MetaValue label="Trend" value={health.trend} />
+              <MetaValue
+                label="Report ID"
+                value={quarterly.reportId}
+                compact
+              />
+            </div>
+          </div>
+
+          <div className="mt-9 grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
+            <div className="rounded-2xl border border-[#c8a467]/25 bg-[#0b1013]/80 p-6">
+              <p className="text-xs uppercase tracking-[0.2em] text-white/35">
+                Business Health
+              </p>
+
+              <p className="mt-4 text-6xl font-semibold tracking-tight text-[#d8b778]">
+                {health.score}
+              </p>
+
+              <div className="mt-5 h-1.5 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full rounded-full bg-[#c8a467]"
+                  style={{ width: `${health.score}%` }}
+                />
+              </div>
+
+              <p className="mt-4 text-sm font-semibold text-[#f1dfbc]">
+                {health.status}
+              </p>
+
+              <p className="mt-1 text-xs leading-5 text-white/40">
+                {health.benchmarkPosition}
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-white/8 bg-white/[0.025] p-6">
+              <SectionEyebrow>Executive Summary</SectionEyebrow>
+
+              <p className="mt-4 text-lg leading-8 text-white/72">
+                {quarterly.executiveSummary}
+              </p>
+
+              <div className="mt-6 border-t border-white/8 pt-5">
+                <p className="text-sm leading-6 text-white/45">
+                  {health.commentary}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-7 sm:p-9">
+          <SectionHeading
+            eyebrow="KEY NUMBERS"
+            title="Financial snapshot"
+            description={quarterly.financialHighlights.headline}
+          />
+
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {keyMetrics.map((metric) => (
+              <MetricCard
+                key={metric.key}
+                label={metric.label}
+                value={metric.formattedValue}
+                status={metric.status}
+                commentary={metric.commentary}
+              />
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-[32px] border border-white/10 bg-[#11171b] p-7 shadow-[0_25px_70px_rgba(0,0,0,0.25)] sm:p-9">
+        <SectionHeading
+          eyebrow="MANAGEMENT OUTLOOK"
+          title="Quarterly performance and forecast"
+          description={quarterly.quarterlyOutlook.summary}
+        />
+
+        <div className="mt-7 grid gap-4 xl:grid-cols-3">
+          {quarterly.quarterlyOutlook.periods.map((period) => (
+            <article
+              key={period.key}
+              className="rounded-2xl border border-white/8 bg-[#0c1215] p-6"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold tracking-[0.16em] text-[#c8a467]">
+                    {period.label}
+                  </p>
+                  <p className="mt-2 text-sm text-white/35">
+                    {period.period}
+                  </p>
+                </div>
+
+                <StatusPill status={period.status} />
+              </div>
+
+              <div className="mt-6 space-y-4">
+                <ValueRow
+                  label="Revenue"
+                  value={formatRM(period.revenue)}
+                />
+                <ValueRow
+                  label="Operating profit"
+                  value={formatRM(period.operatingProfit)}
+                />
+                <ValueRow
+                  label="Cash position"
+                  value={formatRM(period.cashPosition)}
+                />
+                <ValueRow
+                  label="Growth"
+                  value={`${period.growthRate}%`}
+                />
+              </div>
+
+              <p className="mt-6 border-t border-white/8 pt-5 text-sm leading-6 text-white/42">
+                {period.commentary}
+              </p>
+            </article>
+          ))}
+        </div>
+
+        <div className="mt-7 grid gap-6 xl:grid-cols-2">
+          {quarterly.chartData.series
+            .filter((series) =>
+              ["revenue", "operating-profit"].includes(series.key),
+            )
+            .map((series) => (
+              <ExecutiveBarChart
+                key={series.key}
+                title={series.title}
+                unit={series.unit}
+                points={series.points}
+              />
+            ))}
+        </div>
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-2">
+        <ReportPanel
+          eyebrow="MANAGEMENT COMMENTARY"
+          title="Executive observation"
+        >
+          <p className="text-base leading-7 text-white/65">
+            {quarterly.managementCommentary.ceoObservation}
+          </p>
+
+          <div className="mt-6 rounded-2xl border border-white/8 bg-black/10 p-5">
+            <p className="text-xs font-semibold tracking-[0.18em] text-[#c8a467]">
+              MANAGEMENT CONCLUSION
+            </p>
+            <p className="mt-3 text-sm leading-6 text-white/50">
+              {quarterly.managementCommentary.managementConclusion}
+            </p>
+          </div>
+        </ReportPanel>
+
+        <ReportPanel
+          eyebrow="MALAYSIA BUSINESS RHYTHM"
+          title={quarterly.malaysiaBusinessRhythm.rhythmName}
+        >
+          <p className="text-base leading-7 text-white/65">
+            {quarterly.malaysiaBusinessRhythm.commercialSignal}
+          </p>
+
+          <div className="mt-5 space-y-4 border-t border-white/8 pt-5">
+            <InsightRow
+              label="Operations"
+              text={quarterly.malaysiaBusinessRhythm.operationalSignal}
+            />
+            <InsightRow
+              label="Long weekend"
+              text={quarterly.malaysiaBusinessRhythm.longWeekendSignal}
+            />
+            <InsightRow
+              label="Management"
+              text={quarterly.malaysiaBusinessRhythm.managementFocus}
+            />
+          </div>
+        </ReportPanel>
+      </section>
+
+      <section className="rounded-[32px] border border-white/10 bg-[#11171b] p-7 shadow-[0_25px_70px_rgba(0,0,0,0.25)] sm:p-9">
+        <SectionHeading
+          eyebrow="EXECUTIVE ADVISOR"
+          title="Ranked management recommendations"
+          description={quarterly.executiveAdvisor.primaryFocus}
+        />
+
+        <div className="mt-7 space-y-4">
+          {quarterly.executiveAdvisor.recommendations
+            .slice(0, 6)
+            .map((recommendation, index) => (
+              <article
+                key={`${recommendation.title}-${index}`}
+                className="grid gap-5 rounded-2xl border border-white/8 bg-[#0c1215] p-5 lg:grid-cols-[48px_150px_minmax(0,1fr)]"
+              >
+                <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[#c8a467]/25 bg-[#c8a467]/10 text-sm font-bold text-[#d7b576]">
+                  {String(index + 1).padStart(2, "0")}
+                </div>
+
+                <div>
+                  <p className="text-xs uppercase tracking-[0.16em] text-white/30">
+                    {recommendation.category}
+                  </p>
+                  <p className="mt-2 text-sm font-semibold text-[#f0ddb8]">
+                    {recommendation.priority}
+                  </p>
+                </div>
+
+                <div>
+                  <h3 className="text-base font-semibold text-white/85">
+                    {recommendation.title}
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-white/55">
+                    {recommendation.action}
+                  </p>
+                  <p className="mt-3 text-xs leading-5 text-white/30">
+                    Why: {recommendation.reason}
+                  </p>
+                </div>
+              </article>
+            ))}
+        </div>
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+        <ReportPanel eyebrow="BUSINESS RISKS" title="Management watchlist">
+          <div className="space-y-4">
+            {quarterly.businessRisks.map((risk) => (
+              <div
+                key={risk.id}
+                className="rounded-2xl border border-white/8 bg-black/10 p-5"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-white/75">
+                    {risk.area}
+                  </p>
+                  <StatusPill status={risk.severity} />
+                </div>
+
+                <p className="mt-3 text-sm leading-6 text-white/50">
+                  {risk.description}
+                </p>
+
+                <p className="mt-3 text-xs leading-5 text-[#c8a467]/75">
+                  Management response: {risk.managementResponse}
+                </p>
+              </div>
+            ))}
+          </div>
+        </ReportPanel>
+
+        <ReportPanel
+          eyebrow="NEXT MEETING AGENDA"
+          title={quarterly.meetingAgenda.meetingTitle}
+        >
+          <p className="text-sm leading-6 text-white/50">
+            {quarterly.meetingAgenda.openingBrief}
+          </p>
+
+          <div className="mt-6 flex flex-wrap gap-3">
+            <AgendaMeta
+              label="Duration"
+              value={`${quarterly.meetingAgenda.estimatedDurationMinutes} minutes`}
+            />
+            <AgendaMeta
+              label="Period"
+              value={quarterly.meetingAgenda.reportingPeriod}
+            />
+          </div>
+
+          <div className="mt-6 space-y-3">
+            {quarterly.meetingAgenda.agendaItems
+              .slice(0, 8)
+              .map((item) => (
+                <article
+                  key={`${item.order}-${item.title}`}
+                  className="rounded-2xl border border-white/8 bg-black/10 p-5"
+                >
+                  <div className="flex gap-4">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#c8a467]/10 text-xs font-bold text-[#d5b274]">
+                      {item.order}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.15em] text-white/28">
+                            {item.section}
+                          </p>
+                          <h3 className="mt-2 font-semibold text-white/80">
+                            {item.title}
+                          </h3>
+                        </div>
+
+                        <p className="text-xs text-[#c8a467]/70">
+                          {item.owner}
+                        </p>
+                      </div>
+
+                      <p className="mt-3 text-sm leading-6 text-white/48">
+                        {item.requiredAction}
+                      </p>
+                    </div>
+                  </div>
+                </article>
+              ))}
+          </div>
+
+          <div className="mt-6 rounded-2xl border border-[#c8a467]/20 bg-[#c8a467]/5 p-5">
+            <p className="text-xs font-semibold tracking-[0.18em] text-[#c8a467]">
+              PRIMARY DECISION
+            </p>
+            <p className="mt-3 text-sm leading-6 text-white/60">
+              {quarterly.meetingAgenda.primaryDecision}
+            </p>
+          </div>
+        </ReportPanel>
+      </section>
+
+      <footer className="rounded-[28px] border border-[#c8a467]/16 bg-[#0d1316] px-7 py-6">
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold tracking-[0.28em] text-[#c8a467]">
+              GENERATED BY WEDGE-CEO
+            </p>
+            <p className="mt-2 text-sm text-white/38">
+              Executive Business Intelligence for Malaysian SMEs
+            </p>
+          </div>
+
+          <div className="text-sm text-white/35 sm:text-right">
+            <p>Engine version {quarterly.preparedInformation.reportVersion}</p>
+            <p className="mt-1">
+              Forecast confidence{" "}
+              {quarterly.preparedInformation.forecastConfidence}%
+            </p>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+function FieldLabel({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-xs font-medium uppercase tracking-[0.14em] text-white/35">
+        {label}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+function NumberField({
+  label,
+  value,
+  onChange,
+  step = "0.01",
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  step?: string;
+}) {
+  return (
+    <FieldLabel label={label}>
+      <div className="relative">
+        <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-xs text-white/25">
+          {label === "Staff count" ? "#" : "RM"}
+        </span>
+        <input
+          type="number"
+          min="0"
+          step={step}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder="0"
+          className={`${inputClassName} pl-12`}
+        />
+      </div>
+    </FieldLabel>
+  );
+}
+
+function SectionHeading({
+  eyebrow,
+  title,
+  description,
+}: {
+  eyebrow: string;
+  title: string;
+  description?: string;
+}) {
+  return (
+    <div>
+      <p className="text-xs font-semibold tracking-[0.26em] text-[#c8a467]">
+        {eyebrow}
+      </p>
+      <h2 className="mt-3 text-2xl font-semibold text-[#f1dfbc]">
+        {title}
+      </h2>
+      {description ? (
+        <p className="mt-3 max-w-4xl text-sm leading-6 text-white/42">
+          {description}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function SectionEyebrow({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-xs font-semibold tracking-[0.22em] text-[#c8a467]">
+      {children}
+    </p>
+  );
+}
+
+function MetricCard({
+  label,
+  value,
+  status,
+  commentary,
+}: {
+  label: string;
+  value: string;
+  status: string;
+  commentary: string;
+}) {
+  return (
+    <article className="rounded-2xl border border-white/8 bg-[#0c1215] p-5">
+      <div className="flex items-start justify-between gap-4">
+        <p className="text-xs uppercase tracking-[0.15em] text-white/30">
+          {label}
+        </p>
+        <StatusPill status={status} />
+      </div>
+
+      <p className="mt-4 text-2xl font-semibold text-[#f0ddb8]">
+        {value}
+      </p>
+
+      <p className="mt-3 text-xs leading-5 text-white/30">
+        {commentary}
+      </p>
+    </article>
+  );
+}
+
+function ReportPanel({
+  eyebrow,
+  title,
+  children,
+}: {
+  eyebrow: string;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-[28px] border border-white/10 bg-[#11171b] p-7 shadow-[0_25px_70px_rgba(0,0,0,0.22)]">
+      <SectionHeading eyebrow={eyebrow} title={title} />
+      <div className="mt-6">{children}</div>
+    </section>
+  );
+}
+
+function MetaValue({
+  label,
+  value,
+  compact = false,
+}: {
+  label: string;
+  value: string;
+  compact?: boolean;
+}) {
+  return (
+    <div>
+      <p className="text-[11px] uppercase tracking-[0.13em] text-white/25">
+        {label}
+      </p>
+      <p
+        className={`mt-1 font-medium text-white/58 ${
+          compact ? "max-w-[180px] break-all text-xs" : "text-sm"
+        }`}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function ValueRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 border-b border-white/6 pb-3 last:border-0 last:pb-0">
+      <span className="text-sm text-white/35">{label}</span>
+      <span className="text-sm font-semibold text-[#f0ddb8]">{value}</span>
+    </div>
+  );
+}
+
+function InsightRow({
+  label,
+  text,
+}: {
+  label: string;
+  text: string;
+}) {
+  return (
+    <div className="grid gap-2 sm:grid-cols-[120px_minmax(0,1fr)]">
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#c8a467]/75">
+        {label}
+      </p>
+      <p className="text-sm leading-6 text-white/48">{text}</p>
+    </div>
+  );
+}
+
+function AgendaMeta({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-full border border-white/8 bg-black/10 px-4 py-2 text-xs">
+      <span className="text-white/28">{label}: </span>
+      <span className="text-white/58">{value}</span>
+    </div>
+  );
+}
+
+function StatusPill({ status }: { status: string }) {
+  return (
+    <span className="rounded-full border border-[#c8a467]/20 bg-[#c8a467]/8 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#d3b071]">
+      {status}
+    </span>
+  );
+}
+
+function ExecutiveBarChart({
+  title,
+  unit,
+  points,
+}: {
+  title: string;
+  unit: "RM" | "score";
+  points: { label: string; value: number }[];
+}) {
+  const maximum = Math.max(...points.map((point) => Math.abs(point.value)), 1);
+
+  return (
+    <div className="rounded-2xl border border-white/8 bg-[#0c1215] p-6">
+      <p className="text-sm font-semibold text-[#f0ddb8]">{title}</p>
+
+      <div className="mt-6 space-y-5">
+        {points.map((point) => {
+          const width = Math.max(
+            4,
+            Math.round((Math.abs(point.value) / maximum) * 100),
+          );
+
+          return (
+            <div key={point.label}>
+              <div className="mb-2 flex items-center justify-between gap-4 text-xs">
+                <span className="text-white/35">{point.label}</span>
+                <span className="font-semibold text-white/60">
+                  {unit === "RM"
+                    ? formatRM(point.value)
+                    : Math.round(point.value)}
+                </span>
+              </div>
+
+              <div className="h-2 overflow-hidden rounded-full bg-white/7">
+                <div
+                  className="h-full rounded-full bg-[#c8a467]"
+                  style={{ width: `${width}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function parseNumber(value: string) {
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed) || Number.isNaN(parsed)) {
+    return 0;
+  }
+
+  return Math.max(0, parsed);
+}
+
+function formatRM(value: number) {
+  const rounded = Math.round(value);
+
+  if (rounded < 0) {
+    return `-RM ${Math.abs(rounded).toLocaleString("en-MY")}`;
+  }
+
+  return `RM ${rounded.toLocaleString("en-MY")}`;
+}
+
+const inputClassName =
+  "w-full rounded-xl border border-white/10 bg-[#090e11] px-4 py-3.5 text-sm text-white outline-none transition placeholder:text-white/20 focus:border-[#c8a467]/65 focus:ring-2 focus:ring-[#c8a467]/10";
