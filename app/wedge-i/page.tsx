@@ -1,5 +1,5 @@
 "use client";
-
+import { ExecutiveCharts } from "./components/ExecutiveCharts";
 import { FormEvent, useState } from "react";
 
 import type { BusinessType } from "./engine/benchmarks";
@@ -496,20 +496,9 @@ function ExecutiveReport({ report }: { report: WedgeCeoReport }) {
           ))}
         </div>
 
-        <div className="mt-7 grid gap-6 xl:grid-cols-2">
-          {quarterly.chartData.series
-            .filter((series) =>
-              ["revenue", "operating-profit"].includes(series.key),
-            )
-            .map((series) => (
-              <ExecutiveBarChart
-                key={series.key}
-                title={series.title}
-                unit={series.unit}
-                points={series.points}
-              />
-            ))}
-        </div>
+        <div className="mt-7">
+  <ExecutiveCharts chartData={quarterly.chartData} />
+</div>
       </section>
 
       <section className="grid gap-6 xl:grid-cols-2">
@@ -929,52 +918,6 @@ function StatusPill({ status }: { status: string }) {
   );
 }
 
-function ExecutiveBarChart({
-  title,
-  unit,
-  points,
-}: {
-  title: string;
-  unit: "RM" | "score";
-  points: { label: string; value: number }[];
-}) {
-  const maximum = Math.max(...points.map((point) => Math.abs(point.value)), 1);
-
-  return (
-    <div className="rounded-2xl border border-white/8 bg-[#0c1215] p-6">
-      <p className="text-sm font-semibold text-[#f0ddb8]">{title}</p>
-
-      <div className="mt-6 space-y-5">
-        {points.map((point) => {
-          const width = Math.max(
-            4,
-            Math.round((Math.abs(point.value) / maximum) * 100),
-          );
-
-          return (
-            <div key={point.label}>
-              <div className="mb-2 flex items-center justify-between gap-4 text-xs">
-                <span className="text-white/35">{point.label}</span>
-                <span className="font-semibold text-white/60">
-                  {unit === "RM"
-                    ? formatRM(point.value)
-                    : Math.round(point.value)}
-                </span>
-              </div>
-
-              <div className="h-2 overflow-hidden rounded-full bg-white/7">
-                <div
-                  className="h-full rounded-full bg-[#c8a467]"
-                  style={{ width: `${width}%` }}
-                />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
 function parseNumber(value: string) {
   const parsed = Number(value);
@@ -995,6 +938,5 @@ function formatRM(value: number) {
 
   return `RM ${rounded.toLocaleString("en-MY")}`;
 }
-
 const inputClassName =
   "w-full rounded-xl border border-white/10 bg-[#090e11] px-4 py-3.5 text-sm text-white outline-none transition placeholder:text-white/20 focus:border-[#c8a467]/65 focus:ring-2 focus:ring-[#c8a467]/10";

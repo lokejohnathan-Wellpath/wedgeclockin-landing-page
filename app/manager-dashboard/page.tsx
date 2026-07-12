@@ -153,6 +153,10 @@ export default function ManagerDashboardPage() {
     router.push("/manager-login");
   }
 
+  function openExecutiveWorkspace() {
+    router.push("/wedge-i");
+  }
+
   const companyDisplayName = companyName || companyCode || "Company";
 
   const statCards = [
@@ -202,6 +206,53 @@ export default function ManagerDashboardPage() {
               ? error
               : "Company data loaded successfully."}
         </div>
+
+        <section className="relative mt-8 overflow-hidden rounded-[2rem] border border-[#d4ad63]/35 bg-[#1e2428] p-7 shadow-[0_24px_70px_rgba(0,0,0,0.22)] sm:p-8">
+          <div className="pointer-events-none absolute -right-16 -top-20 h-64 w-64 rounded-full bg-[#d4ad63]/10 blur-[85px]" />
+          <div className="pointer-events-none absolute -bottom-24 left-1/3 h-56 w-56 rounded-full bg-[#415d66]/10 blur-[90px]" />
+
+          <div className="relative flex flex-col gap-7 lg:flex-row lg:items-center lg:justify-between">
+            <div className="max-w-3xl">
+              <p className="text-sm tracking-[0.28em] text-[#d4ad63]">
+                EXECUTIVE WORKSPACE
+              </p>
+
+              <h2 className="mt-3 text-3xl font-bold text-[#f0dfbd]">
+                Wedge-I Executive Intelligence
+              </h2>
+
+              <p className="mt-4 max-w-2xl text-sm leading-7 text-white/55">
+                Analyse business health, cash position, labour efficiency,
+                quarterly outlook and management priorities without leaving the
+                Wedge Works platform.
+              </p>
+
+              <div className="mt-6 flex flex-wrap gap-3">
+                {[
+                  "Business Health",
+                  "Cashflow Analysis",
+                  "Quarterly Forecast",
+                  "Executive Charts",
+                ].map((capability) => (
+                  <span
+                    key={capability}
+                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs text-white/50"
+                  >
+                    {capability}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={openExecutiveWorkspace}
+              className="shrink-0 rounded-full bg-[#d4ad63] px-8 py-4 font-bold text-[#101416] transition hover:bg-[#e4bf75]"
+            >
+              Open Wedge-I
+            </button>
+          </div>
+        </section>
 
         <div className="mt-8 grid gap-4 md:grid-cols-3 xl:grid-cols-6">
           {statCards.map(([label, value]) => (
@@ -268,15 +319,19 @@ export default function ManagerDashboardPage() {
                           <td className="px-5 py-4 text-[#f0dfbd]">
                             {record.employeeName}
                           </td>
+
                           <td className="px-5 py-4 text-white/60">
                             {formatMalaysiaTime(record.clockIn)}
                           </td>
+
                           <td className="px-5 py-4 text-white/60">
                             {formatMalaysiaTime(record.restOut)}
                           </td>
+
                           <td className="px-5 py-4 text-white/60">
                             {formatMalaysiaTime(record.restIn)}
                           </td>
+
                           <td className="px-5 py-4 text-white/60">
                             {formatMalaysiaTime(record.clockOut)}
                           </td>
