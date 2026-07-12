@@ -1,6 +1,18 @@
 "use client";
+
 import { ExecutiveCharts } from "./components/ExecutiveCharts";
-import { FormEvent, useState } from "react";
+import { ExecutiveMemoryTimeline } from "./components/ExecutiveMemoryTimeline";
+import { SpectrePatternPanel } from "./components/SpectrePatternPanel";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+
+import {
+  hasExecutiveMemorySession,
+  loadExecutiveHistory,
+  saveExecutiveSnapshot,
+  type ExecutiveHistoryRecord,
+} from "./services/executiveMemoryClient";
+
+import { analyseExecutivePatterns } from "./engine/executivePatternEngine";
 
 import type { BusinessType } from "./engine/benchmarks";
 import {
@@ -44,6 +56,46 @@ export default function WedgeIPage() {
   const [report, setReport] = useState<WedgeCeoReport | null>(null);
   const [error, setError] = useState("");
 
+  const [hasMemorySession, setHasMemorySession] = useState(false);
+  const [history, setHistory] = useState<ExecutiveHistoryRecord[]>([]);
+  const [memoryMessage, setMemoryMessage] = useState("");
+  const [isSavingMemory, setIsSavingMemory] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+  const patternReport = useMemo(
+    () => analyseExecutivePatterns(history),
+    [history],
+  );
+
+  useEffect(() => {
+    const memoryAvailable = hasExecutiveMemorySession();
+
+    setHasMemorySession(memoryAvailable);
+
+    if (!memoryAvailable) {
+      return;
+    }
+
+    async function initialiseMemory() {
+      setIsLoadingHistory(true);
+
+      try {
+        const records = await loadExecutiveHistory(12);
+        setHistory(records);
+      } catch (memoryError) {
+        setMemoryMessage(
+          memoryError instanceof Error
+            ? memoryError.message
+            : "Executive history could not be loaded.",
+        );
+      } finally {
+        setIsLoadingHistory(false);
+      }
+    }
+
+    initialiseMemory();
+  }, []);
+
   function updateField<Key extends keyof FormState>(
     key: Key,
     value: FormState[Key],
@@ -54,9 +106,55 @@ export default function WedgeIPage() {
     }));
   }
 
-  function analyseBusiness(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function openHistoricalMonth(record: ExecutiveHistoryRecord) {
+    const companyName =
+      (typeof window !== "undefined"
+        ? localStorage.getItem("wc_company_name")
+        : null) ||
+      form.companyName.trim() ||
+      "Company";
+
+    const restoredForm: FormState = {
+      companyName,
+      businessType: record.businessType,
+      monthlyRevenue: String(record.metrics.revenue),
+      monthlyExpenses: String(record.metrics.expenses),
+      monthlyPayroll: String(record.metrics.payroll),
+      staffCount: String(record.metrics.staffCount),
+      cashInBank: String(record.metrics.cash),
+      inventoryValue: String(record.metrics.inventory),
+    };
+
+    const restoredReport = generateWedgeCeoReport({
+      companyName,
+      businessType: record.businessType,
+      monthlyRevenue: record.metrics.revenue,
+      monthlyExpenses: record.metrics.expenses,
+      monthlyPayroll: record.metrics.payroll,
+      staffCount: record.metrics.staffCount,
+      cashInBank: record.metrics.cash,
+      inventoryValue: record.metrics.inventory,
+    });
+
+    setForm(restoredForm);
+    setReport(restoredReport);
     setError("");
+    setMemoryMessage(
+      `Opened ${formatMonthYear(record.month, record.year)} from executive memory.`,
+    );
+
+    window.requestAnimationFrame(() => {
+      document
+        .getElementById("executive-report")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
+  async function analyseBusiness(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    setError("");
+    setMemoryMessage("");
 
     const monthlyRevenue = parseNumber(form.monthlyRevenue);
     const monthlyExpenses = parseNumber(form.monthlyExpenses);
@@ -81,7 +179,7 @@ export default function WedgeIPage() {
     }
 
     const generatedReport = generateWedgeCeoReport({
-      companyName: form.companyName,
+      companyName: form.companyName.trim(),
       businessType: form.businessType,
       monthlyRevenue,
       monthlyExpenses,
@@ -92,6 +190,41 @@ export default function WedgeIPage() {
     });
 
     setReport(generatedReport);
+
+    if (hasMemorySession) {
+      setIsSavingMemory(true);
+
+      try {
+        await saveExecutiveSnapshot(
+          {
+            companyName: form.companyName.trim(),
+            businessType: form.businessType,
+            monthlyRevenue,
+            monthlyExpenses,
+            monthlyPayroll,
+            staffCount,
+            cashInBank,
+            inventoryValue,
+          },
+          generatedReport,
+        );
+
+        const updatedHistory = await loadExecutiveHistory(3);
+
+        setHistory(updatedHistory);
+        setMemoryMessage(
+          "Executive memory saved securely for this company.",
+        );
+      } catch (memoryError) {
+        setMemoryMessage(
+          memoryError instanceof Error
+            ? memoryError.message
+            : "The report was generated, but executive memory could not be saved.",
+        );
+      } finally {
+        setIsSavingMemory(false);
+      }
+    }
 
     window.requestAnimationFrame(() => {
       document
@@ -264,24 +397,56 @@ export default function WedgeIPage() {
                   GENERATE EXECUTIVE REPORT
                 </button>
 
-                <p className="text-center text-xs leading-5 text-white/30">
-                  Current preview runs securely in this browser session. No
-                  company information is saved.
-                </p>
+                <div className="space-y-2 text-center text-xs leading-5">
+                  <p className="text-white/30">
+                    {hasMemorySession
+                      ? isSavingMemory
+                        ? "Saving this month to your secure executive memory..."
+                        : "Logged-in workspace: monthly executive reports are saved securely."
+                      : "Public preview: this report remains in the browser and is not saved."}
+                  </p>
+
+                  {memoryMessage ? (
+                    <p className="text-[#c8a467]">{memoryMessage}</p>
+                  ) : null}
+
+                  {hasMemorySession && history.length > 0 ? (
+                    <p className="text-white/35">
+                      Executive memory: {history.length} recent{" "}
+                      {history.length === 1 ? "month" : "months"} available.
+                    </p>
+                  ) : null}
+                </div>
               </form>
             </div>
           </aside>
 
-          <section
-            id="executive-report"
-            className="min-w-0 scroll-mt-8"
-          >
-            {!report ? (
-              <ExecutiveEmptyState />
-            ) : (
-              <ExecutiveReport report={report} />
-            )}
-          </section>
+          <div className="min-w-0 space-y-6">
+            {hasMemorySession ? (
+              <>
+                <ExecutiveMemoryTimeline
+                  history={history}
+                  isLoading={isLoadingHistory}
+                  onOpen={openHistoricalMonth}
+                />
+
+                {!isLoadingHistory ? (
+                  <SpectrePatternPanel report={patternReport} />
+                ) : null}
+              </>
+            ) : null}
+
+            <section
+              id="executive-report"
+              className="min-w-0 scroll-mt-8"
+            >
+              {!report ? (
+                <ExecutiveEmptyState />
+              ) : (
+                <ExecutiveReport report={report} />
+              )}
+            </section>
+          </div>
         </div>
       </section>
     </main>
@@ -918,6 +1083,13 @@ function StatusPill({ status }: { status: string }) {
   );
 }
 
+
+function formatMonthYear(month: number, year: number) {
+  return new Intl.DateTimeFormat("en-MY", {
+    month: "long",
+    year: "numeric",
+  }).format(new Date(year, month - 1, 1));
+}
 
 function parseNumber(value: string) {
   const parsed = Number(value);
