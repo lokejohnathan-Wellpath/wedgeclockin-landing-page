@@ -51,6 +51,32 @@ const businessTypes: BusinessType[] = [
   "General SME",
 ];
 
+const reportMonths = [
+  { value: 1, label: "January" },
+  { value: 2, label: "February" },
+  { value: 3, label: "March" },
+  { value: 4, label: "April" },
+  { value: 5, label: "May" },
+  { value: 6, label: "June" },
+  { value: 7, label: "July" },
+  { value: 8, label: "August" },
+  { value: 9, label: "September" },
+  { value: 10, label: "October" },
+  { value: 11, label: "November" },
+  { value: 12, label: "December" },
+];
+
+const earliestReportYear = 2026;
+
+function getCurrentReportPeriod() {
+  const now = new Date();
+
+  return {
+    month: now.getMonth() + 1,
+    year: Math.max(now.getFullYear(), earliestReportYear),
+  };
+}
+
 export default function WedgeIPage() {
   const [form, setForm] = useState<FormState>(initialFormState);
   const [report, setReport] = useState<WedgeCeoReport | null>(null);
@@ -61,6 +87,37 @@ export default function WedgeIPage() {
   const [memoryMessage, setMemoryMessage] = useState("");
   const [isSavingMemory, setIsSavingMemory] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+  const currentPeriod = useMemo(() => getCurrentReportPeriod(), []);
+  const [reportMonth, setReportMonth] = useState(currentPeriod.month);
+  const [reportYear, setReportYear] = useState(currentPeriod.year);
+  const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
+
+  const reportYears = useMemo(
+    () =>
+      Array.from(
+        { length: currentPeriod.year - earliestReportYear + 1 },
+        (_, index) => earliestReportYear + index,
+      ),
+    [currentPeriod.year],
+  );
+
+  const availableMonths = useMemo(
+    () =>
+      reportYear === currentPeriod.year
+        ? reportMonths.filter((month) => month.value <= currentPeriod.month)
+        : reportMonths,
+    [currentPeriod.month, currentPeriod.year, reportYear],
+  );
+
+  const existingSelectedMonth = useMemo(
+    () =>
+      history.find(
+        (record) =>
+          record.month === reportMonth && record.year === reportYear,
+      ) ?? null,
+    [history, reportMonth, reportYear],
+  );
 
   const patternReport = useMemo(
     () => analyseExecutivePatterns(history),
@@ -80,7 +137,7 @@ export default function WedgeIPage() {
       setIsLoadingHistory(true);
 
       try {
-        const records = await loadExecutiveHistory(12);
+        const records = await loadExecutiveHistory(120);
         setHistory(records);
       } catch (memoryError) {
         setMemoryMessage(
@@ -106,7 +163,30 @@ export default function WedgeIPage() {
     }));
   }
 
-  function openHistoricalMonth(record: ExecutiveHistoryRecord) {
+  function handleReportYearChange(nextYear: number) {
+    setReportYear(nextYear);
+
+    if (
+      nextYear === currentPeriod.year &&
+      reportMonth > currentPeriod.month
+    ) {
+      setReportMonth(currentPeriod.month);
+    }
+
+    setEditingRecordId(null);
+    setMemoryMessage("");
+  }
+
+  function handleReportMonthChange(nextMonth: number) {
+    setReportMonth(nextMonth);
+    setEditingRecordId(null);
+    setMemoryMessage("");
+  }
+
+  function restoreHistoricalRecord(
+    record: ExecutiveHistoryRecord,
+    mode: "open" | "edit",
+  ) {
     const companyName =
       (typeof window !== "undefined"
         ? localStorage.getItem("wc_company_name")
@@ -138,16 +218,34 @@ export default function WedgeIPage() {
 
     setForm(restoredForm);
     setReport(restoredReport);
+    setReportMonth(record.month);
+    setReportYear(record.year);
+    setEditingRecordId(mode === "edit" ? record.id : null);
     setError("");
     setMemoryMessage(
-      `Opened ${formatMonthYear(record.month, record.year)} from executive memory.`,
+      mode === "edit"
+        ? `Editing ${formatMonthYear(record.month, record.year)}. Save to update this month.`
+        : `Opened ${formatMonthYear(record.month, record.year)} from executive memory.`,
     );
 
     window.requestAnimationFrame(() => {
       document
-        .getElementById("executive-report")
+        .getElementById(mode === "edit" ? "business-input" : "executive-report")
         ?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
+  }
+
+  function openHistoricalMonth(record: ExecutiveHistoryRecord) {
+    restoreHistoricalRecord(record, "open");
+  }
+
+  function editHistoricalMonth(record: ExecutiveHistoryRecord) {
+    restoreHistoricalRecord(record, "edit");
+  }
+
+  function cancelEditingMonth() {
+    setEditingRecordId(null);
+    setMemoryMessage("Edit mode cancelled. Your saved month was not changed.");
   }
 
   async function analyseBusiness(event: FormEvent<HTMLFormElement>) {
@@ -175,6 +273,18 @@ export default function WedgeIPage() {
 
     if (staffCount <= 0) {
       setError("Staff count must be greater than zero.");
+      return;
+    }
+
+    if (
+      reportYear < earliestReportYear ||
+      reportYear > currentPeriod.year ||
+      reportMonth < 1 ||
+      reportMonth > 12 ||
+      (reportYear === currentPeriod.year &&
+        reportMonth > currentPeriod.month)
+    ) {
+      setError("Please select a valid reporting month from January 2026 up to the current month.");
       return;
     }
 
@@ -207,13 +317,20 @@ export default function WedgeIPage() {
             inventoryValue,
           },
           generatedReport,
+          {
+            month: reportMonth,
+            year: reportYear,
+          },
         );
 
-        const updatedHistory = await loadExecutiveHistory(3);
+        const updatedHistory = await loadExecutiveHistory(120);
 
         setHistory(updatedHistory);
+        setEditingRecordId(null);
         setMemoryMessage(
-          "Executive memory saved securely for this company.",
+          `${formatMonthYear(reportMonth, reportYear)} ${
+            existingSelectedMonth ? "updated" : "saved"
+          } securely in executive memory.`,
         );
       } catch (memoryError) {
         setMemoryMessage(
@@ -270,7 +387,7 @@ export default function WedgeIPage() {
 
         <div className="mt-8 grid gap-8 xl:grid-cols-[410px_minmax(0,1fr)]">
           <aside className="self-start xl:sticky xl:top-8">
-            <div className="overflow-hidden rounded-[28px] border border-[#c8a467]/20 bg-[#12181c]/95 shadow-[0_30px_90px_rgba(0,0,0,0.34)]">
+            <div id="business-input" className="scroll-mt-8 overflow-hidden rounded-[28px] border border-[#c8a467]/20 bg-[#12181c]/95 shadow-[0_30px_90px_rgba(0,0,0,0.34)]">
               <div className="border-b border-white/10 px-7 py-7">
                 <p className="text-xs font-semibold tracking-[0.3em] text-[#c8a467]">
                   BUSINESS INPUT
@@ -281,8 +398,8 @@ export default function WedgeIPage() {
                 </h1>
 
                 <p className="mt-4 text-sm leading-6 text-white/50">
-                  Enter the latest monthly management numbers. Wedge-CEO will
-                  produce a live financial analysis, quarterly outlook,
+                  Enter management numbers for any month from January 2026 onward.
+                  Wedge-CEO will produce a live financial analysis, quarterly outlook,
                   executive commentary, advisor priorities and meeting agenda.
                 </p>
               </div>
@@ -318,6 +435,75 @@ export default function WedgeIPage() {
                     ))}
                   </select>
                 </FieldLabel>
+
+                <div className="rounded-2xl border border-[#c8a467]/20 bg-[#c8a467]/5 p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-xs font-semibold tracking-[0.16em] text-[#c8a467]">
+                        REPORTING MONTH
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-white/35">
+                        Backfill months from January 2026. Future months remain unavailable.
+                      </p>
+                    </div>
+
+                    {editingRecordId ? (
+                      <span className="rounded-full border border-amber-300/25 bg-amber-300/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-200/80">
+                        Editing
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    <FieldLabel label="Month">
+                      <select
+                        value={reportMonth}
+                        onChange={(event) =>
+                          handleReportMonthChange(Number(event.target.value))
+                        }
+                        className={inputClassName}
+                      >
+                        {availableMonths.map((month) => (
+                          <option key={month.value} value={month.value}>
+                            {month.label}
+                          </option>
+                        ))}
+                      </select>
+                    </FieldLabel>
+
+                    <FieldLabel label="Year">
+                      <select
+                        value={reportYear}
+                        onChange={(event) =>
+                          handleReportYearChange(Number(event.target.value))
+                        }
+                        className={inputClassName}
+                      >
+                        {reportYears.map((year) => (
+                          <option key={year} value={year}>
+                            {year}
+                          </option>
+                        ))}
+                      </select>
+                    </FieldLabel>
+                  </div>
+
+                  <p className="mt-3 text-xs text-white/35">
+                    {existingSelectedMonth
+                      ? `${formatMonthYear(reportMonth, reportYear)} already exists and will be updated when saved.`
+                      : `${formatMonthYear(reportMonth, reportYear)} is ready for a new executive record.`}
+                  </p>
+
+                  {editingRecordId ? (
+                    <button
+                      type="button"
+                      onClick={cancelEditingMonth}
+                      className="mt-3 text-xs font-semibold text-white/45 transition hover:text-white/70"
+                    >
+                      Cancel month edit
+                    </button>
+                  ) : null}
+                </div>
 
                 <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
                   <NumberField
@@ -392,16 +578,21 @@ export default function WedgeIPage() {
 
                 <button
                   type="submit"
+                  disabled={isSavingMemory}
                   className="w-full rounded-xl bg-[#c8a467] px-6 py-4 text-sm font-bold tracking-[0.08em] text-[#111416] transition hover:bg-[#dfbd7c] focus:outline-none focus:ring-2 focus:ring-[#c8a467]/50"
                 >
-                  GENERATE EXECUTIVE REPORT
+                  {isSavingMemory
+                    ? "SAVING EXECUTIVE REPORT..."
+                    : editingRecordId || existingSelectedMonth
+                      ? "UPDATE EXECUTIVE MONTH"
+                      : "GENERATE EXECUTIVE REPORT"}
                 </button>
 
                 <div className="space-y-2 text-center text-xs leading-5">
                   <p className="text-white/30">
                     {hasMemorySession
                       ? isSavingMemory
-                        ? "Saving this month to your secure executive memory..."
+                        ? `Saving ${formatMonthYear(reportMonth, reportYear)} to your secure executive memory...`
                         : "Logged-in workspace: monthly executive reports are saved securely."
                       : "Public preview: this report remains in the browser and is not saved."}
                   </p>
@@ -428,6 +619,7 @@ export default function WedgeIPage() {
                   history={history}
                   isLoading={isLoadingHistory}
                   onOpen={openHistoricalMonth}
+                  onEdit={editHistoricalMonth}
                 />
 
                 {!isLoadingHistory ? (

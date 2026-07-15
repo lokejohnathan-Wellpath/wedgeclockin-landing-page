@@ -6,6 +6,7 @@ type ExecutiveMemoryTimelineProps = {
   history: ExecutiveHistoryRecord[];
   isLoading?: boolean;
   onOpen: (record: ExecutiveHistoryRecord) => void;
+  onEdit: (record: ExecutiveHistoryRecord) => void;
 };
 
 function formatRM(value: number) {
@@ -21,6 +22,28 @@ function monthLabel(month: number, year: number) {
     month: "long",
     year: "numeric",
   }).format(new Date(year, month - 1, 1));
+}
+
+function updatedLabel(record: ExecutiveHistoryRecord) {
+  const value = record.updatedAt || record.createdAt;
+
+  if (!value) {
+    return "Saved month";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Saved month";
+  }
+
+  return `Updated ${new Intl.DateTimeFormat("en-MY", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date)}`;
 }
 
 function movement(
@@ -51,6 +74,7 @@ export function ExecutiveMemoryTimeline({
   history,
   isLoading = false,
   onOpen,
+  onEdit,
 }: ExecutiveMemoryTimelineProps) {
   if (isLoading) {
     return (
@@ -110,10 +134,16 @@ export function ExecutiveMemoryTimeline({
               className="rounded-2xl border border-white/8 bg-[#0c1215] p-5"
             >
               <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <p className="text-xs font-semibold tracking-[0.16em] text-[#c8a467]">
-                    {monthLabel(record.month, record.year)}
-                  </p>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-xs font-semibold tracking-[0.16em] text-[#c8a467]">
+                      {monthLabel(record.month, record.year)}
+                    </p>
+
+                    <p className="text-xs text-white/25">
+                      {updatedLabel(record)}
+                    </p>
+                  </div>
 
                   <div className="mt-4 grid gap-4 sm:grid-cols-3">
                     <MemoryMetric
@@ -145,13 +175,23 @@ export function ExecutiveMemoryTimeline({
                   ) : null}
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => onOpen(record)}
-                  className="shrink-0 rounded-full border border-[#c8a467]/45 px-6 py-3 text-sm font-semibold text-[#f0ddb8] transition hover:bg-[#c8a467]/10"
-                >
-                  Open Month
-                </button>
+                <div className="flex shrink-0 flex-col gap-3 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={() => onOpen(record)}
+                    className="rounded-full border border-white/15 px-6 py-3 text-sm font-semibold text-white/65 transition hover:border-white/25 hover:bg-white/[0.04]"
+                  >
+                    Open Month
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => onEdit(record)}
+                    className="rounded-full border border-[#c8a467]/45 px-6 py-3 text-sm font-semibold text-[#f0ddb8] transition hover:bg-[#c8a467]/10"
+                  >
+                    Edit Month
+                  </button>
+                </div>
               </div>
             </article>
           );
@@ -173,7 +213,10 @@ function MemoryMetric({
       <p className="text-xs uppercase tracking-[0.13em] text-white/28">
         {label}
       </p>
-      <p className="mt-2 text-lg font-semibold text-white/75">{value}</p>
+
+      <p className="mt-2 text-lg font-semibold text-white/75">
+        {value}
+      </p>
     </div>
   );
 }
