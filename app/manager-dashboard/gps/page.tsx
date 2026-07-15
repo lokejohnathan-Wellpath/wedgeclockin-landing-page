@@ -551,17 +551,6 @@ export default function WorkplaceGpsPage() {
                 <InfoField label="Telephone" value={company?.phone || "—"} />
               </div>
 
-              {company?.address ? (
-                <div className="mt-4 rounded-2xl border border-white/10 bg-[#101416] p-4">
-                  <p className="text-xs uppercase tracking-[0.14em] text-white/35">
-                    Company Address
-                  </p>
-                  <p className="mt-2 whitespace-pre-line text-sm leading-6 text-white/65">
-                    {company.address}
-                  </p>
-                </div>
-              ) : null}
-
               <div className="mt-8 border-t border-white/10 pt-7">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
