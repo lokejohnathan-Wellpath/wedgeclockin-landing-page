@@ -387,22 +387,57 @@ export default function Home() {
         </section>
 
         <footer className="relative border-t border-white/8 bg-black/5 backdrop-blur-sm">
-          <div className="mx-auto flex max-w-7xl flex-col gap-4 px-6 py-8 text-sm text-white/32 sm:flex-row sm:items-center sm:justify-between">
-            <p>© 2026 Wedge Works. Built for Malaysian businesses.</p>
+          <div className="mx-auto max-w-7xl px-6 py-9">
+            <div className="flex flex-col gap-7 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="font-semibold text-[#f1dfbc]">Wedge Works</p>
+                <p className="mt-2 text-sm text-white/32">
+                  Workforce Operations & Executive Intelligence
+                </p>
+              </div>
 
-            <div className="flex gap-5">
+              <nav
+                aria-label="Footer navigation"
+                className="flex flex-wrap gap-x-6 gap-y-3 text-sm text-white/38"
+              >
+                <a
+                  href="/manager-login"
+                  className="transition duration-200 hover:text-[#f1dfbc]"
+                >
+                  Manager Login
+                </a>
+
+                <a
+                  href="/wedge-i"
+                  className="transition duration-200 hover:text-[#f1dfbc]"
+                >
+                  Wedge-I
+                </a>
+
+                <a
+                  href="/privacy"
+                  className="rounded-full border border-[#c8a467]/35 px-4 py-2 font-semibold text-[#e2c58d] transition duration-200 hover:border-[#c8a467]/60 hover:bg-[#c8a467]/10 hover:text-[#f1dfbc]"
+                >
+                  Privacy Policy
+                </a>
+
+                <a
+                  href="mailto:support@wedge-works.com"
+                  className="transition duration-200 hover:text-[#f1dfbc]"
+                >
+                  Support
+                </a>
+              </nav>
+            </div>
+
+            <div className="mt-7 flex flex-col gap-3 border-t border-white/8 pt-6 text-sm text-white/28 sm:flex-row sm:items-center sm:justify-between">
+              <p>© 2026 Wedge Works. Built for Malaysian businesses.</p>
+
               <a
-                href="/manager-login"
+                href="mailto:support@wedge-works.com"
                 className="transition duration-200 hover:text-[#f1dfbc]"
               >
-                Manager Login
-              </a>
-
-              <a
-                href="/wedge-i"
-                className="transition duration-200 hover:text-[#f1dfbc]"
-              >
-                Wedge-I
+                support@wedge-works.com
               </a>
             </div>
           </div>
