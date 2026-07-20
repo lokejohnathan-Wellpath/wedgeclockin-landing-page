@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 type Employee = {
@@ -60,6 +60,17 @@ export default function EmployeeClockInPage() {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [activeAction, setActiveAction] = useState("");
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraStarting, setCameraStarting] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  const stopCamera = useCallback(() => {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setCameraOpen(false);
+  }, []);
 
   const logout = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
@@ -117,6 +128,72 @@ export default function EmployeeClockInPage() {
     return () => window.clearTimeout(timer);
   }, [loadToday]);
 
+  useEffect(() => stopCamera, [stopCamera]);
+
+  async function startCamera() {
+    setError("");
+    setMessage("");
+    setCameraStarting(true);
+
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error("Live camera access is not supported by this browser.");
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: "user",
+          width: { ideal: 720 },
+          height: { ideal: 960 },
+        },
+        audio: false,
+      });
+      streamRef.current = stream;
+      setCameraOpen(true);
+
+      window.setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          void videoRef.current.play();
+        }
+      }, 0);
+    } catch (cameraError) {
+      setError(
+        cameraError instanceof Error
+          ? cameraError.message
+          : "Allow front-camera access to verify your face.",
+      );
+    } finally {
+      setCameraStarting(false);
+    }
+  }
+
+  async function captureAndClockIn() {
+    const video = videoRef.current;
+
+    if (!video || video.videoWidth === 0 || video.videoHeight === 0) {
+      setError("The camera is not ready. Wait a moment and try again.");
+      return;
+    }
+
+    const maxSize = 1000;
+    const scale = Math.min(1, maxSize / Math.max(video.videoWidth, video.videoHeight));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+    canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+    const context = canvas.getContext("2d");
+
+    if (!context) {
+      setError("The selfie could not be prepared.");
+      return;
+    }
+
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const clockInSelfieBase64 = canvas.toDataURL("image/jpeg", 0.86);
+    stopCamera();
+    await recordAction("clockIn", clockInSelfieBase64);
+  }
+
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
@@ -159,7 +236,10 @@ export default function EmployeeClockInPage() {
     }
   }
 
-  async function recordAction(action: "clockIn" | "restOut" | "restIn" | "clockOut") {
+  async function recordAction(
+    action: "clockIn" | "restOut" | "restIn" | "clockOut",
+    clockInSelfieBase64?: string,
+  ) {
     if (!apiBaseUrl || !token) return;
 
     setError("");
@@ -186,7 +266,7 @@ export default function EmployeeClockInPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ action, ...location }),
+        body: JSON.stringify({ action, ...location, clockInSelfieBase64 }),
       });
       const data = await response.json();
 
@@ -261,14 +341,52 @@ export default function EmployeeClockInPage() {
               </div>
 
               <div className="mt-6 space-y-3">
-                {!record?.clockIn && <ActionButton label="Clock In" loading={activeAction === "clockIn"} onClick={() => recordAction("clockIn")} primary />}
+                {!record?.clockIn && !cameraOpen && (
+                  <ActionButton
+                    label="Open Face Camera"
+                    loading={cameraStarting}
+                    onClick={() => void startCamera()}
+                    primary
+                  />
+                )}
+                {!record?.clockIn && cameraOpen && (
+                  <div className="overflow-hidden rounded-2xl border border-[#d4ad63]/30 bg-black p-3">
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      muted
+                      playsInline
+                      className="aspect-[3/4] w-full rounded-xl bg-black object-cover"
+                    />
+                    <p className="mt-3 text-center text-xs text-white/50">
+                      Face the camera alone in good lighting. Remove sunglasses and masks.
+                    </p>
+                    <div className="mt-3 grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={stopCamera}
+                        className="rounded-full border border-white/20 px-4 py-3 text-sm font-semibold text-white/70"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        disabled={activeAction === "clockIn"}
+                        onClick={() => void captureAndClockIn()}
+                        className="rounded-full bg-[#d4ad63] px-4 py-3 text-sm font-bold text-[#111416] disabled:opacity-60"
+                      >
+                        {activeAction === "clockIn" ? "Verifying…" : "Capture & Clock In"}
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {record?.clockIn && !record.restOut && !record.clockOut && <ActionButton label="Rest Out" loading={activeAction === "restOut"} onClick={() => recordAction("restOut")} />}
                 {record?.restOut && !record.restIn && !record.clockOut && <ActionButton label="Rest In" loading={activeAction === "restIn"} onClick={() => recordAction("restIn")} primary />}
                 {record?.clockIn && !record.clockOut && !(record.restOut && !record.restIn) && <ActionButton label="Clock Out" loading={activeAction === "clockOut"} onClick={() => recordAction("clockOut")} />}
               </div>
 
               <div className="mt-5"><Notice error={error} message={message} /></div>
-              <p className="mt-5 text-center text-xs leading-5 text-white/35">Clock In requires precise GPS permission and must be within your company&apos;s approved workplace radius.</p>
+              <p className="mt-5 text-center text-xs leading-5 text-white/35">Clock In requires a live face match, precise GPS permission and the company&apos;s approved workplace radius.</p>
             </div>
           )}
         </section>

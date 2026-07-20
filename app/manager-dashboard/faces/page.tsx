@@ -12,7 +12,9 @@ type Employee = {
   phoneNumber?: string;
   isActive?: boolean;
   faceRegistered?: boolean;
+  webFaceRegistered?: boolean;
   registeredFacePath?: string | null;
+  faceRegisteredAt?: string | null;
   updatedAt?: string;
 };
 
@@ -41,6 +43,8 @@ export default function FaceStatusPage() {
   >("all");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [registeringEmployeeId, setRegisteringEmployeeId] = useState("");
 
   useEffect(() => {
     async function loadEmployees() {
@@ -61,7 +65,7 @@ export default function FaceStatusPage() {
 
       try {
         const response = await fetch(
-          `${apiBaseUrl}/api/employees?companyId=${encodeURIComponent(companyId)}`,
+          `${apiBaseUrl}/api/manager/employees`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
@@ -100,10 +104,69 @@ export default function FaceStatusPage() {
     loadEmployees();
   }, [router]);
 
+  async function registerFace(employee: Employee, file?: File) {
+    if (!file) return;
+
+    const token = localStorage.getItem("wc_manager_token");
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+    if (!token || !apiBaseUrl) {
+      setError("Company session or API service is unavailable.");
+      return;
+    }
+
+    setError("");
+    setSuccess("");
+    setRegisteringEmployeeId(employee.id);
+
+    try {
+      const faceImageBase64 = await resizeImage(file);
+      const response = await fetch(
+        `${apiBaseUrl}/api/manager/employees/${encodeURIComponent(employee.id)}/face`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ faceImageBase64 }),
+        },
+      );
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.message || "Face registration failed.");
+      }
+
+      setEmployees((current) =>
+        current.map((item) =>
+          item.id === employee.id
+            ? {
+                ...item,
+                faceRegistered: true,
+                webFaceRegistered: true,
+                faceRegisteredAt: data.employee?.faceRegisteredAt,
+                updatedAt: data.employee?.updatedAt,
+              }
+            : item,
+        ),
+      );
+      setSuccess(`${employee.fullName}'s face was registered securely.`);
+    } catch (registrationError) {
+      setError(
+        registrationError instanceof Error
+          ? registrationError.message
+          : "Face registration failed.",
+      );
+    } finally {
+      setRegisteringEmployeeId("");
+    }
+  }
+
   const summary = useMemo(() => {
     const total = employees.length;
     const registered = employees.filter(
-      (employee) => employee.faceRegistered === true,
+      (employee) => employee.webFaceRegistered === true,
     ).length;
 
     return {
@@ -118,7 +181,7 @@ export default function FaceStatusPage() {
     const query = search.trim().toLowerCase();
 
     return employees.filter((employee) => {
-      const registered = employee.faceRegistered === true;
+      const registered = employee.webFaceRegistered === true;
 
       if (statusFilter === "registered" && !registered) return false;
       if (statusFilter === "pending" && registered) return false;
@@ -173,6 +236,12 @@ export default function FaceStatusPage() {
         {error ? (
           <div className="mt-6 rounded-2xl border border-red-400/30 bg-red-400/10 p-4 text-sm text-red-200">
             {error}
+          </div>
+        ) : null}
+
+        {success ? (
+          <div className="mt-6 rounded-2xl border border-emerald-400/30 bg-emerald-400/10 p-4 text-sm text-emerald-100">
+            {success}
           </div>
         ) : null}
 
@@ -270,7 +339,7 @@ export default function FaceStatusPage() {
 
                   <tbody>
                     {filteredEmployees.map((employee) => {
-                      const registered = employee.faceRegistered === true;
+                      const registered = employee.webFaceRegistered === true;
 
                       return (
                         <tr
@@ -299,21 +368,31 @@ export default function FaceStatusPage() {
                           </td>
 
                           <td className="px-5 py-4 text-white/45">
-                            {formatMalaysiaDate(employee.updatedAt)}
+                            {formatMalaysiaDate(
+                              employee.faceRegisteredAt || employee.updatedAt,
+                            )}
                           </td>
 
                           <td className="px-5 py-4">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                router.push("/manager-dashboard/employees")
-                              }
-                              className="rounded-full border border-[#d4ad63]/35 px-4 py-2 text-xs font-semibold text-[#d4ad63] transition hover:bg-[#d4ad63]/10"
-                            >
-                              {registered
-                                ? "View Employee"
-                                : "Open Registration"}
-                            </button>
+                            <label className="inline-flex cursor-pointer rounded-full border border-[#d4ad63]/35 px-4 py-2 text-xs font-semibold text-[#d4ad63] transition hover:bg-[#d4ad63]/10">
+                              <input
+                                type="file"
+                                accept="image/jpeg,image/png,image/webp"
+                                capture="user"
+                                className="hidden"
+                                disabled={registeringEmployeeId === employee.id}
+                                onChange={(event) => {
+                                  const file = event.target.files?.[0];
+                                  event.target.value = "";
+                                  void registerFace(employee, file);
+                                }}
+                              />
+                              {registeringEmployeeId === employee.id
+                                ? "Checking face…"
+                                : registered
+                                  ? "Replace Face"
+                                  : "Register Face"}
+                            </label>
                           </td>
                         </tr>
                       );
@@ -372,4 +451,33 @@ function FaceStatusBadge({ registered }: { registered: boolean }) {
       {registered ? "AI Face Registered" : "Pending Registration"}
     </span>
   );
+}
+
+function resizeImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("The photograph could not be read."));
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = () => reject(new Error("The photograph format is not supported."));
+      image.onload = () => {
+        const maxSize = 1200;
+        const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(image.width * scale));
+        canvas.height = Math.max(1, Math.round(image.height * scale));
+        const context = canvas.getContext("2d");
+
+        if (!context) {
+          reject(new Error("The photograph could not be prepared."));
+          return;
+        }
+
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", 0.86));
+      };
+      image.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  });
 }
