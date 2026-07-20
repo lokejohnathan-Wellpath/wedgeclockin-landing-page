@@ -148,6 +148,13 @@ export default function Home() {
                 >
                   Open Manager Portal
                 </a>
+
+                <a
+                  href="/employee-clockin"
+                  className="rounded-full border border-white/15 bg-white/[0.035] px-8 py-4 text-center font-semibold text-white/75 backdrop-blur-sm transition duration-200 hover:-translate-y-0.5 hover:border-[#c8a467]/40 hover:text-[#f1dfbc]"
+                >
+                  Employee Clock In
+                </a>
               </div>
             </div>
           </div>
