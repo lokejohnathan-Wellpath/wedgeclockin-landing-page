@@ -62,13 +62,19 @@ export default function EmployeeClockInPage() {
   const [activeAction, setActiveAction] = useState("");
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraStarting, setCameraStarting] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [locationReady, setLocationReady] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const locationRef = useRef<{ latitude: number; longitude: number } | null>(null);
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
+    locationRef.current = null;
+    setCameraReady(false);
+    setLocationReady(false);
     setCameraOpen(false);
   }, []);
 
@@ -130,6 +136,29 @@ export default function EmployeeClockInPage() {
 
   useEffect(() => stopCamera, [stopCamera]);
 
+  useEffect(() => {
+    const video = videoRef.current;
+    const stream = streamRef.current;
+
+    if (!cameraOpen || !video || !stream) return;
+
+    function markCameraReady() {
+      setCameraReady(true);
+    }
+
+    video.srcObject = stream;
+    video.addEventListener("loadedmetadata", markCameraReady);
+    void video.play().catch(() => {
+      setError("The camera preview could not start. Check browser camera permission.");
+    });
+
+    if (video.readyState >= 1 && video.videoWidth > 0) {
+      markCameraReady();
+    }
+
+    return () => video.removeEventListener("loadedmetadata", markCameraReady);
+  }, [cameraOpen]);
+
   async function startCamera() {
     setError("");
     setMessage("");
@@ -151,12 +180,19 @@ export default function EmployeeClockInPage() {
       streamRef.current = stream;
       setCameraOpen(true);
 
-      window.setTimeout(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          void videoRef.current.play();
-        }
-      }, 0);
+      try {
+        const position = await getPosition();
+        locationRef.current = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        };
+        setLocationReady(true);
+      } catch {
+        stream.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+        setCameraOpen(false);
+        throw new Error("Allow precise location access as well as camera access to clock in.");
+      }
     } catch (cameraError) {
       setError(
         cameraError instanceof Error
@@ -170,6 +206,11 @@ export default function EmployeeClockInPage() {
 
   async function captureAndClockIn() {
     const video = videoRef.current;
+
+    if (!cameraReady || !locationReady || !locationRef.current) {
+      setError("Wait until both Camera Ready and GPS Ready are shown.");
+      return;
+    }
 
     if (!video || video.videoWidth === 0 || video.videoHeight === 0) {
       setError("The camera is not ready. Wait a moment and try again.");
@@ -190,8 +231,9 @@ export default function EmployeeClockInPage() {
 
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
     const clockInSelfieBase64 = canvas.toDataURL("image/jpeg", 0.86);
+    const location = locationRef.current;
     stopCamera();
-    await recordAction("clockIn", clockInSelfieBase64);
+    await recordAction("clockIn", clockInSelfieBase64, location);
   }
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
@@ -239,6 +281,7 @@ export default function EmployeeClockInPage() {
   async function recordAction(
     action: "clockIn" | "restOut" | "restIn" | "clockOut",
     clockInSelfieBase64?: string,
+    suppliedLocation?: { latitude: number; longitude: number },
   ) {
     if (!apiBaseUrl || !token) return;
 
@@ -249,15 +292,8 @@ export default function EmployeeClockInPage() {
     try {
       let location: { latitude?: number; longitude?: number } = {};
       if (action === "clockIn") {
-        try {
-          const position = await getPosition();
-          location = {
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-          };
-        } catch {
-          throw new Error("Allow precise location access to clock in.");
-        }
+        if (!suppliedLocation) throw new Error("Camera and precise location are required to clock in.");
+        location = suppliedLocation;
       }
 
       const response = await fetch(`${apiBaseUrl}/api/employee-portal/action`, {
@@ -361,6 +397,14 @@ export default function EmployeeClockInPage() {
                     <p className="mt-3 text-center text-xs text-white/50">
                       Face the camera alone in good lighting. Remove sunglasses and masks.
                     </p>
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-center text-xs font-semibold">
+                      <span className={`rounded-full px-3 py-2 ${cameraReady ? "bg-emerald-500/15 text-emerald-200" : "bg-amber-500/15 text-amber-200"}`}>
+                        {cameraReady ? "Camera Ready" : "Starting Camera…"}
+                      </span>
+                      <span className={`rounded-full px-3 py-2 ${locationReady ? "bg-emerald-500/15 text-emerald-200" : "bg-amber-500/15 text-amber-200"}`}>
+                        {locationReady ? "GPS Ready" : "Waiting for GPS…"}
+                      </span>
+                    </div>
                     <div className="mt-3 grid grid-cols-2 gap-3">
                       <button
                         type="button"
@@ -371,7 +415,7 @@ export default function EmployeeClockInPage() {
                       </button>
                       <button
                         type="button"
-                        disabled={activeAction === "clockIn"}
+                        disabled={activeAction === "clockIn" || !cameraReady || !locationReady}
                         onClick={() => void captureAndClockIn()}
                         className="rounded-full bg-[#d4ad63] px-4 py-3 text-sm font-bold text-[#111416] disabled:opacity-60"
                       >

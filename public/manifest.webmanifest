@@ -1,0 +1,26 @@
+{
+  "name": "WedgeCLOCKin Employee Attendance",
+  "short_name": "WedgeClock",
+  "description": "Secure employee face and GPS attendance for Wedge Works.",
+  "start_url": "/employee-clockin",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#101416",
+  "theme_color": "#101416",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "/icons/wedgeclockin-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/wedgeclockin-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
