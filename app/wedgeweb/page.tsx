@@ -2,6 +2,7 @@
 
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { interpretDesignInstruction } from "./engine/designIntelligence";
 
 type Offering = { name: string; price: string; description: string };
 type SiteDraft = { businessName: string; industry: string; description: string; whatsapp: string; phone: string; address: string; hours: string; facebook: string; instagram: string; primaryColor: string; backgroundColor: string; textColor: string; boldText: boolean; watermark: boolean; photos: string[]; offerings: Offering[] };
@@ -10,12 +11,15 @@ type PreviewPage = "home" | "offerings" | "contact";
 const STORAGE_KEY = "wedgeweb_draft_v1";
 const defaultDraft: SiteDraft = { businessName: "", industry: "Salon & Spa", description: "", whatsapp: "", phone: "", address: "", hours: "Monday – Saturday, 10:00 AM – 7:00 PM", facebook: "", instagram: "", primaryColor: "#b58a72", backgroundColor: "#fffaf5", textColor: "#282321", boldText: false, watermark: false, photos: Array(20).fill(""), offerings: [{ name: "", price: "", description: "" }] };
 
-const namedColors: Record<string, string> = { "chili red": "#c21807", red: "#c62828", black: "#171717", white: "#ffffff", gold: "#c8a467", green: "#286b4f", blue: "#2457a6", purple: "#7048a8", pink: "#d45c86", orange: "#d76a22", cream: "#fff6e8", beige: "#eadfd5" };
-
 const industryWords: Record<string, { page: string; verb: string; fallback: string }> = {
   "Salon & Spa": { page: "Treatments", verb: "Book", fallback: "Thoughtful treatments designed around your comfort and confidence." },
+  "Slimming & Wellness Centre": { page: "Programmes", verb: "Book a Consultation", fallback: "Supportive wellness programmes shaped around your goals, comfort and confidence." },
   "Food & Beverage": { page: "Menu", verb: "Order", fallback: "Fresh favourites, prepared with care and made to be enjoyed." },
   Retail: { page: "Products", verb: "Enquire", fallback: "Quality products selected to make everyday life a little better." },
+  "Specialty Shop": { page: "Collections", verb: "Enquire", fallback: "Distinctive finds selected with personality, quality and local customers in mind." },
+  "Workshops & Classes": { page: "Classes", verb: "Reserve a Place", fallback: "Friendly, practical sessions where people can learn, create and grow together." },
+  "Guest House & Homestay": { page: "Rooms", verb: "Check Availability", fallback: "A comfortable local stay with thoughtful hospitality and a welcoming sense of place." },
+  "Pet Spa & Grooming": { page: "Pet Services", verb: "Book", fallback: "Gentle grooming and caring treatments that help every pet look and feel their best." },
   "Professional Services": { page: "Services", verb: "Enquire", fallback: "Practical, dependable service for people and growing businesses." },
   "Home & Repair": { page: "Services", verb: "Get a Quote", fallback: "Reliable workmanship and straightforward support when you need it." },
   Other: { page: "Products & Services", verb: "Enquire", fallback: "A local business committed to helpful service and lasting relationships." },
@@ -56,24 +60,15 @@ export default function WedgeWebPage() {
 
   function applyDesignPrompt(event: FormEvent) {
     event.preventDefault();
-    const prompt = designPrompt.trim().toLowerCase();
-    if (!prompt) return;
-    let changes = 0;
-    const next: Partial<SiteDraft> = {};
-    const mentioned = Object.entries(namedColors).find(([name]) => prompt.includes(name));
-    if (mentioned) {
-      if (prompt.includes("background")) next.backgroundColor = mentioned[1];
-      else if (prompt.includes("word") || prompt.includes("text")) next.textColor = mentioned[1];
-      else next.primaryColor = mentioned[1];
-      changes++;
+    if (!designPrompt.trim()) return;
+    const decision = interpretDesignInstruction(designPrompt, draft.industry);
+    if (decision.understood) {
+      setDraft((current) => ({ ...current, ...decision.changes }));
+      setDesignReply(decision.reply);
+      setDesignPrompt("");
+    } else {
+      setDesignReply(decision.reply);
     }
-    const hex = prompt.match(/#[0-9a-f]{6}/i)?.[0];
-    if (hex) { if (prompt.includes("background")) next.backgroundColor = hex; else if (prompt.includes("word") || prompt.includes("text")) next.textColor = hex; else next.primaryColor = hex; changes++; }
-    if (prompt.includes("bold")) { next.boldText = !prompt.includes("not bold") && !prompt.includes("remove bold"); changes++; }
-    if (prompt.includes("watermark")) { next.watermark = !prompt.includes("remove") && !prompt.includes("no watermark"); changes++; }
-    setDraft((current) => ({ ...current, ...next }));
-    setDesignReply(changes ? "Done. I applied that design direction—open Preview to see it." : "I can currently change primary, background or text colours, make all wording bold, and add or remove the Photo 1 watermark.");
-    setDesignPrompt("");
   }
 
   if (!loaded) return <main className="min-h-screen bg-[#090d10] p-10 text-white/50">Opening WedgeWeb…</main>;
@@ -82,7 +77,7 @@ export default function WedgeWebPage() {
     <header className="border-b border-white/8"><div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5"><Link href="/" className="font-bold text-[#f1dfbc]">Wedge Works <span className="text-[#c8a467]">/ WedgeWeb</span></Link><div className="flex gap-2"><button onClick={() => setMode("build")} className={`rounded-full px-4 py-2 text-sm ${mode === "build" ? "bg-[#c8a467] text-[#111416]" : "border border-white/10 text-white/55"}`}>Build</button><button onClick={() => setMode("preview")} className={`rounded-full px-4 py-2 text-sm ${mode === "preview" ? "bg-[#c8a467] text-[#111416]" : "border border-white/10 text-white/55"}`}>Preview</button></div></div></header>
 
     {mode === "build" ? <section className="mx-auto grid max-w-7xl gap-8 px-6 py-10 lg:grid-cols-[.9fr_1.1fr]">
-      <div><p className="text-xs font-semibold tracking-[.3em] text-[#c8a467]">AI WEBSITE ENGINE</p><h1 className="mt-4 text-4xl font-bold text-[#f1dfbc]">Tell us about your business.</h1><p className="mt-4 max-w-xl leading-7 text-white/50">Create a professional three-page website without domains, hosting or code. Your draft and preview are free.</p><div className="mt-7 rounded-3xl border border-[#c8a467]/20 bg-[#151b1f] p-5"><p className="text-sm font-semibold text-[#f1dfbc]">Wedge AI</p><p className="mt-3 text-sm leading-6 text-white/55">Let&apos;s begin with the essentials. Add your business information, one product or service, and your WhatsApp number. I&apos;ll shape it into Home, {words.page}, and Contact pages.</p></div><form onSubmit={applyDesignPrompt} className="mt-5 rounded-3xl border border-[#c8a467]/20 bg-[#151b1f] p-5"><p className="text-sm font-semibold text-[#f1dfbc]">Design Chat</p><div className="mt-3 rounded-2xl bg-black/20 p-4 text-sm leading-6 text-white/55">{designReply}</div><textarea value={designPrompt} onChange={(event) => setDesignPrompt(event.target.value)} rows={3} placeholder="Try: Make all wording bold chili red and add Photo 1 as a watermark" className={inputClass}/><div className="mt-3 flex flex-wrap gap-2">{["Make all wording bold", "Use chili red", "Add Photo 1 watermark"].map((prompt) => <button key={prompt} type="button" onClick={() => setDesignPrompt(prompt)} className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-white/50">{prompt}</button>)}</div><button className="mt-3 w-full rounded-full bg-[#c8a467] px-5 py-3 font-bold text-[#111416]">Apply Design Instruction</button></form></div>
+      <div><p className="text-xs font-semibold tracking-[.3em] text-[#c8a467]">AI WEBSITE ENGINE</p><h1 className="mt-4 text-4xl font-bold text-[#f1dfbc]">Tell us about your business.</h1><p className="mt-4 max-w-xl leading-7 text-white/50">Create a professional three-page website without domains, hosting or code. Your draft and preview are free.</p><div className="mt-7 rounded-3xl border border-[#c8a467]/20 bg-[#151b1f] p-5"><p className="text-sm font-semibold text-[#f1dfbc]">Wedge AI</p><p className="mt-3 text-sm leading-6 text-white/55">Let&apos;s begin with the essentials. Add your business information, one product or service, and your WhatsApp number. I&apos;ll shape it into Home, {words.page}, and Contact pages.</p></div><form onSubmit={applyDesignPrompt} className="mt-5 rounded-3xl border border-[#c8a467]/20 bg-[#151b1f] p-5"><p className="text-sm font-semibold text-[#f1dfbc]">Design Assistant</p><div className="mt-3 rounded-2xl bg-black/20 p-4 text-sm leading-6 text-white/55">{designReply}</div><textarea value={designPrompt} onChange={(event) => setDesignPrompt(event.target.value)} rows={3} maxLength={500} placeholder="Describe the feeling, colours or style you want for your website…" className={inputClass}/><button disabled={!designPrompt.trim()} className="mt-3 w-full rounded-full bg-[#c8a467] px-5 py-3 font-bold text-[#111416] disabled:cursor-not-allowed disabled:opacity-45">Apply Design Instruction</button></form></div>
       <form onSubmit={generate} className="space-y-5 rounded-[2rem] border border-white/10 bg-[#151b1f] p-6 sm:p-8">
         <div className="grid gap-4 sm:grid-cols-2"><Field label="Business name" value={draft.businessName} onChange={(value) => update("businessName", value)} placeholder="Serenity Spa"/><Select label="Business type" value={draft.industry} onChange={(value) => update("industry", value)} options={Object.keys(industryWords)}/></div>
         <label className="block text-sm text-white/65">Introduce your business<textarea value={draft.description} onChange={(event) => update("description", event.target.value)} placeholder={words.fallback} rows={4} className={inputClass}/></label>
