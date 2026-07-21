@@ -68,6 +68,11 @@ const modules: ModuleCard[] = [
     text: "Review workplace location and attendance radius.",
     href: "/manager-dashboard/gps",
   },
+  {
+    title: "Founder John Control Desk",
+    text: "Configure Wedge Works packages, promotions and managed-domain pricing.",
+    href: "/manager-dashboard/founder-control-desk",
+  },
 ];
 
 function formatMalaysiaTime(value: string | null) {
