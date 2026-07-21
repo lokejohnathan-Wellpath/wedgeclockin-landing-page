@@ -8,6 +8,12 @@ type Employee = {
   employeeCode: string;
   fullName: string;
   companyName?: string;
+  companyCode?: string;
+  department?: string;
+  position?: string;
+  phoneNumber?: string;
+  webFaceRegistered?: boolean;
+  faceRegisteredAt?: string | null;
 };
 
 type AttendanceRecord = {
@@ -16,6 +22,22 @@ type AttendanceRecord = {
   restIn: string | null;
   clockOut: string | null;
 };
+
+type PortalTab = "attendance" | "leave" | "profile";
+
+type LeaveRecord = {
+  id: string;
+  leaveType: string;
+  startDate: string;
+  endDate: string;
+  reason: string;
+  status: "pending" | "approved" | "rejected";
+  createdAt: string;
+};
+
+type LeaveBalance = Record<string, number | null>;
+
+const LEAVE_TYPES = ["Annual Leave", "Medical Leave", "Emergency Leave", "Unpaid Leave", "Replacement Leave", "Hospitalisation Leave", "Other Leave"];
 
 const TOKEN_KEY = "wc_employee_token";
 const EMPLOYEE_KEY = "wc_employee_profile";
@@ -52,6 +74,14 @@ export default function EmployeeClockInPage() {
   const [token, setToken] = useState("");
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [record, setRecord] = useState<AttendanceRecord | null>(null);
+  const [activeTab, setActiveTab] = useState<PortalTab>("attendance");
+  const [leaves, setLeaves] = useState<LeaveRecord[]>([]);
+  const [leaveBalance, setLeaveBalance] = useState<LeaveBalance>({});
+  const [leaveType, setLeaveType] = useState(LEAVE_TYPES[0]);
+  const [leaveStart, setLeaveStart] = useState("");
+  const [leaveEnd, setLeaveEnd] = useState("");
+  const [leaveReason, setLeaveReason] = useState("");
+  const [leaveLoading, setLeaveLoading] = useState(false);
   const [outletShortName, setOutletShortName] = useState("");
   const [idNumber, setIdNumber] = useState("");
   const [password, setPassword] = useState("");
@@ -84,6 +114,8 @@ export default function EmployeeClockInPage() {
     setToken("");
     setEmployee(null);
     setRecord(null);
+    setLeaves([]);
+    setActiveTab("attendance");
     setMessage("");
   }, []);
 
@@ -103,11 +135,28 @@ export default function EmployeeClockInPage() {
       }
       if (!response.ok) throw new Error(data?.message || "Unable to load attendance.");
 
-      setEmployee((current) => current || data.employee);
+      setEmployee(data.employee);
+      localStorage.setItem(EMPLOYEE_KEY, JSON.stringify(data.employee));
       setRecord(data.record || null);
     },
     [apiBaseUrl, logout],
   );
+
+  const loadLeave = useCallback(async (sessionToken: string) => {
+    if (!apiBaseUrl) throw new Error("API service is not configured.");
+    const response = await fetch(`${apiBaseUrl}/api/employee-portal/leave`, {
+      headers: { Authorization: `Bearer ${sessionToken}` },
+      cache: "no-store",
+    });
+    const data = await response.json();
+    if (response.status === 401 || response.status === 403) {
+      logout();
+      throw new Error("Your session has expired. Please log in again.");
+    }
+    if (!response.ok) throw new Error(data?.message || "Unable to load leave records.");
+    setLeaves(data.leaves || []);
+    setLeaveBalance(data.balance || {});
+  }, [apiBaseUrl, logout]);
 
   useEffect(() => {
     const savedToken = localStorage.getItem(TOKEN_KEY) || "";
@@ -127,12 +176,13 @@ export default function EmployeeClockInPage() {
 
       setIsLoading(true);
       loadToday(savedToken)
+        .then(() => loadLeave(savedToken))
         .catch((err) => setError(err instanceof Error ? err.message : "Unable to load attendance."))
         .finally(() => setIsLoading(false));
     }, 0);
 
     return () => window.clearTimeout(timer);
-  }, [loadToday]);
+  }, [loadLeave, loadToday]);
 
   useEffect(() => stopCamera, [stopCamera]);
 
@@ -271,10 +321,38 @@ export default function EmployeeClockInPage() {
       setEmployee(data.employee);
       setPassword("");
       await loadToday(data.token);
+      await loadLeave(data.token);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed.");
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function submitLeave(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!apiBaseUrl || !token) return;
+    setError("");
+    setMessage("");
+    setLeaveLoading(true);
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/employee-portal/leave`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ leaveType, startDate: leaveStart, endDate: leaveEnd, reason: leaveReason }),
+      });
+      const data = await response.json();
+      if (response.status === 401 || response.status === 403) logout();
+      if (!response.ok) throw new Error(data?.message || "Leave request could not be submitted.");
+      setLeaveStart("");
+      setLeaveEnd("");
+      setLeaveReason("");
+      setMessage(data.message || "Leave request submitted.");
+      await loadLeave(token);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Leave request could not be submitted.");
+    } finally {
+      setLeaveLoading(false);
     }
   }
 
@@ -362,6 +440,20 @@ export default function EmployeeClockInPage() {
             </form>
           ) : (
             <div className="p-7">
+              <nav className="mb-6 grid grid-cols-3 rounded-2xl border border-white/8 bg-black/20 p-1" aria-label="Employee portal">
+                {(["attendance", "leave", "profile"] as PortalTab[]).map((tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => { setActiveTab(tab); setError(""); setMessage(""); stopCamera(); }}
+                    className={`rounded-xl px-2 py-3 text-xs font-semibold transition ${activeTab === tab ? "bg-[#d4ad63] text-[#111416]" : "text-white/50"}`}
+                  >
+                    {tab === "attendance" ? "Attendance" : tab === "leave" ? "My Leave" : "Profile"}
+                  </button>
+                ))}
+              </nav>
+
+              {activeTab === "attendance" && <>
               <div className="rounded-2xl border border-[#d4ad63]/20 bg-[#30281e] p-5">
                 <p className="text-xs uppercase tracking-[0.2em] text-white/40">Today&apos;s status</p>
                 <p className="mt-2 text-2xl font-bold text-[#f0dfbd]">{status}</p>
@@ -431,6 +523,72 @@ export default function EmployeeClockInPage() {
 
               <div className="mt-5"><Notice error={error} message={message} /></div>
               <p className="mt-5 text-center text-xs leading-5 text-white/35">Clock In requires a live face match, precise GPS permission and the company&apos;s approved workplace radius.</p>
+              </>}
+
+              {activeTab === "leave" && (
+                <div className="space-y-5">
+                  <div className="grid grid-cols-3 gap-2">
+                    <SummaryCard label="Pending" value={leaves.filter((leave) => leave.status === "pending").length} />
+                    <SummaryCard label="Approved" value={leaves.filter((leave) => leave.status === "approved").length} />
+                    <SummaryCard label="Annual Left" value={leaveBalance.annualLeaveBalance ?? "—"} />
+                  </div>
+
+                  <form onSubmit={submitLeave} className="space-y-4 rounded-2xl border border-[#d4ad63]/20 bg-[#30281e] p-5">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.2em] text-[#d4ad63]">New request</p>
+                      <h2 className="mt-1 text-xl font-bold text-[#f0dfbd]">Apply for Leave</h2>
+                    </div>
+                    <label className="block text-sm font-semibold text-white/70">Leave Type
+                      <select value={leaveType} onChange={(event) => setLeaveType(event.target.value)} className="mt-2 w-full rounded-xl border border-white/10 bg-[#101416] px-4 py-3 text-white outline-none focus:border-[#d4ad63]">
+                        {LEAVE_TYPES.map((type) => <option key={type}>{type}</option>)}
+                      </select>
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <DateField label="Start Date" value={leaveStart} onChange={setLeaveStart} />
+                      <DateField label="End Date" value={leaveEnd} onChange={setLeaveEnd} min={leaveStart} />
+                    </div>
+                    <label className="block text-sm font-semibold text-white/70">Reason
+                      <textarea value={leaveReason} onChange={(event) => setLeaveReason(event.target.value)} maxLength={500} required rows={3} placeholder="Brief reason for leave" className="mt-2 w-full resize-none rounded-xl border border-white/10 bg-[#101416] px-4 py-3 text-white outline-none focus:border-[#d4ad63]" />
+                    </label>
+                    <Notice error={error} message={message} />
+                    <button disabled={leaveLoading} className="w-full rounded-full bg-[#d4ad63] px-5 py-3.5 font-bold text-[#111416] disabled:opacity-60">{leaveLoading ? "Submitting…" : "Submit for Approval"}</button>
+                  </form>
+
+                  <div>
+                    <h2 className="text-lg font-bold text-[#f0dfbd]">Leave History</h2>
+                    <div className="mt-3 space-y-3">
+                      {leaves.length === 0 && <p className="rounded-xl border border-white/8 p-4 text-sm text-white/45">No leave requests yet.</p>}
+                      {leaves.map((leave) => <LeaveCard key={leave.id} leave={leave} />)}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === "profile" && (
+                <div className="space-y-5">
+                  <div className="rounded-2xl border border-[#d4ad63]/20 bg-[#30281e] p-5">
+                    <p className="text-xs uppercase tracking-[0.2em] text-white/40">Employee profile</p>
+                    <h2 className="mt-2 text-2xl font-bold text-[#f0dfbd]">{employee?.fullName}</h2>
+                    <div className="mt-4 divide-y divide-white/8 text-sm">
+                      <ProfileRow label="Employee Code" value={employee?.employeeCode} />
+                      <ProfileRow label="Company" value={employee?.companyName || employee?.companyCode} />
+                      <ProfileRow label="Department" value={employee?.department} />
+                      <ProfileRow label="Position" value={employee?.position} />
+                      <ProfileRow label="Phone" value={employee?.phoneNumber} />
+                    </div>
+                  </div>
+                  <div className={`rounded-2xl border p-5 ${employee?.webFaceRegistered ? "border-emerald-400/25 bg-emerald-500/10" : "border-amber-400/30 bg-amber-500/10"}`}>
+                    <p className="text-xs uppercase tracking-[0.2em] text-white/45">Web face verification</p>
+                    <p className="mt-2 text-xl font-bold">{employee?.webFaceRegistered ? "Registered ✓" : "Registration required"}</p>
+                    <p className="mt-2 text-sm leading-6 text-white/60">
+                      {employee?.webFaceRegistered
+                        ? `Your encrypted web face profile is ready${employee.faceRegisteredAt ? ` since ${formatMalaysiaDate(employee.faceRegisteredAt)}` : ""}.`
+                        : "Ask your manager to open Manager Dashboard → Face Registration and register your face for web clock-in."}
+                    </p>
+                  </div>
+                  <p className="text-center text-xs leading-5 text-white/35">Employees can view their status here. Face enrollment stays manager-controlled to prevent another person registering on an employee&apos;s behalf.</p>
+                </div>
+              )}
             </div>
           )}
         </section>
@@ -455,4 +613,26 @@ function Notice({ error, message }: { error: string; message: string }) {
   if (error) return <div className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>;
   if (message) return <div className="rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">{message}</div>;
   return null;
+}
+
+function formatMalaysiaDate(value: string) {
+  return new Intl.DateTimeFormat("en-MY", { timeZone: "Asia/Kuala_Lumpur", day: "numeric", month: "short", year: "numeric" }).format(new Date(value));
+}
+
+function DateField({ label, value, onChange, min }: { label: string; value: string; onChange: (value: string) => void; min?: string }) {
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kuala_Lumpur", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  return <label className="block text-sm font-semibold text-white/70">{label}<input type="date" value={value} min={min || today} onChange={(event) => onChange(event.target.value)} required className="mt-2 w-full rounded-xl border border-white/10 bg-[#101416] px-3 py-3 text-white outline-none focus:border-[#d4ad63]" /></label>;
+}
+
+function SummaryCard({ label, value }: { label: string; value: string | number }) {
+  return <div className="rounded-xl border border-white/8 bg-white/[0.035] p-3 text-center"><p className="text-xl font-bold text-[#f0dfbd]">{value}</p><p className="mt-1 text-[10px] uppercase tracking-wider text-white/35">{label}</p></div>;
+}
+
+function LeaveCard({ leave }: { leave: LeaveRecord }) {
+  const statusStyle = leave.status === "approved" ? "bg-emerald-500/15 text-emerald-200" : leave.status === "rejected" ? "bg-red-500/15 text-red-200" : "bg-amber-500/15 text-amber-200";
+  return <article className="rounded-xl border border-white/8 bg-white/[0.035] p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-[#f0dfbd]">{leave.leaveType}</p><p className="mt-1 text-xs text-white/45">{formatMalaysiaDate(leave.startDate)} – {formatMalaysiaDate(leave.endDate)}</p></div><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${statusStyle}`}>{leave.status}</span></div><p className="mt-3 text-sm leading-5 text-white/55">{leave.reason}</p></article>;
+}
+
+function ProfileRow({ label, value }: { label: string; value?: string }) {
+  return <div className="flex items-center justify-between gap-4 py-3"><span className="text-white/40">{label}</span><span className="text-right font-medium text-white/75">{value || "—"}</span></div>;
 }
