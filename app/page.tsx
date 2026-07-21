@@ -82,6 +82,7 @@ export default function Home() {
             >
               Features
             </a>
+            <a href="/wedgeweb" className="transition duration-200 hover:text-[#f1dfbc]">WedgeWeb</a>
           </nav>
         </header>
 
@@ -361,19 +362,20 @@ export default function Home() {
 
         <section className="relative mx-auto max-w-7xl px-6 pb-20">
           <div className="grid gap-5 md:grid-cols-2">
-            <div className="rounded-[28px] border border-white/8 bg-white/[0.022] p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] backdrop-blur-sm">
+            <div className="rounded-[28px] border border-[#c8a467]/20 bg-white/[0.03] p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] backdrop-blur-sm">
               <p className="text-xs font-semibold tracking-[0.25em] text-[#c8a467]">
-                WORKFORCE EXPANSION
+                AI WEBSITE ENGINE
               </p>
 
               <h3 className="mt-4 text-2xl font-semibold text-[#f1dfbc]">
-                Reserved for future workforce capabilities
+                WedgeWeb
               </h3>
 
               <p className="mt-4 text-sm leading-6 text-white/38">
-                Additional scheduling, payroll and workforce planning modules
-                can be introduced here without redesigning the platform.
+                Describe your business, add products or services, connect
+                WhatsApp and generate a professional three-page website.
               </p>
+              <a href="/wedgeweb" className="mt-6 inline-flex rounded-full bg-[#c8a467] px-6 py-3 font-bold text-[#111416]">Create Free Preview</a>
             </div>
 
             <div className="rounded-[28px] border border-white/8 bg-white/[0.022] p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] backdrop-blur-sm">
