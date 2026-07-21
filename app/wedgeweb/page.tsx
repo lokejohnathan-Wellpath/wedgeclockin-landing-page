@@ -44,9 +44,22 @@ type SiteDraft = {
   imageOverlay: number;
   styleName: string;
   photos: string[];
+  logo: string;
+  heroZoom: number;
+  heroX: number;
+  heroY: number;
+  heroFit: "cover" | "contain";
+  logoSize: number;
+  logoX: number;
+  logoY: number;
+  logoOpacity: number;
+  logoShape: "original" | "rounded" | "circle";
+  useStandardPrivacy: boolean;
+  privacyAccepted: boolean;
+  privacyExtra: string;
   offerings: Offering[];
 };
-type PreviewPage = "home" | "offerings" | "contact";
+type PreviewPage = "home" | "offerings" | "contact" | "privacy";
 
 const STORAGE_KEY = "wedgeweb_draft_v1";
 const defaultDraft: SiteDraft = {
@@ -72,6 +85,19 @@ const defaultDraft: SiteDraft = {
   imageOverlay: 0.16,
   styleName: "Warm Contemporary",
   photos: Array(20).fill(""),
+  logo: "",
+  heroZoom: 100,
+  heroX: 50,
+  heroY: 50,
+  heroFit: "cover",
+  logoSize: 72,
+  logoX: 0,
+  logoY: 0,
+  logoOpacity: 100,
+  logoShape: "original",
+  useStandardPrivacy: true,
+  privacyAccepted: false,
+  privacyExtra: "",
   offerings: [{ name: "", price: "", description: "" }],
 };
 
@@ -293,6 +319,10 @@ export default function WedgeWebPage() {
       );
       return;
     }
+    if (!draft.privacyAccepted) {
+      setMessage("Review and confirm the personalised Privacy Policy before generating the final preview.");
+      return;
+    }
     saveDraft();
     setMode("preview");
     setPage("home");
@@ -326,6 +356,18 @@ export default function WedgeWebPage() {
       };
       image.src = String(reader.result || "");
     };
+    reader.readAsDataURL(file);
+  }
+
+  function uploadLogo(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (file.size > 4_000_000) {
+      setMessage("The logo must be smaller than 4 MB.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => update("logo", String(reader.result || ""));
     reader.readAsDataURL(file);
   }
 
@@ -459,7 +501,13 @@ export default function WedgeWebPage() {
     );
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_right,rgba(200,164,103,.13),transparent_32%),#090d10] text-[#f4efe6]">
+    <main
+      className="min-h-screen bg-[#0D1316] text-[#F4EFE6]"
+      style={{
+        background:
+          "radial-gradient(circle at 15% 5%, rgba(210,170,98,.10), transparent 30%), radial-gradient(circle at 90% 30%, rgba(94,137,131,.08), transparent 32%), #0D1316",
+      }}
+    >
       <header className="border-b border-white/8">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
           <Link href="/" className="font-bold text-[#f1dfbc]">
@@ -468,7 +516,7 @@ export default function WedgeWebPage() {
           <div className="flex gap-2">
             <button
               onClick={startOver}
-              className="rounded-full border-2 border-red-200 bg-red-700 px-4 py-2 text-sm font-bold text-white shadow-lg hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-white"
+              className="rounded-full border-2 border-[#C86A70] bg-[#8F3036] px-4 py-2 text-sm font-bold text-white shadow-lg hover:bg-[#A63B42] focus:outline-none focus:ring-2 focus:ring-white"
             >
               ↻ Start Over
             </button>
@@ -525,6 +573,7 @@ export default function WedgeWebPage() {
                     draft.offerings.some((item) => Boolean(item.name)),
                   ],
                   ["Photos", draft.photos.some(Boolean)],
+                  ["Privacy policy", draft.privacyAccepted],
                 ].map(([label, done]) => (
                   <div
                     key={String(label)}
@@ -874,6 +923,26 @@ export default function WedgeWebPage() {
                 ))}
               </div>
             </div>
+            <div className="rounded-3xl border border-white/10 bg-black/10 p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="font-bold text-[#F1DFBC]">Business logo</h2>
+                  <p className="mt-1 text-xs text-white/40">
+                    Upload separately from Photos 1–20. Fine-tune it in Live Preview.
+                  </p>
+                </div>
+                {draft.logo && (
+                  <button type="button" onClick={() => update("logo", "")} className="rounded-full border border-[#C86A70]/60 px-3 py-2 text-xs text-[#F2A4A9]">
+                    Remove logo
+                  </button>
+                )}
+              </div>
+              <label className="mt-4 flex cursor-pointer items-center gap-4 rounded-2xl border border-dashed border-white/20 bg-[#0A1013] p-4">
+                <input type="file" accept="image/*" onChange={uploadLogo} className="sr-only" />
+                {draft.logo ? <img src={draft.logo} alt="Logo preview" className="h-16 w-16 object-contain" /> : <span className="flex h-16 w-16 items-center justify-center rounded-xl bg-white/5 text-2xl">＋</span>}
+                <span className="text-sm text-white/60">{draft.logo ? "Replace logo" : "Upload logo (PNG recommended)"}</span>
+              </label>
+            </div>
             <div>
               <div className="flex items-center justify-between">
                 <h2 className="font-bold text-[#f1dfbc]">{words.page}</h2>
@@ -924,6 +993,24 @@ export default function WedgeWebPage() {
                 ))}
               </div>
             </div>
+            <div className="rounded-3xl border border-white/10 bg-black/10 p-5">
+              <h2 className="font-bold text-[#F1DFBC]">Privacy policy</h2>
+              <p className="mt-2 text-xs leading-5 text-white/45">
+                The standard policy automatically uses the business name, contact details, website address and current date.
+              </p>
+              <label className="mt-4 flex items-start gap-3 text-sm text-white/65">
+                <input type="checkbox" checked={draft.useStandardPrivacy} onChange={(event) => update("useStandardPrivacy", event.target.checked)} className="mt-1 accent-[#D2AA62]" />
+                Use the Wedge standard privacy-policy template
+              </label>
+              <label className="mt-4 block text-sm text-white/65">
+                Optional amendments
+                <textarea value={draft.privacyExtra} onChange={(event) => update("privacyExtra", event.target.value)} rows={3} placeholder="Add any business-specific privacy information…" className={inputClass} />
+              </label>
+              <label className="mt-4 flex items-start gap-3 text-sm text-white/65">
+                <input type="checkbox" checked={draft.privacyAccepted} onChange={(event) => update("privacyAccepted", event.target.checked)} className="mt-1 accent-[#D2AA62]" />
+                I have reviewed this Privacy Policy and confirm it reflects how {draft.businessName || "my business"} handles customer information.
+              </label>
+            </div>
             {message && (
               <p className="rounded-xl border border-[#c8a467]/20 bg-[#c8a467]/8 p-3 text-sm text-[#e4c98f]">
                 {message}
@@ -955,6 +1042,7 @@ export default function WedgeWebPage() {
           chatOpen={chatOpen}
           setChatOpen={setChatOpen}
           onEdit={() => setMode("build")}
+          onChangeDraft={setDraft}
         />
       )}
     </main>
@@ -972,6 +1060,7 @@ function PreviewShell({
   chatOpen,
   setChatOpen,
   onEdit,
+  onChangeDraft,
 }: {
   draft: SiteDraft;
   page: PreviewPage;
@@ -983,9 +1072,12 @@ function PreviewShell({
   chatOpen: boolean;
   setChatOpen: (open: boolean) => void;
   onEdit: () => void;
+  onChangeDraft: (draft: SiteDraft) => void;
 }) {
   const accent = draft.primaryColor || "#b58a72";
   const [publishOpen, setPublishOpen] = useState(false);
+  const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
+  const [mediaEditor, setMediaEditor] = useState<"hero" | "logo" | null>(null);
   const [packageConfig, setPackageConfig] = useState<WedgePackageConfig>(
     DEFAULT_WEDGE_PACKAGE,
   );
@@ -1006,6 +1098,9 @@ function PreviewShell({
     fontFamily: `${draft.bodyFont}, Arial, sans-serif`,
   };
   const headingStyle = { fontFamily: `${draft.headingFont}, Georgia, serif` };
+  const updatePreview = <K extends keyof SiteDraft>(key: K, value: SiteDraft[K]) =>
+    onChangeDraft({ ...draft, [key]: value });
+  const effectiveYear = new Date().getFullYear();
   return (
     <section className="mx-auto max-w-7xl px-4 py-7 sm:px-6">
       <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-white/10 bg-[#151b1f] p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1017,7 +1112,10 @@ function PreviewShell({
             Choose a publishing address when your design is ready.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => setDevice(device === "desktop" ? "mobile" : "desktop")} className="rounded-full border border-white/15 px-4 py-2 text-sm">
+            {device === "desktop" ? "Mobile view" : "Desktop view"}
+          </button>
           <button
             onClick={onEdit}
             className="rounded-full border border-white/15 px-4 py-2 text-sm"
@@ -1091,8 +1189,37 @@ function PreviewShell({
           </article>
         </div>
       )}
+      {(mediaEditor === "hero" || mediaEditor === "logo") && (
+        <div className="mb-4 rounded-3xl border border-[#D2AA62]/30 bg-[#161E22] p-5">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="font-bold text-[#F1DFBC]">Adjust {mediaEditor === "hero" ? "main picture" : "logo"}</p>
+              <p className="mt-1 text-xs text-white/45">Changes are visible immediately and saved privately in this browser.</p>
+            </div>
+            <button onClick={() => setMediaEditor(null)} className="rounded-full bg-[#D2AA62] px-4 py-2 text-sm font-bold text-[#0D1316]">Done editing</button>
+          </div>
+          {mediaEditor === "hero" ? (
+            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Range label="Zoom" value={draft.heroZoom} min={50} max={200} suffix="%" onChange={(value) => updatePreview("heroZoom", value)} />
+              <Range label="Horizontal position" value={draft.heroX} min={0} max={100} suffix="%" onChange={(value) => updatePreview("heroX", value)} />
+              <Range label="Vertical position" value={draft.heroY} min={0} max={100} suffix="%" onChange={(value) => updatePreview("heroY", value)} />
+              <label className="text-xs text-white/55">Fit mode<select value={draft.heroFit} onChange={(event) => updatePreview("heroFit", event.target.value as "cover" | "contain")} className={inputClass}><option value="cover">Cover area</option><option value="contain">Show full picture</option></select></label>
+              <button onClick={() => onChangeDraft({ ...draft, heroZoom: 100, heroX: 50, heroY: 50, heroFit: "cover" })} className="rounded-full border border-white/15 px-4 py-2 text-xs text-white/60">Reset picture</button>
+            </div>
+          ) : (
+            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Range label="Logo size" value={draft.logoSize} min={36} max={180} suffix="px" onChange={(value) => updatePreview("logoSize", value)} />
+              <Range label="Horizontal offset" value={draft.logoX} min={-100} max={100} suffix="px" onChange={(value) => updatePreview("logoX", value)} />
+              <Range label="Vertical offset" value={draft.logoY} min={-40} max={80} suffix="px" onChange={(value) => updatePreview("logoY", value)} />
+              <Range label="Opacity" value={draft.logoOpacity} min={20} max={100} suffix="%" onChange={(value) => updatePreview("logoOpacity", value)} />
+              <label className="text-xs text-white/55">Logo shape<select value={draft.logoShape} onChange={(event) => updatePreview("logoShape", event.target.value as SiteDraft["logoShape"])} className={inputClass}><option value="original">Original</option><option value="rounded">Rounded</option><option value="circle">Circle</option></select></label>
+              <button onClick={() => onChangeDraft({ ...draft, logoSize: 72, logoX: 0, logoY: 0, logoOpacity: 100, logoShape: "original" })} className="rounded-full border border-white/15 px-4 py-2 text-xs text-white/60">Reset logo</button>
+            </div>
+          )}
+        </div>
+      )}
       <div
-        className="relative min-h-[720px] overflow-hidden rounded-[2rem] shadow-2xl"
+        className={`relative mx-auto min-h-[720px] overflow-hidden rounded-[2rem] shadow-2xl transition-all ${device === "mobile" ? "max-w-[430px]" : "max-w-none"}`}
         style={siteStyle}
       >
         {draft.watermark && draft.photos[0] && (
@@ -1103,9 +1230,10 @@ function PreviewShell({
         )}
         <div className="relative z-10">
           <header className="flex flex-col gap-4 border-b border-current/10 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
-            <strong className="text-xl" style={headingStyle}>
-              {draft.businessName || "Your Business"}
-            </strong>
+            <div className="flex items-center gap-3">
+              {draft.logo && <button onClick={() => setMediaEditor("logo")} className="relative rounded-lg outline-none ring-offset-2 hover:ring-2 hover:ring-current/25" title="Adjust logo"><img src={draft.logo} alt={`${draft.businessName || "Business"} logo`} className={`object-contain ${draft.logoShape === "circle" ? "rounded-full" : draft.logoShape === "rounded" ? "rounded-xl" : ""}`} style={{ width: draft.logoSize, height: draft.logoSize, opacity: draft.logoOpacity / 100, transform: `translate(${draft.logoX}px, ${draft.logoY}px)` }} /><span className="absolute -bottom-2 left-1/2 -translate-x-1/2 rounded bg-black/75 px-2 py-1 text-[9px] text-white opacity-0 hover:opacity-100">Adjust</span></button>}
+              <strong className="text-xl" style={headingStyle}>{draft.businessName || "Your Business"}</strong>
+            </div>
             <nav className="flex gap-5 text-sm">
               {(["home", "offerings", "contact"] as PreviewPage[]).map(
                 (item) => (
@@ -1157,16 +1285,18 @@ function PreviewShell({
                     </a>
                   </div>
                 </div>
-                <div
-                  className="min-h-[340px] bg-[#e8ddd3] bg-cover bg-center"
+                <button
+                  onClick={() => draft.photos[0] && setMediaEditor("hero")}
+                  aria-label="Adjust main picture"
+                  className="relative min-h-[340px] overflow-hidden bg-[#e8ddd3] text-left"
                   style={
                     draft.photos[0]
-                      ? { backgroundImage: `url(${draft.photos[0]})` }
+                      ? { backgroundImage: `url(${draft.photos[0]})`, backgroundRepeat: "no-repeat", backgroundSize: draft.heroFit === "cover" ? `${draft.heroZoom}%` : "contain", backgroundPosition: `${draft.heroX}% ${draft.heroY}%` }
                       : {
                           background: `linear-gradient(135deg,${accent}66,#eadfd5)`,
                         }
                   }
-                />
+                >{draft.photos[0] && <span className="absolute bottom-4 right-4 rounded-full bg-black/70 px-4 py-2 text-xs font-bold text-white">Adjust main picture</span>}</button>
               </div>
               <div className="grid gap-4 border-t border-current/10 px-8 py-8 sm:grid-cols-3 sm:px-14">
                 <Info title="Opening hours" value={draft.hours} />
@@ -1317,6 +1447,26 @@ function PreviewShell({
               </div>
             </div>
           )}
+          {page === "privacy" && (
+            <div className="mx-auto max-w-4xl px-8 py-12 sm:px-14">
+              <p className="text-xs font-bold uppercase tracking-[.24em]" style={{ color: accent }}>YOUR INFORMATION</p>
+              <h1 className="mt-4 text-4xl font-bold" style={headingStyle}>Privacy Policy</h1>
+              <p className="mt-3 text-sm opacity-55">Effective and last updated: {new Date().toLocaleDateString("en-MY", { day: "numeric", month: "long", year: "numeric" })}</p>
+              <div className="mt-8 space-y-6 leading-7 opacity-75">
+                <p><b>{draft.businessName || "This business"}</b> respects your privacy. This policy explains how information provided through this website, WhatsApp enquiries and contact links may be handled.</p>
+                <section><h2 className="font-bold opacity-100">Information we receive</h2><p>We may receive your name, telephone number, enquiry details and any information you choose to send when contacting {draft.businessName || "the business"}.</p></section>
+                <section><h2 className="font-bold opacity-100">How information is used</h2><p>Information is used to respond to enquiries, arrange bookings or orders, provide requested services and maintain appropriate business records.</p></section>
+                <section><h2 className="font-bold opacity-100">Third-party services</h2><p>This website may link to WhatsApp, Facebook, Instagram and other services. Their own privacy terms apply when you continue to those platforms.</p></section>
+                <section><h2 className="font-bold opacity-100">Contact and your choices</h2><p>To ask about, correct or request deletion of information, contact {draft.businessName || "the business"}{draft.phone ? ` at ${draft.phone}` : draft.whatsapp ? ` through WhatsApp at ${draft.whatsapp}` : " using the Contact Us page"}.</p></section>
+                {draft.privacyExtra && <section><h2 className="font-bold opacity-100">Additional information</h2><p className="whitespace-pre-wrap">{draft.privacyExtra}</p></section>}
+                <p className="rounded-2xl border border-current/10 p-4 text-sm">Wedge Works provides the website technology. {draft.businessName || "The merchant"} remains responsible for its customer-information practices.</p>
+              </div>
+            </div>
+          )}
+          <footer className="border-t border-current/10 px-6 py-7 text-sm opacity-65 sm:flex sm:items-center sm:justify-between">
+            <p>© {effectiveYear} {draft.businessName || "Your Business"}. All rights reserved.</p>
+            <div className="mt-3 flex flex-wrap gap-4 sm:mt-0"><button onClick={() => setPage("privacy")} className="underline underline-offset-4">Privacy Policy</button><button onClick={() => setPage("contact")} className="underline underline-offset-4">Contact Us</button><a href="https://wedge-works.com" target="_blank" rel="noreferrer">Powered by Wedge Works</a></div>
+          </footer>
           <button
             onClick={() => setChatOpen(!chatOpen)}
             className="absolute bottom-6 right-6 rounded-full px-5 py-4 font-bold text-white shadow-xl"
@@ -1451,6 +1601,28 @@ function ColorField({
         />
         <span className="text-xs uppercase text-white/45">{value}</span>
       </span>
+    </label>
+  );
+}
+function Range({
+  label,
+  value,
+  min,
+  max,
+  suffix,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  suffix: string;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <label className="block text-xs text-white/55">
+      <span className="flex justify-between gap-3"><span>{label}</span><b className="text-[#F1DFBC]">{value}{suffix}</b></span>
+      <input type="range" min={min} max={max} value={value} onChange={(event) => onChange(Number(event.target.value))} className="mt-3 w-full accent-[#D2AA62]" />
     </label>
   );
 }
