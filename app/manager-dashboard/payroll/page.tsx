@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { calculateMalaysiaStatutory } from "../../lib/malaysiaStatutory";
 
 type EmployeePayrollDefaults = {
   basicSalary?: number;
@@ -40,8 +41,11 @@ type PayrollRecord = {
   allowanceB: number;
   allowanceC: number;
   epfDeduction: number;
+  epfEmployerContribution?: number;
   socsoDeduction: number;
+  socsoEmployerContribution?: number;
   eisDeduction: number;
+  eisEmployerContribution?: number;
   taxDeduction: number;
   otherDeduction: number;
   otHours: number;
@@ -184,11 +188,12 @@ export default function PayrollPage() {
     const otAmount = parseAmount(form.otHours) * parseAmount(form.otRate);
     const totalAllowances = allowanceA + allowanceB + allowanceC;
     const grossPay = basicSalary + totalAllowances + otAmount;
+    const statutory = calculateMalaysiaStatutory(basicSalary + totalAllowances, grossPay);
     const totalDeductions =
-      parseAmount(form.epfDeduction) +
-      parseAmount(form.socsoDeduction) +
-      parseAmount(form.eisDeduction) +
-      parseAmount(form.taxDeduction) +
+      statutory.epfEmployee +
+      statutory.socsoEmployee +
+      statutory.eisEmployee +
+      statutory.pcbEstimate +
       parseAmount(form.otherDeduction);
 
     return {
@@ -197,6 +202,7 @@ export default function PayrollPage() {
       grossPay,
       totalDeductions,
       netPay: grossPay - totalDeductions,
+      statutory,
     };
   }, [form]);
 
@@ -402,10 +408,13 @@ export default function PayrollPage() {
       allowanceB: parseAmount(form.allowanceB),
       allowanceCLabel: cleanLabel(form.allowanceCLabel, "Allowance C"),
       allowanceC: parseAmount(form.allowanceC),
-      epfDeduction: parseAmount(form.epfDeduction),
-      socsoDeduction: parseAmount(form.socsoDeduction),
-      eisDeduction: parseAmount(form.eisDeduction),
-      taxDeduction: parseAmount(form.taxDeduction),
+      epfDeduction: calculations.statutory.epfEmployee,
+      epfEmployerContribution: calculations.statutory.epfEmployer,
+      socsoDeduction: calculations.statutory.socsoEmployee,
+      socsoEmployerContribution: calculations.statutory.socsoEmployer,
+      eisDeduction: calculations.statutory.eisEmployee,
+      eisEmployerContribution: calculations.statutory.eisEmployer,
+      taxDeduction: calculations.statutory.pcbEstimate,
       otherDeduction: parseAmount(form.otherDeduction),
       otHours: parseAmount(form.otHours),
       otRate: parseAmount(form.otRate),
@@ -642,12 +651,13 @@ export default function PayrollPage() {
               </div>
 
               <SectionTitle title="Statutory / Other Deductions" />
-              <div className="grid gap-4 sm:grid-cols-2">
-                <MoneyField label="EPF Deduction" value={form.epfDeduction} onChange={(value) => updateField("epfDeduction", value)} />
-                <MoneyField label="SOCSO Deduction" value={form.socsoDeduction} onChange={(value) => updateField("socsoDeduction", value)} />
-                <MoneyField label="EIS Deduction" value={form.eisDeduction} onChange={(value) => updateField("eisDeduction", value)} />
-                <MoneyField label="Tax Deduction" value={form.taxDeduction} onChange={(value) => updateField("taxDeduction", value)} />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <StatutoryCard label="EPF" employee={calculations.statutory.epfEmployee} employer={calculations.statutory.epfEmployer} />
+                <StatutoryCard label="SOCSO + SKBBK" employee={calculations.statutory.socsoEmployee} employer={calculations.statutory.socsoEmployer} />
+                <StatutoryCard label="EIS" employee={calculations.statutory.eisEmployee} employer={calculations.statutory.eisEmployer} />
+                <StatutoryCard label="PCB estimate" employee={calculations.statutory.pcbEstimate} />
               </div>
+              <p className="mt-3 text-xs leading-5 text-white/40">Auto-calculated for Malaysian employees below 60 using current statutory bands. PCB is an annualised estimate and must be reviewed against the employee&apos;s accumulated HASiL payroll data before issue.</p>
               <div className="mt-4">
                 <MoneyField label="Other Deduction" value={form.otherDeduction} onChange={(value) => updateField("otherDeduction", value)} />
               </div>
@@ -837,6 +847,10 @@ export default function PayrollPage() {
 
 function SectionTitle({ title }: { title: string }) {
   return <h3 className="mb-3 mt-7 text-base font-bold text-[#f0dfbd]">{title}</h3>;
+}
+
+function StatutoryCard({ label, employee, employer }: { label: string; employee: number; employer?: number }) {
+  return <div className="rounded-2xl border border-white/10 bg-[#101416] p-4"><p className="font-semibold text-[#f0dfbd]">{label}</p><p className="mt-2 text-sm text-white/55">Employee: <span className="font-semibold text-white/80">{money(employee)}</span></p>{employer !== undefined && <p className="mt-1 text-sm text-white/55">Employer: <span className="font-semibold text-white/80">{money(employer)}</span></p>}</div>;
 }
 
 function SelectField({
