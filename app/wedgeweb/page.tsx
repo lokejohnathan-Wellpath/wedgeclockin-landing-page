@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { type V5Decision } from "./engine/v5DesignEngine";
 import { interpretV6 } from "./engine/v6DesignEngine";
@@ -24,6 +24,13 @@ type Offering = { name: string; price: string; description: string };
 type SiteDraft = {
   businessName: string;
   industry: string;
+  tagline: string;
+  pageLabel: string;
+  heroTitle: string;
+  primaryCta: string;
+  secondaryCta: string;
+  heroLayout: "text-left" | "image-left" | "background" | "image-top" | "text-top";
+  heroTextAlign: "left" | "center" | "right";
   description: string;
   whatsapp: string;
   phone: string;
@@ -49,11 +56,17 @@ type SiteDraft = {
   heroX: number;
   heroY: number;
   heroFit: "cover" | "contain";
+  heroMobileZoom: number;
+  heroMobileX: number;
+  heroMobileY: number;
   logoSize: number;
   logoX: number;
   logoY: number;
   logoOpacity: number;
   logoShape: "original" | "rounded" | "circle";
+  logoMobileSize: number;
+  logoMobileX: number;
+  logoMobileY: number;
   useStandardPrivacy: boolean;
   privacyAccepted: boolean;
   privacyExtra: string;
@@ -65,6 +78,13 @@ const STORAGE_KEY = "wedgeweb_draft_v1";
 const defaultDraft: SiteDraft = {
   businessName: "",
   industry: "Salon & Spa",
+  tagline: "",
+  pageLabel: "Services",
+  heroTitle: "",
+  primaryCta: "Explore",
+  secondaryCta: "WhatsApp Us",
+  heroLayout: "text-left",
+  heroTextAlign: "left",
   description: "",
   whatsapp: "",
   phone: "",
@@ -90,11 +110,17 @@ const defaultDraft: SiteDraft = {
   heroX: 50,
   heroY: 50,
   heroFit: "cover",
+  heroMobileZoom: 100,
+  heroMobileX: 50,
+  heroMobileY: 50,
   logoSize: 72,
   logoX: 0,
   logoY: 0,
   logoOpacity: 100,
   logoShape: "original",
+  logoMobileSize: 64,
+  logoMobileX: 0,
+  logoMobileY: 0,
   useStandardPrivacy: true,
   privacyAccepted: false,
   privacyExtra: "",
@@ -265,7 +291,15 @@ export default function WedgeWebPage() {
     return () => window.clearTimeout(timer);
   }, [draft, loaded]);
 
-  const words = industryWords[draft.industry] || industryWords.Other;
+  const inferredProfile = useMemo(
+    () =>
+      inferBusinessProfile(
+        `${draft.businessName} ${draft.tagline} ${draft.description} ${draft.offerings.map((item) => item.name).join(" ")}`,
+      ),
+    [draft.businessName, draft.tagline, draft.description, draft.offerings],
+  );
+  const inferredWords = industryWords[inferredProfile.category] || industryWords.Other;
+  const words = { ...inferredWords, page: draft.pageLabel || inferredWords.page };
   const complete = Boolean(
     draft.businessName.trim() &&
       draft.description.trim() &&
@@ -374,7 +408,7 @@ export default function WedgeWebPage() {
   function applyDesignPrompt(event: FormEvent) {
     event.preventDefault();
     if (!designPrompt.trim()) return;
-    const decision = interpretV6(designPrompt, draft.industry, draft, {
+    const decision = interpretV6(designPrompt, inferredProfile.category, draft, {
       lastStyle: draft.styleName,
       confirmedTerms,
     });
@@ -406,7 +440,7 @@ export default function WedgeWebPage() {
     recordFeedback({
       instruction: designPrompt,
       suggestedStyle: designDecision.detectedStyle,
-      industry: draft.industry,
+      industry: inferredProfile.category,
       confirmedAt: new Date().toISOString(),
     });
     const termKey = designPrompt
@@ -749,12 +783,24 @@ export default function WedgeWebPage() {
                 onChange={(value) => update("businessName", value)}
                 placeholder="Serenity Spa"
               />
-              <Select
-                label="Business type"
-                value={draft.industry}
-                onChange={(value) => update("industry", value)}
-                options={Object.keys(industryWords)}
+              <Field
+                label="Customer tagline"
+                value={draft.tagline}
+                onChange={(value) => update("tagline", value)}
+                placeholder="Confidence starts with feeling good"
               />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field
+                label="Products / services page name"
+                value={draft.pageLabel}
+                onChange={(value) => update("pageLabel", value)}
+                placeholder={inferredWords.page}
+              />
+              <div className="rounded-2xl border border-[#5E8983]/25 bg-[#5E8983]/8 p-4 text-xs leading-5 text-white/55">
+                <span className="font-semibold text-[#B9D7D2]">Smart profile:</span>{" "}
+                {inferredProfile.category} · {inferredProfile.confidence}% confidence. Suggested page: {inferredWords.page}.
+              </div>
             </div>
             <label className="block text-sm text-white/65">
               Introduce your business
@@ -766,6 +812,15 @@ export default function WedgeWebPage() {
                 className={inputClass}
               />
             </label>
+            <div className="rounded-3xl border border-white/10 bg-black/10 p-5">
+              <h2 className="font-bold text-[#F1DFBC]">Homepage hero wording</h2>
+              <p className="mt-1 text-xs text-white/40">Every visible hero phrase can also be amended from Live Preview.</p>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <Field label="Main headline" value={draft.heroTitle} onChange={(value) => update("heroTitle", value)} placeholder={`Welcome to ${draft.businessName || "your business"}.`} />
+                <Field label="Main button wording" value={draft.primaryCta} onChange={(value) => update("primaryCta", value)} placeholder={`Explore ${words.page}`} />
+                <Field label="Second button wording" value={draft.secondaryCta} onChange={(value) => update("secondaryCta", value)} placeholder="WhatsApp Us" />
+              </div>
+            </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field
                 label="WhatsApp number"
@@ -1078,6 +1133,15 @@ function PreviewShell({
   const [publishOpen, setPublishOpen] = useState(false);
   const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
   const [mediaEditor, setMediaEditor] = useState<"hero" | "logo" | null>(null);
+  const [heroContentOpen, setHeroContentOpen] = useState(false);
+  const gesture = useRef<{
+    kind: "hero" | "logo" | "logo-resize";
+    startX: number;
+    startY: number;
+    valueX: number;
+    valueY: number;
+    size: number;
+  } | null>(null);
   const [packageConfig, setPackageConfig] = useState<WedgePackageConfig>(
     DEFAULT_WEDGE_PACKAGE,
   );
@@ -1101,6 +1165,88 @@ function PreviewShell({
   const updatePreview = <K extends keyof SiteDraft>(key: K, value: SiteDraft[K]) =>
     onChangeDraft({ ...draft, [key]: value });
   const effectiveYear = new Date().getFullYear();
+  const heroZoom = device === "mobile" ? draft.heroMobileZoom : draft.heroZoom;
+  const heroX = device === "mobile" ? draft.heroMobileX : draft.heroX;
+  const heroY = device === "mobile" ? draft.heroMobileY : draft.heroY;
+  const logoSize = device === "mobile" ? draft.logoMobileSize : draft.logoSize;
+  const logoX = device === "mobile" ? draft.logoMobileX : draft.logoX;
+  const logoY = device === "mobile" ? draft.logoMobileY : draft.logoY;
+
+  function beginGesture(
+    event: React.PointerEvent<HTMLElement>,
+    kind: "hero" | "logo" | "logo-resize",
+  ) {
+    if ((kind === "hero" && mediaEditor !== "hero") || ((kind === "logo" || kind === "logo-resize") && mediaEditor !== "logo")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    gesture.current = { kind, startX: event.clientX, startY: event.clientY, valueX: kind === "hero" ? heroX : logoX, valueY: kind === "hero" ? heroY : logoY, size: logoSize };
+  }
+
+  function moveGesture(event: React.PointerEvent<HTMLElement>) {
+    const active = gesture.current;
+    if (!active) return;
+    event.preventDefault();
+    const dx = event.clientX - active.startX;
+    const dy = event.clientY - active.startY;
+    if (active.kind === "hero") {
+      const rect = event.currentTarget.getBoundingClientRect();
+      const nextX = Math.max(0, Math.min(100, active.valueX + (dx / rect.width) * 100));
+      const nextY = Math.max(0, Math.min(100, active.valueY + (dy / rect.height) * 100));
+      onChangeDraft({ ...draft, ...(device === "mobile" ? { heroMobileX: nextX, heroMobileY: nextY } : { heroX: nextX, heroY: nextY }) });
+    } else if (active.kind === "logo") {
+      onChangeDraft({ ...draft, ...(device === "mobile" ? { logoMobileX: active.valueX + dx, logoMobileY: active.valueY + dy } : { logoX: active.valueX + dx, logoY: active.valueY + dy }) });
+    } else {
+      const nextSize = Math.max(32, Math.min(220, active.size + Math.max(dx, dy)));
+      updatePreview(device === "mobile" ? "logoMobileSize" : "logoSize", nextSize);
+    }
+  }
+
+  function endGesture(event: React.PointerEvent<HTMLElement>) {
+    if (gesture.current) event.currentTarget.releasePointerCapture(event.pointerId);
+    gesture.current = null;
+  }
+
+  function zoomHero(event: React.WheelEvent<HTMLElement>) {
+    if (mediaEditor !== "hero") return;
+    event.preventDefault();
+    const next = Math.max(50, Math.min(300, heroZoom + (event.deltaY < 0 ? 8 : -8)));
+    updatePreview(device === "mobile" ? "heroMobileZoom" : "heroZoom", next);
+  }
+  const textAlignment =
+    draft.heroTextAlign === "center"
+      ? "items-center text-center"
+      : draft.heroTextAlign === "right"
+        ? "items-end text-right"
+        : "items-start text-left";
+  const heroTextBlock = (
+    <div className={`relative z-10 flex w-full flex-col justify-center px-8 py-14 sm:px-14 ${textAlignment}`}>
+      <p className="text-xs font-bold uppercase tracking-[.24em]" style={{ color: accent }}>{draft.tagline || "Made for you"}</p>
+      <h1 className="mt-5 text-4xl font-bold leading-tight sm:text-6xl">{draft.heroTitle || `Welcome to ${draft.businessName || "your new website"}.`}</h1>
+      <p className="mt-6 max-w-xl text-lg leading-8 opacity-75">{draft.description || words.fallback}</p>
+      <div className={`mt-8 flex flex-wrap gap-3 ${draft.heroTextAlign === "center" ? "justify-center" : draft.heroTextAlign === "right" ? "justify-end" : "justify-start"}`}>
+        <button onClick={() => setPage("offerings")} className="rounded-full px-6 py-3 font-bold text-white" style={{ backgroundColor: accent }}>{draft.primaryCta || `Explore ${words.page}`}</button>
+        <a href={whatsappUrl} target="_blank" className="rounded-full border border-current/20 px-6 py-3 font-semibold">{draft.secondaryCta || "WhatsApp Us"}</a>
+      </div>
+      {heroContentOpen && <span className="mt-5 rounded-full bg-black/70 px-3 py-1 text-[10px] text-white">Edit wording in the panel above</span>}
+    </div>
+  );
+  const heroImageBlock = (
+    <button
+      onClick={() => draft.photos[0] && setMediaEditor("hero")}
+      onPointerDown={(event) => beginGesture(event, "hero")}
+      onPointerMove={moveGesture}
+      onPointerUp={endGesture}
+      onPointerCancel={endGesture}
+      onWheel={zoomHero}
+      aria-label="Adjust main picture"
+      className={`relative h-full min-h-[340px] w-full touch-none overflow-hidden bg-[#e8ddd3] text-left ${mediaEditor === "hero" ? "cursor-move ring-4 ring-inset ring-[#D2AA62]" : ""}`}
+      style={!draft.photos[0] ? { background: `linear-gradient(135deg,${accent}66,#eadfd5)` } : undefined}
+    >
+      {draft.photos[0] && <img src={draft.photos[0]} draggable={false} alt="Main business" className="pointer-events-none absolute inset-0 h-full w-full select-none" style={{ objectFit: draft.heroFit, objectPosition: `${heroX}% ${heroY}%`, transform: `scale(${heroZoom / 100})`, transformOrigin: `${heroX}% ${heroY}%` }} />}
+      {draft.photos[0] && <span className="absolute bottom-4 right-4 z-20 rounded-full bg-black/75 px-4 py-2 text-xs font-bold text-white">{mediaEditor === "hero" ? "Drag image · wheel to zoom" : "Click to adjust"}</span>}
+    </button>
+  );
   return (
     <section className="mx-auto max-w-7xl px-4 py-7 sm:px-6">
       <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-white/10 bg-[#151b1f] p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1127,6 +1273,15 @@ function PreviewShell({
               Adjust Main Picture
             </button>
           )}
+          <button
+            onClick={() => {
+              setPage("home");
+              setHeroContentOpen(!heroContentOpen);
+            }}
+            className="rounded-full border border-[#D2AA62]/60 bg-[#D2AA62]/10 px-4 py-2 text-sm text-[#F1DFBC]"
+          >
+            Edit Hero Words & Layout
+          </button>
           {draft.logo && (
             <button
               onClick={() => setMediaEditor("logo")}
@@ -1213,28 +1368,45 @@ function PreviewShell({
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="font-bold text-[#F1DFBC]">Adjust {mediaEditor === "hero" ? "main picture" : "logo"}</p>
-              <p className="mt-1 text-xs text-white/45">Changes are visible immediately and saved privately in this browser.</p>
+              <p className="mt-1 text-xs text-white/45">Editing {device} view · drag directly on the selected image, use the mouse wheel to zoom the hero, or drag the logo corner handle to resize.</p>
             </div>
             <button onClick={() => setMediaEditor(null)} className="rounded-full bg-[#D2AA62] px-4 py-2 text-sm font-bold text-[#0D1316]">Done editing</button>
           </div>
           {mediaEditor === "hero" ? (
             <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <Range label="Zoom" value={draft.heroZoom} min={50} max={200} suffix="%" onChange={(value) => updatePreview("heroZoom", value)} />
-              <Range label="Horizontal position" value={draft.heroX} min={0} max={100} suffix="%" onChange={(value) => updatePreview("heroX", value)} />
-              <Range label="Vertical position" value={draft.heroY} min={0} max={100} suffix="%" onChange={(value) => updatePreview("heroY", value)} />
+              <Range label="Fine zoom" value={heroZoom} min={50} max={300} suffix="%" onChange={(value) => updatePreview(device === "mobile" ? "heroMobileZoom" : "heroZoom", value)} />
+              <Range label="Horizontal position" value={heroX} min={0} max={100} suffix="%" onChange={(value) => updatePreview(device === "mobile" ? "heroMobileX" : "heroX", value)} />
+              <Range label="Vertical position" value={heroY} min={0} max={100} suffix="%" onChange={(value) => updatePreview(device === "mobile" ? "heroMobileY" : "heroY", value)} />
               <label className="text-xs text-white/55">Fit mode<select value={draft.heroFit} onChange={(event) => updatePreview("heroFit", event.target.value as "cover" | "contain")} className={inputClass}><option value="cover">Cover area</option><option value="contain">Show full picture</option></select></label>
-              <button onClick={() => onChangeDraft({ ...draft, heroZoom: 100, heroX: 50, heroY: 50, heroFit: "cover" })} className="rounded-full border border-white/15 px-4 py-2 text-xs text-white/60">Reset picture</button>
+              <button onClick={() => onChangeDraft({ ...draft, ...(device === "mobile" ? { heroMobileZoom: 100, heroMobileX: 50, heroMobileY: 50 } : { heroZoom: 100, heroX: 50, heroY: 50 }), heroFit: "cover" })} className="rounded-full border border-white/15 px-4 py-2 text-xs text-white/60">Reset {device} picture</button>
             </div>
           ) : (
             <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <Range label="Logo size" value={draft.logoSize} min={36} max={180} suffix="px" onChange={(value) => updatePreview("logoSize", value)} />
-              <Range label="Horizontal offset" value={draft.logoX} min={-100} max={100} suffix="px" onChange={(value) => updatePreview("logoX", value)} />
-              <Range label="Vertical offset" value={draft.logoY} min={-40} max={80} suffix="px" onChange={(value) => updatePreview("logoY", value)} />
+              <Range label="Logo size" value={logoSize} min={32} max={220} suffix="px" onChange={(value) => updatePreview(device === "mobile" ? "logoMobileSize" : "logoSize", value)} />
+              <Range label="Horizontal offset" value={logoX} min={-150} max={150} suffix="px" onChange={(value) => updatePreview(device === "mobile" ? "logoMobileX" : "logoX", value)} />
+              <Range label="Vertical offset" value={logoY} min={-60} max={100} suffix="px" onChange={(value) => updatePreview(device === "mobile" ? "logoMobileY" : "logoY", value)} />
               <Range label="Opacity" value={draft.logoOpacity} min={20} max={100} suffix="%" onChange={(value) => updatePreview("logoOpacity", value)} />
               <label className="text-xs text-white/55">Logo shape<select value={draft.logoShape} onChange={(event) => updatePreview("logoShape", event.target.value as SiteDraft["logoShape"])} className={inputClass}><option value="original">Original</option><option value="rounded">Rounded</option><option value="circle">Circle</option></select></label>
-              <button onClick={() => onChangeDraft({ ...draft, logoSize: 72, logoX: 0, logoY: 0, logoOpacity: 100, logoShape: "original" })} className="rounded-full border border-white/15 px-4 py-2 text-xs text-white/60">Reset logo</button>
+              <button onClick={() => onChangeDraft({ ...draft, ...(device === "mobile" ? { logoMobileSize: 64, logoMobileX: 0, logoMobileY: 0 } : { logoSize: 72, logoX: 0, logoY: 0 }), logoOpacity: 100, logoShape: "original" })} className="rounded-full border border-white/15 px-4 py-2 text-xs text-white/60">Reset {device} logo</button>
             </div>
           )}
+        </div>
+      )}
+      {heroContentOpen && (
+        <div className="mb-4 rounded-3xl border border-[#D2AA62]/30 bg-[#161E22] p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div><p className="font-bold text-[#F1DFBC]">Hero words and layout</p><p className="mt-1 text-xs text-white/45">All changes appear immediately in the preview.</p></div>
+            <button onClick={() => setHeroContentOpen(false)} className="rounded-full bg-[#D2AA62] px-4 py-2 text-sm font-bold text-[#0D1316]">Done editing</button>
+          </div>
+          <div className="mt-5 grid gap-4 md:grid-cols-2">
+            <Field label="Tagline" value={draft.tagline} onChange={(value) => updatePreview("tagline", value)} placeholder="Confidence starts with feeling good" />
+            <Field label="Main headline" value={draft.heroTitle} onChange={(value) => updatePreview("heroTitle", value)} placeholder={`Welcome to ${draft.businessName || "your business"}.`} />
+            <div className="md:col-span-2"><label className="block text-sm text-white/65">Description<textarea value={draft.description} onChange={(event) => updatePreview("description", event.target.value)} rows={3} className={inputClass} /></label></div>
+            <Field label="Main button" value={draft.primaryCta} onChange={(value) => updatePreview("primaryCta", value)} placeholder={`Explore ${words.page}`} />
+            <Field label="Second button" value={draft.secondaryCta} onChange={(value) => updatePreview("secondaryCta", value)} placeholder="WhatsApp Us" />
+            <label className="block text-sm text-white/65">Hero layout<select value={draft.heroLayout} onChange={(event) => updatePreview("heroLayout", event.target.value as SiteDraft["heroLayout"])} className={inputClass}><option value="text-left">Text left · image right</option><option value="image-left">Image left · text right</option><option value="background">Full image · text overlay</option><option value="image-top">Image above · text below</option><option value="text-top">Text above · image below</option></select></label>
+            <label className="block text-sm text-white/65">Text alignment<select value={draft.heroTextAlign} onChange={(event) => updatePreview("heroTextAlign", event.target.value as SiteDraft["heroTextAlign"])} className={inputClass}><option value="left">Left</option><option value="center">Centre</option><option value="right">Right</option></select></label>
+          </div>
         </div>
       )}
       <div
@@ -1248,9 +1420,9 @@ function PreviewShell({
           />
         )}
         <div className="relative z-10">
-          <header className="flex flex-col gap-4 border-b border-current/10 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
+          <header className={`flex gap-4 border-b border-current/10 px-6 py-5 ${device === "mobile" ? "flex-col" : "flex-col sm:flex-row sm:items-center sm:justify-between"}`}>
             <div className="flex items-center gap-3">
-              {draft.logo && <button onClick={() => setMediaEditor("logo")} className="relative rounded-lg outline-none ring-offset-2 hover:ring-2 hover:ring-current/25" title="Adjust logo"><img src={draft.logo} alt={`${draft.businessName || "Business"} logo`} className={`object-contain ${draft.logoShape === "circle" ? "rounded-full" : draft.logoShape === "rounded" ? "rounded-xl" : ""}`} style={{ width: draft.logoSize, height: draft.logoSize, opacity: draft.logoOpacity / 100, transform: `translate(${draft.logoX}px, ${draft.logoY}px)` }} /><span className="absolute -bottom-2 left-1/2 -translate-x-1/2 rounded bg-black/75 px-2 py-1 text-[9px] text-white opacity-0 hover:opacity-100">Adjust</span></button>}
+              {draft.logo && <button onClick={() => setMediaEditor("logo")} onPointerDown={(event) => beginGesture(event, "logo")} onPointerMove={moveGesture} onPointerUp={endGesture} onPointerCancel={endGesture} className={`relative touch-none rounded-lg outline-none ring-offset-2 hover:ring-2 hover:ring-current/25 ${mediaEditor === "logo" ? "ring-2 ring-[#D2AA62]" : ""}`} title="Select and drag logo"><img src={draft.logo} draggable={false} alt={`${draft.businessName || "Business"} logo`} className={`pointer-events-none object-contain ${draft.logoShape === "circle" ? "rounded-full" : draft.logoShape === "rounded" ? "rounded-xl" : ""}`} style={{ width: logoSize, height: logoSize, opacity: draft.logoOpacity / 100, transform: `translate(${logoX}px, ${logoY}px)` }} />{mediaEditor === "logo" && <span onPointerDown={(event) => beginGesture(event, "logo-resize")} onPointerMove={moveGesture} onPointerUp={endGesture} onPointerCancel={endGesture} className="absolute -bottom-3 -right-3 z-20 flex h-7 w-7 cursor-nwse-resize touch-none items-center justify-center rounded-full border-2 border-white bg-[#D2AA62] text-xs font-black text-[#0D1316]">↘</span>}<span className="absolute -bottom-2 left-1/2 -translate-x-1/2 rounded bg-black/75 px-2 py-1 text-[9px] text-white opacity-0 hover:opacity-100">Drag to move</span></button>}
               <strong className="text-xl" style={headingStyle}>{draft.businessName || "Your Business"}</strong>
             </div>
             <nav className="flex gap-5 text-sm">
@@ -1273,50 +1445,21 @@ function PreviewShell({
           </header>
           {page === "home" && (
             <div>
-              <div className="grid min-h-[490px] lg:grid-cols-2">
-                <div className="flex flex-col justify-center px-8 py-14 sm:px-14">
-                  <p
-                    className="text-xs font-bold uppercase tracking-[.24em]"
-                    style={{ color: accent }}
-                  >
-                    {draft.industry}
-                  </p>
-                  <h1 className="mt-5 text-4xl font-bold leading-tight sm:text-6xl">
-                    Welcome to {draft.businessName || "your new website"}.
-                  </h1>
-                  <p className="mt-6 max-w-xl text-lg leading-8 opacity-65">
-                    {draft.description || words.fallback}
-                  </p>
-                  <div className="mt-8 flex flex-wrap gap-3">
-                    <button
-                      onClick={() => setPage("offerings")}
-                      className="rounded-full px-6 py-3 font-bold text-white"
-                      style={{ backgroundColor: accent }}
-                    >
-                      Explore {words.page}
-                    </button>
-                    <a
-                      href={whatsappUrl}
-                      target="_blank"
-                      className="rounded-full border border-current/15 px-6 py-3 font-semibold"
-                    >
-                      WhatsApp Us
-                    </a>
-                  </div>
+              {draft.heroLayout === "background" ? (
+                <div className="relative grid min-h-[560px] overflow-hidden">
+                  <div className="absolute inset-0">{heroImageBlock}</div>
+                  <div className="pointer-events-none absolute inset-0 z-[5] bg-gradient-to-r from-black/75 via-black/45 to-black/20" />
+                  <div className="relative z-10 flex text-white [&_a]:pointer-events-auto [&_button]:pointer-events-auto">{heroTextBlock}</div>
                 </div>
-                <button
-                  onClick={() => draft.photos[0] && setMediaEditor("hero")}
-                  aria-label="Adjust main picture"
-                  className="relative min-h-[340px] overflow-hidden bg-[#e8ddd3] text-left"
-                  style={
-                    draft.photos[0]
-                      ? { backgroundImage: `url(${draft.photos[0]})`, backgroundRepeat: "no-repeat", backgroundSize: draft.heroFit === "cover" ? `${draft.heroZoom}%` : "contain", backgroundPosition: `${draft.heroX}% ${draft.heroY}%` }
-                      : {
-                          background: `linear-gradient(135deg,${accent}66,#eadfd5)`,
-                        }
-                  }
-                >{draft.photos[0] && <span className="absolute bottom-4 right-4 rounded-full bg-black/70 px-4 py-2 text-xs font-bold text-white">Adjust main picture</span>}</button>
-              </div>
+              ) : draft.heroLayout === "image-top" ? (
+                <div className="grid min-h-[650px] grid-rows-[minmax(340px,1fr)_auto]">{heroImageBlock}{heroTextBlock}</div>
+              ) : draft.heroLayout === "text-top" ? (
+                <div className="grid min-h-[650px] grid-rows-[auto_minmax(340px,1fr)]">{heroTextBlock}{heroImageBlock}</div>
+              ) : (
+                <div className={`grid min-h-[490px] ${device === "desktop" ? "lg:grid-cols-2" : "grid-cols-1"}`}>
+                  {draft.heroLayout === "image-left" ? <>{heroImageBlock}{heroTextBlock}</> : <>{heroTextBlock}{heroImageBlock}</>}
+                </div>
+              )}
               <div className="grid gap-4 border-t border-current/10 px-8 py-8 sm:grid-cols-3 sm:px-14">
                 <Info title="Opening hours" value={draft.hours} />
                 <Info
@@ -1549,6 +1692,27 @@ function externalUrl(value: string) {
   } catch {
     return "";
   }
+}
+function inferBusinessProfile(value: string) {
+  const text = value.toLowerCase();
+  const profiles: Array<{ category: string; terms: string[] }> = [
+    { category: "Food & Beverage", terms: ["food", "restaurant", "cafe", "coffee", "menu", "sushi", "bakery", "catering"] },
+    { category: "Salon & Spa", terms: ["salon", "spa", "facial", "massage", "beauty", "hair", "nail"] },
+    { category: "Slimming & Wellness Centre", terms: ["slim", "wellness", "weight", "body contour", "health programme"] },
+    { category: "Pet Spa & Grooming", terms: ["pet", "groom", "dog", "cat", "animal"] },
+    { category: "Guest House & Homestay", terms: ["guest house", "guesthouse", "homestay", "room", "accommodation", "villa", "hotel"] },
+    { category: "Workshops & Classes", terms: ["workshop", "class", "course", "lesson", "training", "academy"] },
+    { category: "Home & Repair", terms: ["repair", "renovation", "plumb", "electric", "workshop", "mechanic"] },
+    { category: "Retail", terms: ["retail", "shop", "store", "product", "boutique", "fashion"] },
+    { category: "Professional Services", terms: ["consult", "account", "legal", "agency", "professional", "service"] },
+  ];
+  const scored = profiles
+    .map((profile) => ({ ...profile, score: profile.terms.filter((term) => text.includes(term)).length }))
+    .sort((a, b) => b.score - a.score);
+  const best = scored[0];
+  return best?.score
+    ? { category: best.category, confidence: Math.min(96, 68 + best.score * 9) }
+    : { category: "Other", confidence: text.trim().length > 30 ? 58 : 35 };
 }
 function Field({
   label,
