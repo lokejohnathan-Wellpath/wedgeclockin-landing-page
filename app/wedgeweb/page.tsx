@@ -1116,6 +1116,25 @@ function PreviewShell({
           <button onClick={() => setDevice(device === "desktop" ? "mobile" : "desktop")} className="rounded-full border border-white/15 px-4 py-2 text-sm">
             {device === "desktop" ? "Mobile view" : "Desktop view"}
           </button>
+          {draft.photos[0] && (
+            <button
+              onClick={() => {
+                setPage("home");
+                setMediaEditor("hero");
+              }}
+              className="rounded-full border border-[#5E8983]/60 bg-[#5E8983]/10 px-4 py-2 text-sm text-[#B9D7D2]"
+            >
+              Adjust Main Picture
+            </button>
+          )}
+          {draft.logo && (
+            <button
+              onClick={() => setMediaEditor("logo")}
+              className="rounded-full border border-[#5E8983]/60 bg-[#5E8983]/10 px-4 py-2 text-sm text-[#B9D7D2]"
+            >
+              Adjust Logo
+            </button>
+          )}
           <button
             onClick={onEdit}
             className="rounded-full border border-white/15 px-4 py-2 text-sm"
@@ -1469,13 +1488,13 @@ function PreviewShell({
           </footer>
           <button
             onClick={() => setChatOpen(!chatOpen)}
-            className="absolute bottom-6 right-6 rounded-full px-5 py-4 font-bold text-white shadow-xl"
+            className="absolute bottom-28 right-6 z-30 rounded-full px-5 py-4 font-bold text-white shadow-xl ring-4 ring-white/70"
             style={{ backgroundColor: accent }}
           >
             {chatOpen ? "Close" : "Ask us"}
           </button>
           {chatOpen && (
-            <div className="absolute bottom-24 right-6 w-[min(340px,calc(100%-3rem))] rounded-3xl bg-white p-5 shadow-2xl">
+            <div className="absolute bottom-48 right-6 z-30 w-[min(340px,calc(100%-3rem))] rounded-3xl bg-white p-5 shadow-2xl">
               <p className="font-bold">
                 Hi! Welcome to {draft.businessName || "our website"}.
               </p>
