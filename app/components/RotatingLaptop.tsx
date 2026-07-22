@@ -14,11 +14,9 @@ export default function RotatingLaptop() {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
     if (media.matches) return;
     let frame = 0;
-    let previous = performance.now();
     const animate = (now: number) => {
-      const delta = Math.min(32, now - previous);
-      previous = now;
-      setRotation((value) => (value + delta * 0.006) % 360);
+      setRotation(-13 + Math.sin(now / 5200) * 11);
+      setTilt(-6 + Math.sin(now / 6700) * 2.2);
       frame = requestAnimationFrame(animate);
     };
     frame = requestAnimationFrame(animate);
@@ -58,23 +56,26 @@ export default function RotatingLaptop() {
       onMouseLeave={() => setInteracting(false)}
       aria-label="Interactive rotating laptop showing the Wedge-CEO dashboard"
     >
-      <div className="absolute inset-x-[12%] bottom-[12%] h-10 rounded-[50%] bg-[#d2aa62]/20 blur-2xl" />
+      <div className="absolute inset-x-[12%] bottom-[15%] h-8 rounded-[50%] bg-[#d2aa62]/16 blur-2xl" />
       <div className="absolute inset-0 [perspective:1200px]">
         <div
-          className="absolute left-1/2 top-1/2 h-[250px] w-[390px] -translate-x-1/2 -translate-y-1/2 [transform-style:preserve-3d] transition-transform duration-100 sm:h-[310px] sm:w-[490px]"
+          className="absolute left-1/2 top-[46%] h-[235px] w-[375px] -translate-x-1/2 -translate-y-1/2 [transform-style:preserve-3d] transition-transform duration-100 sm:h-[300px] sm:w-[480px]"
           style={{ transform: `translate(-50%,-50%) rotateX(${tilt}deg) rotateY(${rotation}deg)` }}
         >
-          <div className="absolute inset-0 rounded-[18px] border-[9px] border-[#232a2e] bg-[#080d10] p-3 shadow-[0_45px_90px_rgba(0,0,0,.65)] [backface-visibility:hidden] sm:border-[12px]">
+          <div className="absolute inset-0 rounded-[14px] border-[7px] border-[#272e32] bg-[#080d10] p-2 shadow-[0_40px_90px_rgba(0,0,0,.62)] [backface-visibility:hidden] sm:border-[9px] sm:p-3">
+            <span className="absolute left-1/2 top-[2px] z-20 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-black ring-1 ring-white/10" />
+            <span className="pointer-events-none absolute inset-0 z-10 rounded-[10px] bg-[linear-gradient(125deg,rgba(255,255,255,.055),transparent_28%,transparent_70%,rgba(94,137,131,.04))]" />
             <CeoDashboard />
           </div>
           <div className="absolute inset-0 rounded-[18px] border border-white/10 bg-[linear-gradient(145deg,#242b2f,#0b0e10)] [backface-visibility:hidden] [transform:rotateY(180deg)_translateZ(2px)]">
             <div className="absolute left-1/2 top-1/2 h-10 w-10 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#d2aa62]/30 bg-[#d2aa62]/10" />
           </div>
-          <div className="absolute left-1/2 top-[98%] h-[150px] w-[440px] -translate-x-1/2 origin-top rounded-b-[24px] bg-[linear-gradient(180deg,#42494d,#171b1e)] shadow-[0_32px_55px_rgba(0,0,0,.5)] [transform:rotateX(73deg)] [transform-style:preserve-3d] sm:h-[185px] sm:w-[550px]">
-            <div className="absolute inset-x-[8%] top-[12%] grid h-[58%] grid-cols-12 gap-1 rounded-lg bg-[#111518] p-2 opacity-85">
+          <div className="absolute left-1/2 top-[98.5%] h-[105px] w-[410px] -translate-x-1/2 origin-top rounded-b-[18px] border-t border-white/15 bg-[linear-gradient(180deg,#4a5155,#1a1f22)] shadow-[0_28px_50px_rgba(0,0,0,.45)] [transform:rotateX(76deg)] [transform-style:preserve-3d] sm:h-[132px] sm:w-[525px]">
+            <div className="absolute inset-x-[10%] top-[10%] grid h-[55%] grid-cols-12 gap-[3px] rounded-md bg-[#131719] p-1.5 opacity-90">
               {Array.from({ length: 48 }).map((_, index) => <span key={index} className="rounded-[2px] border border-white/5 bg-[#30373b]" />)}
             </div>
-            <div className="absolute bottom-[8%] left-1/2 h-[24%] w-[30%] -translate-x-1/2 rounded-md border border-black/30 bg-[#30363a]" />
+            <div className="absolute bottom-[7%] left-1/2 h-[25%] w-[28%] -translate-x-1/2 rounded-md border border-black/30 bg-[#343a3e] shadow-inner" />
+            <div className="absolute inset-x-[18%] bottom-0 h-px bg-gradient-to-r from-transparent via-white/35 to-transparent" />
           </div>
         </div>
       </div>
