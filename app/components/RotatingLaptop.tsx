@@ -78,9 +78,6 @@ export default function RotatingLaptop() {
           </div>
         </div>
       </div>
-      <div className="absolute inset-x-0 bottom-3 text-center text-xs tracking-[.2em] text-white/45">
-        <span className="mr-3 text-[#d2aa62]">↔</span>{dragging ? "TURNING" : "DRAG TO EXPLORE 360°"}
-      </div>
     </div>
   );
 }
