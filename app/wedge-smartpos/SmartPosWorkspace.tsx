@@ -1,84 +1,42 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { SMARTPOS_TOKEN_KEY, smartPosRequest, type SmartPosSubscription } from "./lib/api";
 
 type Vertical = "beauty" | "pet";
-type Appointment = { time: string; subject: string; detail: string; staff: string; amount: number; status: "confirmed" | "reminder" | "completed" | "missed"; signal?: "due" | "risk" | "loyal" | "offer" };
+type Appointment = { id:string; startAt:string; subjectName:string; secondaryName?:string; serviceName:string; staffName:string; amount:number; status:"CONFIRMED"|"REMINDER_SENT"|"COMPLETED"|"MISSED"|"CANCELLED"; aiSignal?:"RETURN_DUE"|"ATTENDANCE_RISK"|"LOYAL"|"RECOMMENDATION"; aiReason?:string };
+type Dashboard = { businessName:string; branchName:string; appointments:Appointment[]; expectedSales:number; completedCount:number; insightCount:number; subscription:SmartPosSubscription };
 
-const data: Record<Vertical, Appointment[]> = {
-  beauty: [
-    { time: "09:00", subject: "Alicia Tan", detail: "Signature facial · Room 2", staff: "Mei", amount: 288, status: "confirmed", signal: "loyal" },
-    { time: "10:30", subject: "Nur Aisyah", detail: "Hair colour · Chair 4", staff: "Daniel", amount: 420, status: "reminder", signal: "offer" },
-    { time: "12:00", subject: "Carmen Lee", detail: "Slimming session · RF 1", staff: "Jia", amount: 180, status: "missed", signal: "risk" },
-    { time: "14:30", subject: "Shalini Devi", detail: "Cut & treatment · Chair 2", staff: "Daniel", amount: 168, status: "completed", signal: "due" },
-  ],
-  pet: [
-    { time: "09:30", subject: "Milo · Shih Tzu", detail: "Owner Michelle · Full grooming", staff: "Aiman", amount: 95, status: "confirmed", signal: "due" },
-    { time: "11:00", subject: "Oyen · Domestic Shorthair", detail: "Owner Farid · Bath & trim", staff: "Sofia", amount: 70, status: "reminder", signal: "risk" },
-    { time: "13:00", subject: "Coco · Toy Poodle", detail: "Owner Vivian · Styling", staff: "Aiman", amount: 120, status: "completed", signal: "loyal" },
-    { time: "15:30", subject: "Buddy · Golden Retriever", detail: "Owner Jason · Deshedding", staff: "Sofia", amount: 145, status: "confirmed", signal: "offer" },
-  ],
-};
+const statusStyle:Record<Appointment["status"],string>={CONFIRMED:"border-l-[#4f82b7] bg-[#edf5fb]",REMINDER_SENT:"border-l-[#d3a24d] bg-[#fff8e8]",COMPLETED:"border-l-[#5e9883] bg-[#eef8f3]",MISSED:"border-l-[#c85e5e] bg-[#fff0ef]",CANCELLED:"border-l-gray-400 bg-gray-50"};
+const signalStyle:Record<NonNullable<Appointment["aiSignal"]>,string>={RETURN_DUE:"bg-[#e7b84e]",ATTENDANCE_RISK:"bg-[#db744e]",LOYAL:"bg-[#5e9883]",RECOMMENDATION:"bg-[#8b6db1]"};
 
-const statusStyle = {
-  confirmed: "border-l-[#4f82b7] bg-[#edf5fb]",
-  reminder: "border-l-[#d3a24d] bg-[#fff8e8]",
-  completed: "border-l-[#5e9883] bg-[#eef8f3]",
-  missed: "border-l-[#c85e5e] bg-[#fff0ef]",
-};
-const signalStyle = { due: "bg-[#e7b84e]", risk: "bg-[#db744e]", loyal: "bg-[#5e9883]", offer: "bg-[#8b6db1]" };
-const signalText = { due: "Return visit approaching", risk: "Attendance needs attention", loyal: "Loyal customer", offer: "Recommendation ready" };
-
-export default function SmartPosWorkspace({ vertical }: { vertical: Vertical }) {
-  const [active, setActive] = useState("Calendar");
-  const [appointments, setAppointments] = useState(data[vertical]);
-  const [selected, setSelected] = useState(0);
-  const beauty = vertical === "beauty";
-  const total = useMemo(() => appointments.reduce((sum, item) => sum + item.amount, 0), [appointments]);
-  const nav = ["Calendar", beauty ? "Clients" : "Owners & Pets", "Point of sale", "Inventory", "Insights"];
-
-  function advance(index: number) {
-    setAppointments((current) => current.map((item, i) => i === index ? { ...item, status: item.status === "confirmed" || item.status === "reminder" ? "completed" : item.status } : item));
-  }
-
-  return (
-    <main className="min-h-screen bg-[#eef0ed] text-[#20282c]">
-      <header className="border-b border-[#20282c]/10 bg-[#10191d] text-white">
-        <div className="mx-auto flex max-w-[1500px] items-center justify-between px-5 py-4">
-          <a href="/wedge-smartpos" className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#d2aa62] font-black text-[#10191d]">W</span><div><p className="font-semibold">Wedge-SmartPOS</p><p className="text-[9px] tracking-[.18em] text-white/45">{beauty ? "BEAUTY & WELLNESS" : "PET CARE"}</p></div></a>
-          <div className="flex items-center gap-3"><span className="hidden text-sm text-white/55 sm:block">Demo Branch · Kuala Lumpur</span><button className="rounded-full border border-white/15 px-4 py-2 text-xs font-bold">Manager</button></div>
-        </div>
-      </header>
-
-      <div className="mx-auto grid max-w-[1500px] lg:grid-cols-[230px_1fr]">
-        <aside className="border-r border-[#20282c]/10 bg-[#f8f6f1] p-4 lg:min-h-[calc(100vh-73px)]">
-          <button className="mb-5 w-full rounded-xl bg-[#d2aa62] px-4 py-3 text-sm font-bold text-[#152024]">＋ New appointment</button>
-          <nav className="flex gap-2 overflow-x-auto lg:block">{nav.map((item) => <button key={item} onClick={() => setActive(item)} className={`mb-1 whitespace-nowrap rounded-lg px-4 py-3 text-left text-sm lg:w-full ${active === item ? "bg-[#20282c] font-bold text-white" : "text-[#5d686c] hover:bg-[#20282c]/5"}`}>{item}</button>)}</nav>
-          <div className="mt-8 hidden rounded-xl border border-[#20282c]/10 bg-white p-4 lg:block"><p className="text-[10px] font-bold tracking-[.16em] text-[#b08745]">WEDGE AI</p><p className="mt-2 text-sm font-semibold">4 customer signals today</p><p className="mt-2 text-xs leading-5 text-[#6c7679]">Suggestions require staff approval before any action is sent.</p></div>
-        </aside>
-
-        <section className="p-5 sm:p-7 lg:p-9">
-          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="text-xs font-bold tracking-[.2em] text-[#5e8983]">TUESDAY · 22 JULY</p><h1 className="mt-2 font-serif text-4xl">{active}</h1><p className="mt-2 text-sm text-[#6d777a]">{beauty ? "Clients, staff and treatment resources at a glance." : "Owners, pets and grooming resources at a glance."}</p></div><div className="flex gap-2"><button className="rounded-lg border border-[#20282c]/10 bg-white px-4 py-2.5 text-sm font-semibold">Today</button><button className="rounded-lg border border-[#20282c]/10 bg-white px-4 py-2.5 text-sm font-semibold">Week ▾</button></div></div>
-
-          <div className="mt-7 grid gap-4 sm:grid-cols-3"><Metric label="Today's appointments" value={String(appointments.length)} note={`${appointments.filter(x => x.status === "completed").length} completed`} /><Metric label="Expected sales" value={`RM ${total.toFixed(0)}`} note="Before products & tips" /><Metric label={beauty ? "Client signals" : "Owner signals"} value={String(appointments.filter(x => x.signal).length)} note="Wedge AI monitored" /></div>
-
-          <div className="mt-6 grid gap-6 xl:grid-cols-[1.45fr_.75fr]">
-            <div className="rounded-2xl border border-[#20282c]/10 bg-white p-4 shadow-sm sm:p-6">
-              <div className="flex items-center justify-between"><div><h2 className="font-bold">Today&apos;s calendar</h2><p className="mt-1 text-xs text-[#7a8386]">Status colour + small AI signal</p></div><div className="hidden gap-3 text-[10px] text-[#6d777a] sm:flex"><span>● Confirmed</span><span className="text-[#c18e31]">● Reminder</span><span className="text-[#c85e5e]">● Missed</span></div></div>
-              <div className="mt-5 space-y-3">{appointments.map((item, index) => <button key={`${item.time}-${item.subject}`} onClick={() => setSelected(index)} className={`grid w-full grid-cols-[56px_1fr_auto] items-center gap-3 rounded-xl border-l-4 p-3 text-left transition hover:shadow-md ${statusStyle[item.status]} ${selected === index ? "ring-2 ring-[#20282c]/15" : ""}`}><span className="text-sm font-bold">{item.time}</span><span><span className="flex items-center gap-2 font-semibold">{item.subject}{item.signal && <span title={signalText[item.signal]} aria-label={signalText[item.signal]} className={`h-2.5 w-2.5 rounded-full ${signalStyle[item.signal]}`} />}</span><span className="mt-1 block text-xs text-[#677175]">{item.detail} · {item.staff}</span></span><span className="text-right"><span className="block text-sm font-bold">RM {item.amount}</span><span className="mt-1 block text-[10px] font-bold uppercase tracking-wide text-[#6c7679]">{item.status}</span></span></button>)}</div>
-            </div>
-
-            <aside className="space-y-4">
-              <div className="rounded-2xl bg-[#132126] p-6 text-white shadow-sm"><div className="flex items-center justify-between"><p className="text-[10px] font-bold tracking-[.2em] text-[#d2aa62]">WEDGE AI INSIGHT</p><span className={`h-3 w-3 rounded-full ${appointments[selected].signal ? signalStyle[appointments[selected].signal!] : "bg-gray-400"}`} /></div><h3 className="mt-4 font-serif text-2xl">{appointments[selected].subject}</h3><p className="mt-3 text-sm leading-6 text-white/65">{beauty ? "Visits about every 6 weeks and frequently adds a care product after this service." : "Usually returns every 6 weeks. This service often includes a sensitive-skin product purchase."}</p><div className="mt-5 rounded-xl border border-white/10 bg-white/5 p-4"><p className="text-xs text-white/45">Suggested action</p><p className="mt-1 text-sm font-semibold">Prepare a return-visit reminder</p></div><div className="mt-4 grid grid-cols-2 gap-2"><button className="rounded-lg bg-[#d2aa62] px-3 py-2.5 text-xs font-bold text-[#152024]">Review reminder</button><button className="rounded-lg border border-white/15 px-3 py-2.5 text-xs font-bold">Dismiss</button></div></div>
-              <div className="rounded-2xl border border-[#20282c]/10 bg-white p-5"><p className="text-xs font-bold text-[#6c7679]">SELECTED APPOINTMENT</p><p className="mt-3 font-semibold">{appointments[selected].detail}</p><div className="mt-4 grid grid-cols-2 gap-2"><button onClick={() => advance(selected)} className="rounded-lg bg-[#5e8983] px-3 py-2.5 text-xs font-bold text-white">Complete service</button><button className="rounded-lg border border-[#20282c]/10 px-3 py-2.5 text-xs font-bold">Open POS</button></div></div>
-            </aside>
-          </div>
-        </section>
-      </div>
-    </main>
-  );
+export default function SmartPosWorkspace({vertical}:{vertical:Vertical}) {
+  const router=useRouter(); const [active,setActive]=useState("Calendar"); const [data,setData]=useState<Dashboard|null>(null); const [selected,setSelected]=useState<string|null>(null); const [error,setError]=useState(""); const [loading,setLoading]=useState(true);
+  const beauty=vertical==="beauty"; const nav=["Calendar",beauty?"Clients":"Owners & Pets","Point of Sale","Inventory","Insights"];
+  useEffect(()=>{if(!localStorage.getItem(SMARTPOS_TOKEN_KEY)){router.replace("/wedge-smartpos/login");return;} smartPosRequest<Dashboard>(`/api/smartpos/dashboard?vertical=${vertical}`).then(result=>{setData(result);setSelected(result.appointments[0]?.id||null);}).catch(caught=>setError(caught instanceof Error?caught.message:"Could not load your POS.")).finally(()=>setLoading(false));},[router,vertical]);
+  const appointment=useMemo(()=>data?.appointments.find(item=>item.id===selected),[data,selected]);
+  async function complete(id:string){try{await smartPosRequest(`/api/smartpos/appointments/${id}/complete`,{method:"POST"});setData(current=>current?{...current,completedCount:current.completedCount+1,appointments:current.appointments.map(item=>item.id===id?{...item,status:"COMPLETED"}:item)}:current);}catch(caught){setError(caught instanceof Error?caught.message:"Could not update appointment.");}}
+  function logout(){localStorage.removeItem(SMARTPOS_TOKEN_KEY);router.push("/wedge-smartpos/login");}
+  if(loading)return <Centered text="Opening your POS..."/>;
+  if(error&&!data)return <Centered text={error} action="Return to Login" href="/wedge-smartpos/login"/>;
+  if(!data)return null;
+  const trial=data.subscription.status==="TRIAL"||data.subscription.status==="TRIAL_EXPIRING";
+  return <main className="min-h-screen bg-[#eef0ed] text-[#20282c]">
+    <header className="border-b border-[#20282c]/10 bg-[#10191d] text-white"><div className="mx-auto flex max-w-[1500px] items-center justify-between px-5 py-4"><a href="/wedge-smartpos" className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#d2aa62] font-black text-[#10191d]">W</span><div><p className="font-semibold">Wedge-SmartPOS</p><p className="text-[9px] tracking-[.18em] text-white/45">{beauty?"BEAUTY & WELLNESS":"PET CARE"}</p></div></a><div className="flex items-center gap-3"><span className="hidden text-sm text-white/55 sm:block">{data.businessName} · {data.branchName}</span><button onClick={logout} className="rounded-full border border-white/15 px-4 py-2 text-xs font-bold">Log out</button></div></div></header>
+    {trial&&<div className="bg-[#d2aa62] px-5 py-2 text-center text-xs font-bold text-[#152024]">Free trial: {data.subscription.daysRemaining??0} days remaining · <a className="underline" href="/wedge-smartpos/payment">View subscription</a></div>}
+    {data.subscription.status==="PAYMENT_REQUIRED"&&<div className="bg-[#a64f48] px-5 py-3 text-center text-sm font-bold text-white">Your free trial has ended. <a className="underline" href="/wedge-smartpos/payment">Subscribe to continue using your POS</a></div>}
+    <div className="mx-auto grid max-w-[1500px] lg:grid-cols-[230px_1fr]"><aside className="border-r border-[#20282c]/10 bg-[#f8f6f1] p-4 lg:min-h-[calc(100vh-73px)]"><button className="mb-5 w-full rounded-xl bg-[#d2aa62] px-4 py-3 text-sm font-bold text-[#152024]">＋ New Appointment</button><nav className="flex gap-2 overflow-x-auto lg:block">{nav.map(item=><button key={item} onClick={()=>setActive(item)} className={`mb-1 whitespace-nowrap rounded-lg px-4 py-3 text-left text-sm lg:w-full ${active===item?"bg-[#20282c] font-bold text-white":"text-[#5d686c] hover:bg-[#20282c]/5"}`}>{item}</button>)}</nav><a href="/wedge-smartpos/payment" className="mt-6 block rounded-xl border border-[#20282c]/10 bg-white p-4 text-sm font-bold">Subscription & Payment →</a></aside>
+      <section className="p-5 sm:p-7 lg:p-9"><div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="text-xs font-bold tracking-[.2em] text-[#5e8983]">TODAY</p><h1 className="mt-2 font-serif text-4xl">{active}</h1><p className="mt-2 text-sm text-[#6d777a]">{beauty?"Clients, staff and appointments at a glance.":"Owners, pets and grooming appointments at a glance."}</p></div><button className="rounded-lg border border-[#20282c]/10 bg-white px-4 py-2.5 text-sm font-semibold">Today</button></div>
+        {error&&<p className="mt-5 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+        <div className="mt-7 grid gap-4 sm:grid-cols-3"><Metric label="Today's appointments" value={String(data.appointments.length)} note={`${data.completedCount} completed`}/><Metric label="Expected sales" value={money(data.expectedSales)} note="Before products and tips"/><Metric label="Customer signals" value={String(data.insightCount)} note="Wedge AI monitored"/></div>
+        <div className="mt-6 grid gap-6 xl:grid-cols-[1.45fr_.75fr]"><div className="rounded-2xl border border-[#20282c]/10 bg-white p-4 shadow-sm sm:p-6"><div><h2 className="font-bold">Today&apos;s appointments</h2><p className="mt-1 text-xs text-[#7a8386]">Appointment colour with a small AI indicator</p></div>{data.appointments.length?<div className="mt-5 space-y-3">{data.appointments.map(item=><button key={item.id} onClick={()=>setSelected(item.id)} className={`grid w-full grid-cols-[58px_1fr_auto] items-center gap-3 rounded-xl border-l-4 p-3 text-left ${statusStyle[item.status]} ${selected===item.id?"ring-2 ring-[#20282c]/15":""}`}><b>{new Date(item.startAt).toLocaleTimeString("en-MY",{hour:"2-digit",minute:"2-digit",hour12:false})}</b><span><span className="flex items-center gap-2 font-semibold">{item.subjectName}{item.secondaryName?` · ${item.secondaryName}`:""}{item.aiSignal&&<span title={item.aiReason||"Customer insight"} className={`h-2.5 w-2.5 rounded-full ${signalStyle[item.aiSignal]}`}/>}</span><span className="mt-1 block text-xs text-[#677175]">{item.serviceName} · {item.staffName}</span></span><span className="text-right"><b>{money(item.amount)}</b><span className="mt-1 block text-[10px] font-bold">{item.status.replaceAll("_"," ")}</span></span></button>)}</div>:<Empty vertical={vertical}/>}</div>
+          <aside className="space-y-4"><div className="rounded-2xl bg-[#132126] p-6 text-white"><p className="text-[10px] font-bold tracking-[.2em] text-[#d2aa62]">WEDGE AI INSIGHT</p>{appointment?<><h3 className="mt-4 font-serif text-2xl">{appointment.subjectName}</h3><p className="mt-3 text-sm leading-6 text-white/65">{appointment.aiReason||"Customer spending and attendance patterns will appear here when enough history is available."}</p><button className="mt-5 w-full rounded-lg bg-[#d2aa62] px-3 py-2.5 text-xs font-bold text-[#152024]">Review Suggested Action</button></>:<p className="mt-4 text-sm leading-6 text-white/55">Select an appointment to view customer insights.</p>}</div>{appointment&&<div className="rounded-2xl border border-[#20282c]/10 bg-white p-5"><p className="text-xs font-bold text-[#6c7679]">SELECTED APPOINTMENT</p><p className="mt-3 font-semibold">{appointment.serviceName}</p><div className="mt-4 grid grid-cols-2 gap-2"><button disabled={appointment.status==="COMPLETED"} onClick={()=>complete(appointment.id)} className="rounded-lg bg-[#5e8983] px-3 py-2.5 text-xs font-bold text-white disabled:opacity-40">Complete Service</button><button className="rounded-lg border border-[#20282c]/10 px-3 py-2.5 text-xs font-bold">Open POS</button></div></div>}</aside></div>
+      </section></div>
+  </main>;
 }
 
-function Metric({ label, value, note }: { label: string; value: string; note: string }) {
-  return <div className="rounded-2xl border border-[#20282c]/10 bg-white p-5 shadow-sm"><p className="text-xs text-[#6d777a]">{label}</p><p className="mt-2 font-serif text-3xl">{value}</p><p className="mt-2 text-xs text-[#8a9294]">{note}</p></div>;
-}
+const money=(value:number)=>new Intl.NumberFormat("en-MY",{style:"currency",currency:"MYR"}).format(value||0);
+function Metric({label,value,note}:{label:string;value:string;note:string}){return <div className="rounded-2xl border border-[#20282c]/10 bg-white p-5 shadow-sm"><p className="text-xs text-[#6d777a]">{label}</p><p className="mt-2 font-serif text-3xl">{value}</p><p className="mt-2 text-xs text-[#8a9294]">{note}</p></div>}
+function Empty({vertical}:{vertical:Vertical}){return <div className="mt-8 rounded-2xl border border-dashed border-[#20282c]/15 bg-[#faf9f6] px-5 py-12 text-center"><p className="font-serif text-2xl">No appointments yet</p><p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-[#6d777a]">Add your first {vertical==="beauty"?"client and appointment":"owner, pet and grooming appointment"} to begin.</p><button className="mt-5 rounded-xl bg-[#20282c] px-5 py-3 text-sm font-bold text-white">＋ Add First Appointment</button></div>}
+function Centered({text,action,href}:{text:string;action?:string;href?:string}){return <main className="flex min-h-screen items-center justify-center bg-[#f3efe7] p-6 text-center text-[#20282c]"><div><span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#20282c] font-black text-[#f1dfbc]">W</span><p className="mt-5 font-semibold">{text}</p>{action&&href&&<a href={href} className="mt-5 inline-block rounded-xl bg-[#20282c] px-5 py-3 text-sm font-bold text-white">{action}</a>}</div></main>}

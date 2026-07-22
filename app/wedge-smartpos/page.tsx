@@ -10,7 +10,7 @@ const verticals = [
     href: "/wedge-smartpos/beauty",
     eyebrow: "BEAUTY & WELLNESS",
     title: "Salon, barber, spa or slimming centre",
-    text: "Manage clients, therapists, chairs, rooms, services, packages, commissions and every appointment from one calm workspace.",
+    text: "Manage clients, therapists, chairs, rooms, services, packages, commissions and every appointment in one simple POS system.",
     image: "/landing/salon-spa.png",
     features: ["Client profiles", "Staff & resources", "Packages & retail"],
     accent: "#b88955",
@@ -19,7 +19,7 @@ const verticals = [
     href: "/wedge-smartpos/pet",
     eyebrow: "PET CARE",
     title: "Pet shop, spa or grooming centre",
-    text: "Keep owners and pets clearly connected while managing groomers, stations, services, products and return visits.",
+    text: "Keep owners and pets clearly connected while managing groomers, services, products and return visits in one POS system.",
     image: "/landing/pet-services.png",
     features: ["Owner & pet profiles", "Grooming calendar", "Products & services"],
     accent: "#5e8983",
@@ -44,8 +44,8 @@ export default function SmartPosEntry() {
         <div className="relative mx-auto max-w-7xl">
           <div className="mx-auto max-w-3xl text-center">
             <p className="text-xs font-bold tracking-[.3em] text-[#b08745]">WELCOME TO WEDGE-SMARTPOS</p>
-            <h1 className="mt-5 font-serif text-4xl leading-tight sm:text-6xl">Choose the workspace built for your business.</h1>
-            <p className="mx-auto mt-5 max-w-2xl leading-7 text-[#667175]">One reliable platform, shaped around two very different customer journeys. Select your industry to enter its tailored POS experience.</p>
+            <h1 className="mt-5 font-serif text-4xl leading-tight sm:text-6xl">Choose your type of business.</h1>
+            <p className="mx-auto mt-5 max-w-2xl leading-7 text-[#667175]">Select your business below to start your free Wedge-SmartPOS trial.</p>
           </div>
 
           <div className="mt-12 grid gap-6 lg:grid-cols-2">
@@ -57,12 +57,12 @@ export default function SmartPosEntry() {
                   <h2 className="mt-3 max-w-lg font-serif text-3xl leading-tight sm:text-4xl">{vertical.title}</h2>
                   <p className="mt-4 leading-7 text-[#667175]">{vertical.text}</p>
                   <div className="mt-6 flex flex-wrap gap-2">{vertical.features.map((feature) => <span key={feature} className="rounded-full border border-[#20282c]/10 bg-[#f8f5ef] px-3 py-2 text-xs">{feature}</span>)}</div>
-                  <span className="mt-7 inline-flex items-center gap-2 font-bold" style={{ color: vertical.accent }}>Open this workspace <span aria-hidden>→</span></span>
+                  <span className="mt-7 inline-flex items-center gap-2 font-bold" style={{ color: vertical.accent }}>Click Here to Enter Your POS <span aria-hidden>→</span></span>
                 </div>
               </a>
             ))}
           </div>
-          <p className="mt-8 text-center text-xs text-[#7d8588]">Your selection configures the workspace. It can be corrected later by Wedge support.</p>
+          <div className="mt-8 flex flex-wrap justify-center gap-3 text-sm"><a href="/wedge-smartpos/signup" className="rounded-full bg-[#20282c] px-6 py-3 font-bold text-white">Start Free Trial</a><a href="/wedge-smartpos/login" className="rounded-full border border-[#20282c]/15 bg-white px-6 py-3 font-bold">Merchant Login</a></div>
         </div>
       </section>
     </main>

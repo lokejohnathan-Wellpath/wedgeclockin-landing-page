@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DEFAULT_WEDGE_PACKAGE, WEDGE_PACKAGE_STORAGE_KEY, type WedgePackageConfig } from "../../lib/wedgePackages";
 import { readFeedback, type FeedbackCandidate } from "../../wedgeweb/engine/feedbackQueue";
+import SmartPosControls from "./SmartPosControls";
 
 const money = (value: number) => new Intl.NumberFormat("en-MY", { style: "currency", currency: "MYR" }).format(value || 0);
 
@@ -30,6 +31,8 @@ export default function FounderJohnControlDesk() {
       <header className="flex flex-col gap-5 border-b border-white/10 pb-7 md:flex-row md:items-end md:justify-between"><div><p className="text-xs font-bold tracking-[.32em] text-[#d4ad63]">WEDGE WORKS OWNER CONTROLS</p><h1 className="mt-3 text-4xl font-bold text-[#f0dfbd]">Founder John Control Desk</h1><p className="mt-3 max-w-2xl text-white/50">Shape packages, promotions and domain-service charges before connecting the live payment backend.</p></div><Link href="/manager-dashboard" className="rounded-full border border-white/15 px-5 py-3 text-sm text-white/65">Back to Dashboard</Link></header>
 
       <div className="mt-7 rounded-2xl border border-amber-300/20 bg-amber-300/5 p-4 text-sm leading-6 text-amber-100/70"><b>Configuration preview:</b> values currently remain in this browser. Before accepting money, founder-role enforcement, audit history and secure database storage must be connected.</div>
+
+      <SmartPosControls />
 
       <div className="mt-7 grid gap-6 lg:grid-cols-[1.15fr_.85fr]">
         <section className="space-y-5 rounded-[2rem] border border-white/10 bg-[#1e2428] p-6 sm:p-8">
