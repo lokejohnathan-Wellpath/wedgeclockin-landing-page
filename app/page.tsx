@@ -13,14 +13,14 @@ const products = [
   { name: "WedgeCLOCKin", eyebrow: "WORKFORCE", text: "Face and GPS attendance, leave, payroll-ready records and secure employee operations.", href: "/employee-clockin", action: "Explore ClockIn" },
   { name: "Wedge-I", eyebrow: "EXECUTIVE AI", text: "Turn operating numbers into forecasts, priorities and clearer management decisions.", href: "/wedge-i", action: "Open Wedge-I" },
   { name: "WedgeWeb", eyebrow: "WEBSITE ENGINE", text: "Create a professional customer website through a guided conversation and publish when ready.", href: "/wedgeweb", action: "Create Free Preview" },
-  { name: "Wedge-SmartPOS", eyebrow: "CUSTOMER OPERATIONS", text: "Connect clients, appointments, services and daily counter operations for pet grooming and salon/spa businesses.", href: "#smartpos", action: "Discover SmartPOS" },
+  { name: "Wedge-SmartPOS", eyebrow: "CUSTOMER OPERATIONS", text: "Connect clients, appointments, services and daily counter operations for pet grooming and salon/spa businesses.", href: "/wedge-smartpos", action: "Discover SmartPOS" },
 ];
 
 const stories = [
   { eyebrow: "WEDGE-I · BUSINESS INTELLIGENCE", title: "One dashboard for better business decisions and output.", text: "Turn operating information into a clear view of performance, priorities, risks and the next action management should take.", image: "/landing/smart-agriculture.png", dark: true, imageFirst: false, href: "/wedge-i", action: "Open Wedge-I" },
   { eyebrow: "WEDGE-I · EXECUTIVE CLARITY", title: "See what is working. Find what needs attention.", text: "Bring workforce, financial and operating signals together so leaders can act with greater speed and confidence.", image: "/landing/precision-manufacturing.png", dark: false, imageFirst: true, href: "/wedge-i", action: "Explore Wedge-I" },
   { eyebrow: "WEDGEWEB · CUSTOMER RELATIONSHIPS", title: "Strengthen business through stronger customer relationships.", text: "Build a professional web presence, guide enquiries into WhatsApp and prepare the foundation for a practical customer relationship workflow.", image: "/landing/ai-partnership.png", dark: true, imageFirst: false, href: "/wedgeweb", action: "Build with WedgeWeb" },
-  { eyebrow: "WEDGE-SMARTPOS", title: "Connect your clients and manage every appointment.", text: "A focused POS and appointment experience for pet grooming, salons and spas—bringing customers, services, schedules and counter operations together.", image: "/landing/pet-services.png", secondImage: "/landing/salon-spa.png", dark: false, imageFirst: false, href: "#smartpos", action: "Wedge-SmartPOS" },
+  { eyebrow: "WEDGE-SMARTPOS", title: "Connect your clients and manage every appointment.", text: "A focused POS and appointment experience for pet grooming, salons and spas—bringing customers, services, schedules and counter operations together.", image: "/landing/pet-services.png", secondImage: "/landing/salon-spa.png", dark: false, imageFirst: false, href: "/wedge-smartpos", action: "Wedge-SmartPOS" },
 ];
 
 export default function Home() {
