@@ -306,6 +306,9 @@ export function BusinessSettingsPanel() {
             <p>{business.telephone}</p>
             <p>{business.businessAddress}</p>
           </div>
+          <p className="rounded-xl border border-[#d2aa62]/40 bg-[#fff8e8] p-3 text-sm sm:col-span-2">
+            These details will appear on your invoices and receipts.
+          </p>
           <Field
             name="registeredCompanyName"
             label="Registered company name (optional)"
@@ -889,6 +892,115 @@ export function PosPanel() {
   );
 }
 
+export function SalesHistoryPanel() {
+  const [sales, setSales] = useState<Sale[]>([]),
+    [error, setError] = useState("");
+  useEffect(() => {
+    smartPosRequest<{ sales: Sale[] }>(
+      "/api/smartpos/sales?months=12&limit=1000",
+    )
+      .then((r) => setSales(r.sales))
+      .catch((e) => setError(e.message));
+  }, []);
+  async function printReceipt(saleId: string) {
+    try {
+      const r = await smartPosRequest<{
+        receipt: {
+          receiptNumber: string;
+          total: number;
+          paymentMethod: string;
+          completedAt: string;
+          lines: { quantity: number; name: string; lineTotal: number }[];
+          customer?: { name: string };
+          merchant?: {
+            businessName?: string;
+            registeredCompanyName?: string;
+            companyRegistrationNumber?: string;
+            taxIdentificationNumber?: string;
+            registeredBusinessAddress?: string;
+            businessAddress?: string;
+            sstRegistrationNumber?: string;
+          };
+        };
+      }>(`/api/smartpos/sales/${saleId}/receipt`);
+      const receipt = r.receipt,
+        merchant = receipt.merchant;
+      const details = [
+        merchant?.registeredCompanyName,
+        merchant?.companyRegistrationNumber &&
+          `Company No: ${merchant.companyRegistrationNumber}`,
+        merchant?.taxIdentificationNumber &&
+          `TIN: ${merchant.taxIdentificationNumber}`,
+        merchant?.sstRegistrationNumber &&
+          `SST No: ${merchant.sstRegistrationNumber}`,
+        merchant?.registeredBusinessAddress || merchant?.businessAddress,
+      ]
+        .filter(Boolean)
+        .map((value) => `<div>${value}</div>`)
+        .join("");
+      const w = window.open("", "_blank");
+      if (!w) return;
+      w.document.write(
+        `<html><body style="font-family:Arial;padding:30px"><h2>${merchant?.businessName || "Wedge-SmartPOS"}</h2>${details}<p>Receipt ${receipt.receiptNumber}</p><p>Customer: ${receipt.customer?.name || "Walk-in"}</p>${receipt.lines.map((x) => `<p>${x.quantity} × ${x.name}<span style="float:right">RM ${x.lineTotal.toFixed(2)}</span></p>`).join("")}<hr><h3>Total <span style="float:right">RM ${receipt.total.toFixed(2)}</span></h3><p>Payment: ${receipt.paymentMethod.toUpperCase()}</p></body></html>`,
+      );
+      w.document.close();
+      w.print();
+    } catch (x) {
+      setError(x instanceof Error ? x.message : "Receipt could not be opened.");
+    }
+  }
+  return (
+    <Panel title="Sales & Receipts">
+      <p className="mb-5 text-sm text-[#6d777a]">
+        Your sales and receipts from the past 12 months.
+      </p>
+      {error && <ErrorBox text={error} />}
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-sm">
+          <thead className="border-b text-xs text-[#6d777a]">
+            <tr>
+              <th className="p-3">Date</th>
+              <th className="p-3">Receipt</th>
+              <th className="p-3">Payment</th>
+              <th className="p-3">Status</th>
+              <th className="p-3 text-right">Total</th>
+              <th className="p-3" />
+            </tr>
+          </thead>
+          <tbody>
+            {sales.map((s) => (
+              <tr key={s.id} className="border-b border-[#20282c]/8">
+                <td className="p-3">
+                  {new Intl.DateTimeFormat("en-MY", {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                    timeZone: "Asia/Kuala_Lumpur",
+                  }).format(new Date(s.completedAt))}
+                </td>
+                <td className="p-3 font-semibold">{s.receiptNumber}</td>
+                <td className="p-3 uppercase">{s.paymentMethod}</td>
+                <td className="p-3">{s.status}</td>
+                <td className="p-3 text-right font-bold">{money(s.total)}</td>
+                <td className="p-3">
+                  <button
+                    onClick={() => printReceipt(s.id)}
+                    className="rounded-lg border px-3 py-2 text-xs font-bold"
+                  >
+                    Print
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {!sales.length && (
+        <Empty text="No sales recorded in the past 12 months." />
+      )}
+    </Panel>
+  );
+}
+
 export function RemindersPanel() {
   const [items, setItems] = useState<Reminder[]>([]),
     [error, setError] = useState("");
@@ -916,8 +1028,14 @@ export function RemindersPanel() {
             <span>
               <b>{r.appointment.subjectName}</b>
               <p className="text-sm text-[#6d777a]">
-                {r.appointment.serviceName} ·{" "}
-                {new Date(r.appointment.startAt).toLocaleString("en-MY")}
+                {r.appointment.serviceName
+                  ? `${r.appointment.serviceName} · `
+                  : ""}
+                {new Intl.DateTimeFormat("en-MY", {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                  timeZone: "Asia/Kuala_Lumpur",
+                }).format(new Date(r.appointment.startAt))}
               </p>
             </span>
             <button onClick={() => open(r)} className={primary}>

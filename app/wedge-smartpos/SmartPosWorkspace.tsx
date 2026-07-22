@@ -15,6 +15,7 @@ import {
   NewAppointmentForm,
   PosPanel,
   RemindersPanel,
+  SalesHistoryPanel,
   StaffPanel,
 } from "./OperationsPanels";
 
@@ -73,6 +74,7 @@ export default function SmartPosWorkspace({
     beauty ? "Clients" : "Owners & Pets",
     "Staff & Commission",
     "Point of Sale",
+    "Sales & Receipts",
     "Inventory",
     "Reminders",
     "Insights",
@@ -276,7 +278,8 @@ export default function SmartPosWorkspace({
                               {
                                 hour: "2-digit",
                                 minute: "2-digit",
-                                hour12: false,
+                                hour12: true,
+                                timeZone: "Asia/Kuala_Lumpur",
                               },
                             )}
                           </b>
@@ -293,9 +296,13 @@ export default function SmartPosWorkspace({
                                 />
                               )}
                             </span>
-                            <span className="mt-1 block text-xs text-[#677175]">
-                              {item.serviceName} · {item.staffName}
-                            </span>
+                            {(item.serviceName || item.staffName) && (
+                              <span className="mt-1 block text-xs text-[#677175]">
+                                {[item.serviceName, item.staffName]
+                                  .filter(Boolean)
+                                  .join(" · ")}
+                              </span>
+                            )}
                           </span>
                           <span className="text-right">
                             <b>
@@ -346,16 +353,18 @@ export default function SmartPosWorkspace({
                       <p className="text-xs font-bold text-[#6c7679]">
                         SELECTED APPOINTMENT
                       </p>
-                      <p className="mt-3 font-semibold">
-                        {appointment.serviceName}
-                      </p>
+                      {appointment.serviceName && (
+                        <p className="mt-3 font-semibold">
+                          {appointment.serviceName}
+                        </p>
+                      )}
                       <div className="mt-4 grid grid-cols-2 gap-2">
                         <button
                           disabled={appointment.status === "COMPLETED"}
                           onClick={() => complete(appointment.id)}
                           className="rounded-lg bg-[#5e8983] px-3 py-2.5 text-xs font-bold text-white disabled:opacity-40"
                         >
-                          Complete Service
+                          Complete Appointment
                         </button>
                         <button
                           onClick={() => setActive("Point of Sale")}
@@ -376,6 +385,7 @@ export default function SmartPosWorkspace({
               )}{" "}
               {active === "Staff & Commission" && <StaffPanel />}{" "}
               {active === "Point of Sale" && <PosPanel />}{" "}
+              {active === "Sales & Receipts" && <SalesHistoryPanel />}{" "}
               {active === "Inventory" && <InventoryPanel />}{" "}
               {active === "Reminders" && <RemindersPanel />}{" "}
               {active === "Insights" && <InsightsPanel />}{" "}
