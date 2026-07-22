@@ -4,46 +4,1245 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { smartPosRequest } from "./lib/api";
 
 type Vertical = "beauty" | "pet";
-type Pet = { id:string; name:string; breed:string; species:string };
-type Customer = { id:string; name:string; telephone:string; email?:string; gender?:string; occupation?:string; pets:Pet[]; totalSpend:number; visitCount:number };
-type Staff = { id:string; name:string; telephone:string; role:string; serviceCommission:string; serviceCommissionValue:number; productCommission:string; productCommissionValue:number };
-type Service = { id:string; name:string; category:string; durationMinutes:number; price:number; commissionType:string; commissionValue:number };
-type Product = { id:string; sku:string; name:string; inventoryType:"retail"|"backbar"; salePrice:number; stockQuantity:number; reorderLevel:number; commissionType:string; commissionValue:number };
-type Sale = { id:string; receiptNumber:string; total:number; paymentMethod:string; status:string; completedAt:string };
-type Reminder = { appointment:{id:string;subjectName:string;serviceName:string;startAt:string}; customer?:Customer; message:string; whatsappUrl:string };
-const money = (value:number) => new Intl.NumberFormat("en-MY", { style:"currency", currency:"MYR" }).format(value || 0);
-const input = "mt-1 w-full rounded-xl border border-[#20282c]/15 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#5e8983]";
-const primary = "rounded-xl bg-[#20282c] px-4 py-3 text-sm font-bold text-white disabled:opacity-40";
+type Pet = { id: string; name: string; breed: string; species: string };
+type Customer = {
+  id: string;
+  name: string;
+  telephone: string;
+  email?: string;
+  gender?: string;
+  occupation?: string;
+  pets: Pet[];
+  totalSpend: number;
+  visitCount: number;
+};
+type Staff = {
+  id: string;
+  name: string;
+  telephone: string;
+  role: string;
+  serviceCommission: string;
+  serviceCommissionValue: number;
+  productCommission: string;
+  productCommissionValue: number;
+};
+type Service = {
+  id: string;
+  name: string;
+  category: string;
+  durationMinutes: number;
+  price: number;
+  commissionType: string;
+  commissionValue: number;
+};
+type Product = {
+  id: string;
+  sku: string;
+  name: string;
+  inventoryType: "retail" | "backbar";
+  salePrice: number;
+  stockQuantity: number;
+  reorderLevel: number;
+  commissionType: string;
+  commissionValue: number;
+};
+type Sale = {
+  id: string;
+  receiptNumber: string;
+  total: number;
+  paymentMethod: string;
+  status: string;
+  completedAt: string;
+};
+type Reminder = {
+  appointment: {
+    id: string;
+    subjectName: string;
+    serviceName: string;
+    startAt: string;
+  };
+  customer?: Customer;
+  message: string;
+  whatsappUrl: string;
+};
+const money = (value: number) =>
+  new Intl.NumberFormat("en-MY", { style: "currency", currency: "MYR" }).format(
+    value || 0,
+  );
+const input =
+  "mt-1 w-full rounded-xl border border-[#20282c]/15 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#5e8983]";
+const primary =
+  "rounded-xl bg-[#20282c] px-4 py-3 text-sm font-bold text-white disabled:opacity-40";
 
-export function CustomersPanel({ vertical }:{vertical:Vertical}) {
-  const [customers,setCustomers]=useState<Customer[]>([]), [adding,setAdding]=useState(false), [error,setError]=useState("");
-  const load=()=>smartPosRequest<{customers:Customer[]}>("/api/smartpos/customers").then(r=>setCustomers(r.customers)).catch(e=>setError(e.message)); useEffect(()=>{load()},[]);
-  async function submit(event:FormEvent<HTMLFormElement>){event.preventDefault();setError("");const f=new FormData(event.currentTarget);try{await smartPosRequest("/api/smartpos/customers",{method:"POST",body:JSON.stringify({name:f.get("name"),telephone:f.get("telephone"),email:f.get("email"),gender:f.get("gender"),occupation:f.get("occupation"),dateOfBirth:f.get("dateOfBirth"),whatsappReminderConsent:f.get("whatsappReminderConsent")==="on",notes:f.get("notes"),pets:vertical==="pet"?[{name:f.get("petName"),breed:f.get("breed"),species:f.get("species")}]:[]})});setAdding(false);load()}catch(e){setError(e instanceof Error?e.message:"Could not add customer.")}}
-  return <Panel title={vertical==="pet"?"Owners & Pets":"Clients"} action={<button onClick={()=>setAdding(!adding)} className={primary}>＋ Add {vertical==="pet"?"Owner & Pet":"Client"}</button>}>
-    {error&&<ErrorBox text={error}/>} {adding&&<form onSubmit={submit} className="mb-6 grid gap-3 rounded-2xl bg-[#f8f6f1] p-5 sm:grid-cols-2"><Field name="name" label={vertical==="pet"?"Owner name":"Client name"}/><Field name="telephone" label="Telephone number"/><Field name="email" label="Email (optional)" type="email" required={false}/><label className="text-sm font-semibold">Gender<select name="gender" className={input}><option value="">Not provided</option><option value="female">Female</option><option value="male">Male</option><option value="prefer_not_to_say">Prefer not to say</option><option value="other">Other</option></select></label><Field name="occupation" label="Occupation (optional)" required={false}/><Field name="dateOfBirth" label="Date of birth (optional)" type="date" required={false}/>{vertical==="pet"&&<><Field name="petName" label="Pet name"/><Field name="breed" label="Breed"/><label className="text-sm font-semibold">Species<select name="species" className={input}><option value="dog">Dog</option><option value="cat">Cat</option><option value="other">Other</option></select></label></>}<label className="flex items-center gap-2 text-sm"><input type="checkbox" name="whatsappReminderConsent"/> Customer agrees to WhatsApp appointment reminders</label><label className="text-sm font-semibold sm:col-span-2">Notes<textarea name="notes" rows={2} className={input}/></label><button className={`${primary} sm:col-span-2`}>Save Profile</button></form>}
-    {customers.length?<div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="border-b text-xs text-[#6d777a]"><tr><th className="p-3">{vertical==="pet"?"Owner":"Client"}</th>{vertical==="pet"&&<th className="p-3">Pets</th>}<th className="p-3">Telephone</th><th className="p-3">Visits</th><th className="p-3">Total spend</th></tr></thead><tbody>{customers.map(c=><tr key={c.id} className="border-b border-[#20282c]/8"><td className="p-3 font-semibold">{c.name}</td>{vertical==="pet"&&<td className="p-3">{c.pets.map(p=>`${p.name} · ${p.breed}`).join(", ")}</td>}<td className="p-3">{c.telephone}</td><td className="p-3">{c.visitCount}</td><td className="p-3 font-bold">{money(c.totalSpend)}</td></tr>)}</tbody></table></div>:<Empty text="No customer profiles yet."/>}
-  </Panel>
+export function CustomersPanel({ vertical }: { vertical: Vertical }) {
+  const [customers, setCustomers] = useState<Customer[]>([]),
+    [adding, setAdding] = useState(false),
+    [error, setError] = useState("");
+  const load = () =>
+    smartPosRequest<{ customers: Customer[] }>("/api/smartpos/customers")
+      .then((r) => setCustomers(r.customers))
+      .catch((e) => setError(e.message));
+  useEffect(() => {
+    load();
+  }, []);
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    const f = new FormData(event.currentTarget);
+    try {
+      await smartPosRequest("/api/smartpos/customers", {
+        method: "POST",
+        body: JSON.stringify({
+          name: f.get("name"),
+          telephone: f.get("telephone"),
+          email: f.get("email"),
+          gender: f.get("gender"),
+          occupation: f.get("occupation"),
+          dateOfBirth: f.get("dateOfBirth"),
+          whatsappReminderConsent: f.get("whatsappReminderConsent") === "on",
+          notes: f.get("notes"),
+          pets:
+            vertical === "pet"
+              ? [
+                  {
+                    name: f.get("petName"),
+                    breed: f.get("breed"),
+                    species: f.get("species"),
+                  },
+                ]
+              : [],
+        }),
+      });
+      setAdding(false);
+      load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not add customer.");
+    }
+  }
+  return (
+    <Panel
+      title={vertical === "pet" ? "Owners & Pets" : "Clients"}
+      action={
+        <button onClick={() => setAdding(!adding)} className={primary}>
+          ＋ Add {vertical === "pet" ? "Owner & Pet" : "Client"}
+        </button>
+      }
+    >
+      {error && <ErrorBox text={error} />}{" "}
+      {adding && (
+        <form
+          onSubmit={submit}
+          className="mb-6 grid gap-3 rounded-2xl bg-[#f8f6f1] p-5 sm:grid-cols-2"
+        >
+          <Field
+            name="name"
+            label={vertical === "pet" ? "Owner name" : "Client name"}
+          />
+          <Field name="telephone" label="Telephone number" />
+          <Field
+            name="email"
+            label="Email (optional)"
+            type="email"
+            required={false}
+          />
+          <label className="text-sm font-semibold">
+            Gender
+            <select name="gender" className={input}>
+              <option value="">Not provided</option>
+              <option value="female">Female</option>
+              <option value="male">Male</option>
+              <option value="prefer_not_to_say">Prefer not to say</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+          <Field
+            name="occupation"
+            label="Occupation (optional)"
+            required={false}
+          />
+          <Field
+            name="dateOfBirth"
+            label="Date of birth (optional)"
+            type="date"
+            required={false}
+          />
+          {vertical === "pet" && (
+            <>
+              <Field name="petName" label="Pet name" />
+              <Field name="breed" label="Breed" />
+              <label className="text-sm font-semibold">
+                Species
+                <select name="species" className={input}>
+                  <option value="dog">Dog</option>
+                  <option value="cat">Cat</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+            </>
+          )}
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="whatsappReminderConsent" /> Customer
+            agrees to WhatsApp appointment reminders
+          </label>
+          <label className="text-sm font-semibold sm:col-span-2">
+            Notes
+            <textarea name="notes" rows={2} className={input} />
+          </label>
+          <button className={`${primary} sm:col-span-2`}>Save Profile</button>
+        </form>
+      )}
+      {customers.length ? (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b text-xs text-[#6d777a]">
+              <tr>
+                <th className="p-3">
+                  {vertical === "pet" ? "Owner" : "Client"}
+                </th>
+                {vertical === "pet" && <th className="p-3">Pets</th>}
+                <th className="p-3">Telephone</th>
+                <th className="p-3">Visits</th>
+                <th className="p-3">Total spend</th>
+              </tr>
+            </thead>
+            <tbody>
+              {customers.map((c) => (
+                <tr key={c.id} className="border-b border-[#20282c]/8">
+                  <td className="p-3 font-semibold">{c.name}</td>
+                  {vertical === "pet" && (
+                    <td className="p-3">
+                      {c.pets.map((p) => `${p.name} · ${p.breed}`).join(", ")}
+                    </td>
+                  )}
+                  <td className="p-3">{c.telephone}</td>
+                  <td className="p-3">{c.visitCount}</td>
+                  <td className="p-3 font-bold">{money(c.totalSpend)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <Empty text="No customer profiles yet." />
+      )}
+    </Panel>
+  );
 }
 
-function CommissionFields(){return <><label className="text-sm font-semibold">Commission rule<select name="commissionType" className={input}><option value="staff_default">Use staff default</option><option value="none">No commission</option><option value="percent">Percentage</option><option value="fixed">Fixed RM</option></select></label><Field name="commissionValue" label="Commission value" type="number" step="0.01" required={false}/></>}
+function CommissionFields() {
+  return (
+    <>
+      <label className="text-sm font-semibold">
+        Commission rule
+        <select name="commissionType" className={input}>
+          <option value="staff_default">Use staff default</option>
+          <option value="none">No commission</option>
+          <option value="percent">Percentage</option>
+          <option value="fixed">Fixed RM</option>
+        </select>
+      </label>
+      <Field
+        name="commissionValue"
+        label="Commission value"
+        type="number"
+        step="0.01"
+        required={false}
+      />
+    </>
+  );
+}
 
-export function StaffPanel(){const [staff,setStaff]=useState<Staff[]>([]),[adding,setAdding]=useState(false),[error,setError]=useState("");const load=()=>smartPosRequest<{staff:Staff[]}>("/api/smartpos/staff").then(r=>setStaff(r.staff)).catch(e=>setError(e.message));useEffect(()=>{load()},[]);async function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);try{await smartPosRequest("/api/smartpos/staff",{method:"POST",body:JSON.stringify({name:f.get("name"),telephone:f.get("telephone"),role:f.get("role"),serviceCommission:f.get("serviceCommission"),serviceCommissionValue:Number(f.get("serviceCommissionValue")),productCommission:f.get("productCommission"),productCommissionValue:Number(f.get("productCommissionValue"))})});setAdding(false);load()}catch(x){setError(x instanceof Error?x.message:"Could not add staff.")}}return <Panel title="Staff & Commission" action={<button className={primary} onClick={()=>setAdding(!adding)}>＋ Add Staff</button>}>{error&&<ErrorBox text={error}/>} {adding&&<form onSubmit={submit} className="mb-6 grid gap-3 rounded-2xl bg-[#f8f6f1] p-5 sm:grid-cols-2"><Field name="name" label="Staff name"/><Field name="telephone" label="Telephone"/><Field name="role" label="Role"/><span/><label className="text-sm font-semibold">Service commission<select name="serviceCommission" className={input}><option value="none">None</option><option value="percent">Percentage</option><option value="fixed">Fixed RM per item</option></select></label><Field name="serviceCommissionValue" label="Service commission value" type="number" step="0.01"/><label className="text-sm font-semibold">Product commission<select name="productCommission" className={input}><option value="none">None</option><option value="percent">Percentage</option><option value="fixed">Fixed RM per item</option></select></label><Field name="productCommissionValue" label="Product commission value" type="number" step="0.01"/><button className={`${primary} sm:col-span-2`}>Save Staff</button></form>}<div className="grid gap-3 md:grid-cols-2">{staff.map(s=><div key={s.id} className="rounded-xl border border-[#20282c]/10 p-4"><b>{s.name}</b><p className="text-sm text-[#6d777a]">{s.role} · {s.telephone}</p><p className="mt-3 text-xs">Services: {s.serviceCommission} {s.serviceCommissionValue} · Products: {s.productCommission} {s.productCommissionValue}</p></div>)}</div>{!staff.length&&<Empty text="Add staff before appointments or checkout."/>}</Panel>}
+type BusinessSettings = {
+  businessName: string;
+  telephone: string;
+  businessAddress: string;
+  registeredCompanyName: string;
+  companyRegistrationNumber: string;
+  taxIdentificationNumber: string;
+  registeredBusinessAddress: string;
+  sstRegistrationNumber: string;
+};
+export function BusinessSettingsPanel() {
+  const [business, setBusiness] = useState<BusinessSettings | null>(null),
+    [message, setMessage] = useState("");
+  useEffect(() => {
+    smartPosRequest<{ business: BusinessSettings }>(
+      "/api/smartpos/business-settings",
+    )
+      .then((r) => setBusiness(r.business))
+      .catch((e) => setMessage(e.message));
+  }, []);
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    try {
+      const r = await smartPosRequest<{ business: BusinessSettings }>(
+        "/api/smartpos/business-settings",
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            registeredCompanyName: f.get("registeredCompanyName"),
+            companyRegistrationNumber: f.get("companyRegistrationNumber"),
+            taxIdentificationNumber: f.get("taxIdentificationNumber"),
+            registeredBusinessAddress: f.get("registeredBusinessAddress"),
+            sstRegistrationNumber: f.get("sstRegistrationNumber"),
+          }),
+        },
+      );
+      setBusiness(r.business);
+      setMessage("Business and tax details saved.");
+    } catch (x) {
+      setMessage(
+        x instanceof Error ? x.message : "Settings could not be saved.",
+      );
+    }
+  }
+  return (
+    <Panel title="Business Settings">
+      {business ? (
+        <form onSubmit={submit} className="grid max-w-3xl gap-4 sm:grid-cols-2">
+          <div className="rounded-xl bg-[#f8f6f1] p-4 text-sm sm:col-span-2">
+            <b>{business.businessName}</b>
+            <p>{business.telephone}</p>
+            <p>{business.businessAddress}</p>
+          </div>
+          <Field
+            name="registeredCompanyName"
+            label="Registered company name (optional)"
+            defaultValue={business.registeredCompanyName}
+            required={false}
+          />
+          <Field
+            name="companyRegistrationNumber"
+            label="Company number / SSM / BRN (optional)"
+            defaultValue={business.companyRegistrationNumber}
+            required={false}
+          />
+          <Field
+            name="taxIdentificationNumber"
+            label="Tax identification number — TIN (optional)"
+            defaultValue={business.taxIdentificationNumber}
+            required={false}
+          />
+          <Field
+            name="sstRegistrationNumber"
+            label="SST registration number (optional)"
+            defaultValue={business.sstRegistrationNumber}
+            required={false}
+          />
+          <label className="text-sm font-semibold sm:col-span-2">
+            Registered business address (optional)
+            <textarea
+              name="registeredBusinessAddress"
+              defaultValue={business.registeredBusinessAddress}
+              rows={3}
+              className={input}
+            />
+          </label>
+          <button className={`${primary} sm:col-span-2`}>
+            Save Business Details
+          </button>
+          {message && (
+            <p className="text-sm text-[#497973] sm:col-span-2">{message}</p>
+          )}
+        </form>
+      ) : (
+        <p>{message || "Loading business settings..."}</p>
+      )}
+    </Panel>
+  );
+}
 
-export function InventoryPanel(){const [products,setProducts]=useState<Product[]>([]),[services,setServices]=useState<Service[]>([]),[mode,setMode]=useState<"product"|"service">("product"),[adding,setAdding]=useState(false),[error,setError]=useState("");const load=()=>Promise.all([smartPosRequest<{products:Product[]}>("/api/smartpos/products"),smartPosRequest<{services:Service[]}>("/api/smartpos/services")]).then(([p,s])=>{setProducts(p.products);setServices(s.services)}).catch(e=>setError(e.message));useEffect(()=>{load()},[]);async function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);const common={name:f.get("name"),commissionType:f.get("commissionType"),commissionValue:Number(f.get("commissionValue"))};try{if(mode==="product")await smartPosRequest("/api/smartpos/products",{method:"POST",body:JSON.stringify({...common,sku:f.get("sku"),inventoryType:f.get("inventoryType"),salePrice:Number(f.get("price")),stockQuantity:Number(f.get("stock")),reorderLevel:Number(f.get("reorder"))})});else await smartPosRequest("/api/smartpos/services",{method:"POST",body:JSON.stringify({...common,category:f.get("category"),durationMinutes:Number(f.get("duration")),price:Number(f.get("price"))})});setAdding(false);load()}catch(x){setError(x instanceof Error?x.message:"Could not save item.")}}return <Panel title="Products & Services" action={<button onClick={()=>setAdding(!adding)} className={primary}>＋ Add Item</button>}>{error&&<ErrorBox text={error}/>}<div className="mb-5 flex gap-2"><Tab active={mode==="product"} onClick={()=>setMode("product")} text="Products & Stock"/><Tab active={mode==="service"} onClick={()=>setMode("service")} text="Services"/></div>{adding&&<form onSubmit={submit} className="mb-6 grid gap-3 rounded-2xl bg-[#f8f6f1] p-5 sm:grid-cols-2">{mode==="product"&&<Field name="sku" label="SKU"/>}<Field name="name" label={mode==="product"?"Product name":"Treatment / service name"}/>{mode==="product"?<><label className="text-sm font-semibold">Inventory type<select name="inventoryType" className={input}><option value="retail">Retail product</option><option value="backbar">Backbar consumable</option></select></label><Field name="stock" label="Opening stock" type="number"/><Field name="reorder" label="Low-stock warning" type="number"/></>:<><Field name="category" label="Category"/><Field name="duration" label="Duration (minutes)" type="number"/></>}<Field name="price" label="Price (RM)" type="number" step="0.01"/><CommissionFields/><button className={`${primary} sm:col-span-2`}>Save {mode}</button></form>}{mode==="product"?<div className="grid gap-3 md:grid-cols-2">{products.map(p=><Item key={p.id} title={p.name} subtitle={`${p.sku} · ${p.inventoryType} · ${p.stockQuantity} in stock`} price={p.salePrice}/>)}</div>:<div className="grid gap-3 md:grid-cols-2">{services.map(s=><Item key={s.id} title={s.name} subtitle={`${s.category} · ${s.durationMinutes} minutes`} price={s.price}/>)}</div>}</Panel>}
+export function StaffPanel() {
+  const [staff, setStaff] = useState<Staff[]>([]),
+    [adding, setAdding] = useState(false),
+    [error, setError] = useState("");
+  const load = () =>
+    smartPosRequest<{ staff: Staff[] }>("/api/smartpos/staff")
+      .then((r) => setStaff(r.staff))
+      .catch((e) => setError(e.message));
+  useEffect(() => {
+    load();
+  }, []);
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    try {
+      await smartPosRequest("/api/smartpos/staff", {
+        method: "POST",
+        body: JSON.stringify({
+          name: f.get("name"),
+          telephone: f.get("telephone"),
+          role: f.get("role"),
+          serviceCommission: f.get("serviceCommission"),
+          serviceCommissionValue: Number(f.get("serviceCommissionValue")),
+          productCommission: f.get("productCommission"),
+          productCommissionValue: Number(f.get("productCommissionValue")),
+        }),
+      });
+      setAdding(false);
+      load();
+    } catch (x) {
+      setError(x instanceof Error ? x.message : "Could not add staff.");
+    }
+  }
+  return (
+    <Panel
+      title="Staff & Commission"
+      action={
+        <button className={primary} onClick={() => setAdding(!adding)}>
+          ＋ Add Staff
+        </button>
+      }
+    >
+      {error && <ErrorBox text={error} />}{" "}
+      {adding && (
+        <form
+          onSubmit={submit}
+          className="mb-6 grid gap-3 rounded-2xl bg-[#f8f6f1] p-5 sm:grid-cols-2"
+        >
+          <Field name="name" label="Staff name" />
+          <Field name="telephone" label="Telephone" />
+          <Field name="role" label="Role" />
+          <span />
+          <label className="text-sm font-semibold">
+            Service commission
+            <select name="serviceCommission" className={input}>
+              <option value="none">None</option>
+              <option value="percent">Percentage</option>
+              <option value="fixed">Fixed RM per item</option>
+            </select>
+          </label>
+          <Field
+            name="serviceCommissionValue"
+            label="Service commission value"
+            type="number"
+            step="0.01"
+          />
+          <label className="text-sm font-semibold">
+            Product commission
+            <select name="productCommission" className={input}>
+              <option value="none">None</option>
+              <option value="percent">Percentage</option>
+              <option value="fixed">Fixed RM per item</option>
+            </select>
+          </label>
+          <Field
+            name="productCommissionValue"
+            label="Product commission value"
+            type="number"
+            step="0.01"
+          />
+          <button className={`${primary} sm:col-span-2`}>Save Staff</button>
+        </form>
+      )}
+      <div className="grid gap-3 md:grid-cols-2">
+        {staff.map((s) => (
+          <div key={s.id} className="rounded-xl border border-[#20282c]/10 p-4">
+            <b>{s.name}</b>
+            <p className="text-sm text-[#6d777a]">
+              {s.role} · {s.telephone}
+            </p>
+            <p className="mt-3 text-xs">
+              Services: {s.serviceCommission} {s.serviceCommissionValue} ·
+              Products: {s.productCommission} {s.productCommissionValue}
+            </p>
+          </div>
+        ))}
+      </div>
+      {!staff.length && (
+        <Empty text="Add staff before appointments or checkout." />
+      )}
+    </Panel>
+  );
+}
 
-export function PosPanel(){const [customers,setCustomers]=useState<Customer[]>([]),[services,setServices]=useState<Service[]>([]),[products,setProducts]=useState<Product[]>([]),[staff,setStaff]=useState<Staff[]>([]),[customerId,setCustomerId]=useState(""),[staffId,setStaffId]=useState(""),[cart,setCart]=useState<{itemType:"service"|"product";itemId:string;name:string;price:number;quantity:number}[]>([]),[payment,setPayment]=useState("cash"),[lastFour,setLastFour]=useState(""),[other,setOther]=useState(""),[message,setMessage]=useState(""),[sale,setSale]=useState<Sale|null>(null);useEffect(()=>{Promise.all([smartPosRequest<{customers:Customer[]}>("/api/smartpos/customers"),smartPosRequest<{services:Service[]}>("/api/smartpos/services"),smartPosRequest<{products:Product[]}>("/api/smartpos/products"),smartPosRequest<{staff:Staff[]}>("/api/smartpos/staff")]).then(([c,s,p,t])=>{setCustomers(c.customers);setServices(s.services);setProducts(p.products.filter(x=>x.inventoryType==="retail"&&x.stockQuantity>0));setStaff(t.staff)}).catch(e=>setMessage(e.message))},[]);const total=useMemo(()=>cart.reduce((sum,i)=>sum+i.price*i.quantity,0),[cart]);function add(itemType:"service"|"product",item:Service|Product){const price="price" in item?item.price:item.salePrice;setCart(c=>{const found=c.find(x=>x.itemType===itemType&&x.itemId===item.id);return found?c.map(x=>x===found?{...x,quantity:x.quantity+1}:x):[...c,{itemType,itemId:item.id,name:item.name,price,quantity:1}]})}async function checkout(){try{if(!customerId||!staffId)throw new Error("Choose a customer and staff member.");const r=await smartPosRequest<{sale:Sale}>("/api/smartpos/sales",{method:"POST",body:JSON.stringify({customerId,staffId,paymentMethod:payment,cardLastFour:lastFour,otherPaymentMethod:other,lines:cart.map(({itemType,itemId,quantity})=>({itemType,itemId,quantity,staffId}))})});setSale(r.sale);setCart([]);setMessage(`Payment recorded. Receipt ${r.sale.receiptNumber}`)}catch(x){setMessage(x instanceof Error?x.message:"Checkout failed.")}}function cancel(){if(cart.length&&confirm("Cancel this current sale?")){setCart([]);setMessage("Current sale cancelled. No payment was recorded.")}}async function printReceipt(){if(!sale)return;try{const r=await smartPosRequest<{receipt:{receiptNumber:string;total:number;paymentMethod:string;lines:{quantity:number;name:string;lineTotal:number}[];customer?:{name:string};merchant?:{businessName?:string}}}>(`/api/smartpos/sales/${sale.id}/receipt`);const w=window.open("","_blank");if(!w)return;w.document.write(`<html><body style="font-family:Arial;padding:30px"><h2>${r.receipt.merchant?.businessName||"Wedge-SmartPOS"}</h2><p>Receipt ${r.receipt.receiptNumber}</p><p>Customer: ${r.receipt.customer?.name||"Walk-in"}</p>${r.receipt.lines.map(x=>`<p>${x.quantity} × ${x.name}<span style="float:right">RM ${x.lineTotal.toFixed(2)}</span></p>`).join("")}<hr><h3>Total <span style="float:right">RM ${r.receipt.total.toFixed(2)}</span></h3><p>Payment: ${r.receipt.paymentMethod.toUpperCase()}</p></body></html>`);w.document.close();w.print()}catch(x){setMessage(x instanceof Error?x.message:"Receipt could not be printed.")}}async function emailReceipt(){if(!sale)return;try{const r=await smartPosRequest<{sent:boolean;to:string}>(`/api/smartpos/sales/${sale.id}/email`,{method:"POST",body:"{}"});setMessage(`Receipt emailed to ${r.to}.`)}catch(x){setMessage(x instanceof Error?x.message:"Receipt email failed.")}}return <Panel title="Point of Sale"><div className="grid gap-6 lg:grid-cols-[1fr_360px]"><section><div className="grid gap-3 sm:grid-cols-2"><Select label="Customer" value={customerId} set={setCustomerId} options={customers.map(c=>({id:c.id,name:c.name}))}/><Select label="Staff / commission owner" value={staffId} set={setStaffId} options={staff.map(s=>({id:s.id,name:s.name}))}/></div><h3 className="mt-6 font-bold">Services</h3><div className="mt-3 grid gap-2 sm:grid-cols-2">{services.map(s=><button key={s.id} onClick={()=>add("service",s)} className="flex justify-between rounded-xl border p-3"><span>{s.name}</span><b>{money(s.price)}</b></button>)}</div><h3 className="mt-6 font-bold">Retail products</h3><div className="mt-3 grid gap-2 sm:grid-cols-2">{products.map(p=><button key={p.id} onClick={()=>add("product",p)} className="flex justify-between rounded-xl border p-3"><span>{p.name}</span><b>{money(p.salePrice)}</b></button>)}</div></section><aside className="rounded-2xl bg-[#132126] p-5 text-white"><h3 className="font-bold">Current sale</h3><div className="mt-4 min-h-36 space-y-3">{cart.map((i,n)=><div key={`${i.itemType}-${i.itemId}`} className="flex justify-between text-sm"><span>{i.quantity} × {i.name}</span><span>{money(i.price*i.quantity)} <button onClick={()=>setCart(c=>c.filter((_,x)=>x!==n))}>×</button></span></div>)}</div><div className="border-t border-white/10 pt-4"><div className="flex justify-between text-xl font-bold"><span>Total</span><span>{money(total)}</span></div><select value={payment} onChange={e=>setPayment(e.target.value)} className="mt-4 w-full rounded-xl bg-white p-3 text-sm text-black"><option value="cash">Cash</option><option value="card">Credit / debit card</option><option value="qr">QR payment</option><option value="other">Other</option></select>{payment==="card"&&<input value={lastFour} onChange={e=>setLastFour(e.target.value.replace(/\D/g,"").slice(0,4))} inputMode="numeric" placeholder="Card last 4 digits only" className="mt-3 w-full rounded-xl bg-white p-3 text-black"/>}{payment==="other"&&<input value={other} onChange={e=>setOther(e.target.value)} placeholder="Specify payment method" className="mt-3 w-full rounded-xl bg-white p-3 text-black"/>}<button disabled={!cart.length} onClick={checkout} className="mt-3 w-full rounded-xl bg-[#d2aa62] p-3 font-bold text-[#132126] disabled:opacity-40">Complete Payment</button><button disabled={!cart.length} onClick={cancel} className="mt-2 w-full rounded-xl border border-white/20 p-3 text-sm font-bold disabled:opacity-40">Cancel Sale</button>{message&&<p className="mt-3 text-xs text-[#f1dfbc]">{message}</p>}{sale&&<div className="mt-4 grid grid-cols-2 gap-2"><button onClick={printReceipt} className="rounded-lg bg-white/10 p-2 text-xs">Print receipt</button><button onClick={emailReceipt} className="rounded-lg bg-white/10 p-2 text-xs">Email receipt</button></div>}</div></aside></div></Panel>}
+export function InventoryPanel() {
+  const [products, setProducts] = useState<Product[]>([]),
+    [services, setServices] = useState<Service[]>([]),
+    [mode, setMode] = useState<"product" | "service">("product"),
+    [adding, setAdding] = useState(false),
+    [error, setError] = useState("");
+  const load = () =>
+    Promise.all([
+      smartPosRequest<{ products: Product[] }>("/api/smartpos/products"),
+      smartPosRequest<{ services: Service[] }>("/api/smartpos/services"),
+    ])
+      .then(([p, s]) => {
+        setProducts(p.products);
+        setServices(s.services);
+      })
+      .catch((e) => setError(e.message));
+  useEffect(() => {
+    load();
+  }, []);
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    const common = {
+      name: f.get("name"),
+      commissionType: f.get("commissionType"),
+      commissionValue: Number(f.get("commissionValue")),
+    };
+    try {
+      if (mode === "product")
+        await smartPosRequest("/api/smartpos/products", {
+          method: "POST",
+          body: JSON.stringify({
+            ...common,
+            sku: f.get("sku"),
+            inventoryType: f.get("inventoryType"),
+            salePrice: Number(f.get("price")),
+            stockQuantity: Number(f.get("stock")),
+            reorderLevel: Number(f.get("reorder")),
+          }),
+        });
+      else
+        await smartPosRequest("/api/smartpos/services", {
+          method: "POST",
+          body: JSON.stringify({
+            ...common,
+            category: f.get("category"),
+            durationMinutes: Number(f.get("duration")),
+            price: Number(f.get("price")),
+          }),
+        });
+      setAdding(false);
+      load();
+    } catch (x) {
+      setError(x instanceof Error ? x.message : "Could not save item.");
+    }
+  }
+  return (
+    <Panel
+      title="Products & Services"
+      action={
+        <button onClick={() => setAdding(!adding)} className={primary}>
+          ＋ Add Item
+        </button>
+      }
+    >
+      {error && <ErrorBox text={error} />}
+      <div className="mb-5 flex gap-2">
+        <Tab
+          active={mode === "product"}
+          onClick={() => setMode("product")}
+          text="Products & Stock"
+        />
+        <Tab
+          active={mode === "service"}
+          onClick={() => setMode("service")}
+          text="Services"
+        />
+      </div>
+      {adding && (
+        <form
+          onSubmit={submit}
+          className="mb-6 grid gap-3 rounded-2xl bg-[#f8f6f1] p-5 sm:grid-cols-2"
+        >
+          {mode === "product" && <Field name="sku" label="SKU" />}
+          <Field
+            name="name"
+            label={
+              mode === "product" ? "Product name" : "Treatment / service name"
+            }
+          />
+          {mode === "product" ? (
+            <>
+              <label className="text-sm font-semibold">
+                Inventory type
+                <select name="inventoryType" className={input}>
+                  <option value="retail">Retail product</option>
+                  <option value="backbar">Backbar consumable</option>
+                </select>
+              </label>
+              <Field name="stock" label="Opening stock" type="number" />
+              <Field name="reorder" label="Low-stock warning" type="number" />
+            </>
+          ) : (
+            <>
+              <Field name="category" label="Category" />
+              <Field name="duration" label="Duration (minutes)" type="number" />
+            </>
+          )}
+          <Field name="price" label="Price (RM)" type="number" step="0.01" />
+          <CommissionFields />
+          <button className={`${primary} sm:col-span-2`}>Save {mode}</button>
+        </form>
+      )}
+      {mode === "product" ? (
+        <div className="grid gap-3 md:grid-cols-2">
+          {products.map((p) => (
+            <Item
+              key={p.id}
+              title={p.name}
+              subtitle={`${p.sku} · ${p.inventoryType} · ${p.stockQuantity} in stock`}
+              price={p.salePrice}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="grid gap-3 md:grid-cols-2">
+          {services.map((s) => (
+            <Item
+              key={s.id}
+              title={s.name}
+              subtitle={`${s.category} · ${s.durationMinutes} minutes`}
+              price={s.price}
+            />
+          ))}
+        </div>
+      )}
+    </Panel>
+  );
+}
 
-export function RemindersPanel(){const [items,setItems]=useState<Reminder[]>([]),[error,setError]=useState("");useEffect(()=>{smartPosRequest<{reminders:Reminder[]}>("/api/smartpos/reminders/due").then(r=>setItems(r.reminders)).catch(e=>setError(e.message))},[]);async function open(r:Reminder){await smartPosRequest(`/api/smartpos/appointments/${r.appointment.id}/reminder-opened`,{method:"POST"});window.open(r.whatsappUrl,"_blank","noopener,noreferrer")}return <Panel title="WhatsApp Reminders">{error&&<ErrorBox text={error}/>}<p className="mb-5 text-sm text-[#6d777a]">You remain in control. Review each message before WhatsApp opens.</p>{items.map(r=><div key={r.appointment.id} className="mb-3 rounded-xl border p-4"><div className="flex flex-wrap justify-between gap-3"><span><b>{r.appointment.subjectName}</b><p className="text-sm text-[#6d777a]">{r.appointment.serviceName} · {new Date(r.appointment.startAt).toLocaleString("en-MY")}</p></span><button onClick={()=>open(r)} className={primary}>Open WhatsApp</button></div><p className="mt-3 rounded-lg bg-[#f8f6f1] p-3 text-sm">{r.message}</p></div>)}{!items.length&&<Empty text="No reminders are due in the next 36 hours."/>}</Panel>}
+export function PosPanel() {
+  const [customers, setCustomers] = useState<Customer[]>([]),
+    [services, setServices] = useState<Service[]>([]),
+    [products, setProducts] = useState<Product[]>([]),
+    [staff, setStaff] = useState<Staff[]>([]),
+    [customerId, setCustomerId] = useState(""),
+    [staffId, setStaffId] = useState(""),
+    [cart, setCart] = useState<
+      {
+        itemType: "service" | "product";
+        itemId: string;
+        name: string;
+        price: number;
+        quantity: number;
+      }[]
+    >([]),
+    [payment, setPayment] = useState("cash"),
+    [lastFour, setLastFour] = useState(""),
+    [other, setOther] = useState(""),
+    [message, setMessage] = useState(""),
+    [sale, setSale] = useState<Sale | null>(null);
+  useEffect(() => {
+    Promise.all([
+      smartPosRequest<{ customers: Customer[] }>("/api/smartpos/customers"),
+      smartPosRequest<{ services: Service[] }>("/api/smartpos/services"),
+      smartPosRequest<{ products: Product[] }>("/api/smartpos/products"),
+      smartPosRequest<{ staff: Staff[] }>("/api/smartpos/staff"),
+    ])
+      .then(([c, s, p, t]) => {
+        setCustomers(c.customers);
+        setServices(s.services);
+        setProducts(
+          p.products.filter(
+            (x) => x.inventoryType === "retail" && x.stockQuantity > 0,
+          ),
+        );
+        setStaff(t.staff);
+      })
+      .catch((e) => setMessage(e.message));
+  }, []);
+  const total = useMemo(
+    () => cart.reduce((sum, i) => sum + i.price * i.quantity, 0),
+    [cart],
+  );
+  function add(itemType: "service" | "product", item: Service | Product) {
+    const price = "price" in item ? item.price : item.salePrice;
+    setCart((c) => {
+      const found = c.find(
+        (x) => x.itemType === itemType && x.itemId === item.id,
+      );
+      return found
+        ? c.map((x) => (x === found ? { ...x, quantity: x.quantity + 1 } : x))
+        : [
+            ...c,
+            { itemType, itemId: item.id, name: item.name, price, quantity: 1 },
+          ];
+    });
+  }
+  async function checkout() {
+    try {
+      if (!customerId) throw new Error("Choose a customer.");
+      const r = await smartPosRequest<{ sale: Sale }>("/api/smartpos/sales", {
+        method: "POST",
+        body: JSON.stringify({
+          customerId,
+          staffId,
+          paymentMethod: payment,
+          cardLastFour: lastFour,
+          otherPaymentMethod: other,
+          lines: cart.map(({ itemType, itemId, quantity }) => ({
+            itemType,
+            itemId,
+            quantity,
+            staffId,
+          })),
+        }),
+      });
+      setSale(r.sale);
+      setCart([]);
+      setMessage(`Payment recorded. Receipt ${r.sale.receiptNumber}`);
+    } catch (x) {
+      setMessage(x instanceof Error ? x.message : "Checkout failed.");
+    }
+  }
+  function cancel() {
+    if (cart.length && confirm("Cancel this current sale?")) {
+      setCart([]);
+      setMessage("Current sale cancelled. No payment was recorded.");
+    }
+  }
+  async function printReceipt() {
+    if (!sale) return;
+    try {
+      const r = await smartPosRequest<{
+        receipt: {
+          receiptNumber: string;
+          total: number;
+          paymentMethod: string;
+          lines: { quantity: number; name: string; lineTotal: number }[];
+          customer?: { name: string };
+          merchant?: {
+            businessName?: string;
+            registeredCompanyName?: string;
+            companyRegistrationNumber?: string;
+            taxIdentificationNumber?: string;
+            registeredBusinessAddress?: string;
+            businessAddress?: string;
+            sstRegistrationNumber?: string;
+          };
+        };
+      }>(`/api/smartpos/sales/${sale.id}/receipt`);
+      const w = window.open("", "_blank");
+      if (!w) return;
+      const merchant = r.receipt.merchant;
+      const legalDetails = [
+        merchant?.registeredCompanyName,
+        merchant?.companyRegistrationNumber &&
+          `Company No: ${merchant.companyRegistrationNumber}`,
+        merchant?.taxIdentificationNumber &&
+          `TIN: ${merchant.taxIdentificationNumber}`,
+        merchant?.sstRegistrationNumber &&
+          `SST No: ${merchant.sstRegistrationNumber}`,
+        merchant?.registeredBusinessAddress || merchant?.businessAddress,
+      ]
+        .filter(Boolean)
+        .map((value) => `<div>${value}</div>`)
+        .join("");
+      w.document.write(
+        `<html><body style="font-family:Arial;padding:30px"><h2>${merchant?.businessName || "Wedge-SmartPOS"}</h2>${legalDetails}<p>Receipt ${r.receipt.receiptNumber}</p><p>Customer: ${r.receipt.customer?.name || "Walk-in"}</p>${r.receipt.lines.map((x) => `<p>${x.quantity} × ${x.name}<span style="float:right">RM ${x.lineTotal.toFixed(2)}</span></p>`).join("")}<hr><h3>Total <span style="float:right">RM ${r.receipt.total.toFixed(2)}</span></h3><p>Payment: ${r.receipt.paymentMethod.toUpperCase()}</p></body></html>`,
+      );
+      w.document.close();
+      w.print();
+    } catch (x) {
+      setMessage(
+        x instanceof Error ? x.message : "Receipt could not be printed.",
+      );
+    }
+  }
+  async function emailReceipt() {
+    if (!sale) return;
+    try {
+      const r = await smartPosRequest<{ sent: boolean; to: string }>(
+        `/api/smartpos/sales/${sale.id}/email`,
+        { method: "POST", body: "{}" },
+      );
+      setMessage(`Receipt emailed to ${r.to}.`);
+    } catch (x) {
+      setMessage(x instanceof Error ? x.message : "Receipt email failed.");
+    }
+  }
+  return (
+    <Panel title="Point of Sale">
+      <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+        <section>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Select
+              label="Customer"
+              value={customerId}
+              set={setCustomerId}
+              options={customers.map((c) => ({ id: c.id, name: c.name }))}
+            />
+            <Select
+              label="Staff / commission owner (optional)"
+              value={staffId}
+              set={setStaffId}
+              options={staff.map((s) => ({ id: s.id, name: s.name }))}
+              required={false}
+            />
+          </div>
+          <h3 className="mt-6 font-bold">Services</h3>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {services.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => add("service", s)}
+                className="flex justify-between rounded-xl border p-3"
+              >
+                <span>{s.name}</span>
+                <b>{money(s.price)}</b>
+              </button>
+            ))}
+          </div>
+          <h3 className="mt-6 font-bold">Retail products</h3>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {products.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => add("product", p)}
+                className="flex justify-between rounded-xl border p-3"
+              >
+                <span>{p.name}</span>
+                <b>{money(p.salePrice)}</b>
+              </button>
+            ))}
+          </div>
+        </section>
+        <aside className="rounded-2xl bg-[#132126] p-5 text-white">
+          <h3 className="font-bold">Current sale</h3>
+          <div className="mt-4 min-h-36 space-y-3">
+            {cart.map((i, n) => (
+              <div
+                key={`${i.itemType}-${i.itemId}`}
+                className="flex justify-between text-sm"
+              >
+                <span>
+                  {i.quantity} × {i.name}
+                </span>
+                <span>
+                  {money(i.price * i.quantity)}{" "}
+                  <button
+                    onClick={() => setCart((c) => c.filter((_, x) => x !== n))}
+                  >
+                    ×
+                  </button>
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="border-t border-white/10 pt-4">
+            <div className="flex justify-between text-xl font-bold">
+              <span>Total</span>
+              <span>{money(total)}</span>
+            </div>
+            <select
+              value={payment}
+              onChange={(e) => setPayment(e.target.value)}
+              className="mt-4 w-full rounded-xl bg-white p-3 text-sm text-black"
+            >
+              <option value="cash">Cash</option>
+              <option value="card">Credit / debit card</option>
+              <option value="qr">QR payment</option>
+              <option value="other">Other</option>
+            </select>
+            {payment === "card" && (
+              <input
+                value={lastFour}
+                onChange={(e) =>
+                  setLastFour(e.target.value.replace(/\D/g, "").slice(0, 4))
+                }
+                inputMode="numeric"
+                placeholder="Card last 4 digits only"
+                className="mt-3 w-full rounded-xl bg-white p-3 text-black"
+              />
+            )}
+            {payment === "other" && (
+              <input
+                value={other}
+                onChange={(e) => setOther(e.target.value)}
+                placeholder="Specify payment method"
+                className="mt-3 w-full rounded-xl bg-white p-3 text-black"
+              />
+            )}
+            <button
+              disabled={!cart.length}
+              onClick={checkout}
+              className="mt-3 w-full rounded-xl bg-[#d2aa62] p-3 font-bold text-[#132126] disabled:opacity-40"
+            >
+              Complete Payment
+            </button>
+            <button
+              disabled={!cart.length}
+              onClick={cancel}
+              className="mt-2 w-full rounded-xl border border-white/20 p-3 text-sm font-bold disabled:opacity-40"
+            >
+              Cancel Sale
+            </button>
+            {message && (
+              <p className="mt-3 text-xs text-[#f1dfbc]">{message}</p>
+            )}
+            {sale && (
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <button
+                  onClick={printReceipt}
+                  className="rounded-lg bg-white/10 p-2 text-xs"
+                >
+                  Print receipt
+                </button>
+                <button
+                  onClick={emailReceipt}
+                  className="rounded-lg bg-white/10 p-2 text-xs"
+                >
+                  Email receipt
+                </button>
+              </div>
+            )}
+          </div>
+        </aside>
+      </div>
+    </Panel>
+  );
+}
 
-export function InsightsPanel(){const [data,setData]=useState<{summary:{customerCount:number;totalRevenue:number;totalCommission:number;averageSpend:number};customers:{id:string;name:string;totalSpend:number;visitCount:number}[]}|null>(null),[assistant,setAssistant]=useState<{type:string;message:string}[]>([]),[error,setError]=useState("");useEffect(()=>{Promise.all([smartPosRequest<NonNullable<typeof data>>("/api/smartpos/insights"),smartPosRequest<{messages:{type:string;message:string}[]}>("/api/smartpos/assistant/daily")]).then(([d,a])=>{setData(d);setAssistant(a.messages)}).catch(e=>setError(e.message))},[]);return <Panel title="Business Insights">{error&&<ErrorBox text={error}/>}<div className="grid gap-3 sm:grid-cols-4"><Stat label="Customers" value={String(data?.summary.customerCount||0)}/><Stat label="Total sales" value={money(data?.summary.totalRevenue||0)}/><Stat label="Commission" value={money(data?.summary.totalCommission||0)}/><Stat label="Average spend" value={money(data?.summary.averageSpend||0)}/></div><h3 className="mt-7 font-bold">Wedge AI daily notices</h3><div className="mt-3 grid gap-2">{assistant.map(x=><p key={x.type} className="rounded-xl bg-[#f8f6f1] p-4 text-sm"><b>{x.type.replaceAll("_"," ")}: </b>{x.message}</p>)}</div></Panel>}
+export function RemindersPanel() {
+  const [items, setItems] = useState<Reminder[]>([]),
+    [error, setError] = useState("");
+  useEffect(() => {
+    smartPosRequest<{ reminders: Reminder[] }>("/api/smartpos/reminders/due")
+      .then((r) => setItems(r.reminders))
+      .catch((e) => setError(e.message));
+  }, []);
+  async function open(r: Reminder) {
+    await smartPosRequest(
+      `/api/smartpos/appointments/${r.appointment.id}/reminder-opened`,
+      { method: "POST" },
+    );
+    window.open(r.whatsappUrl, "_blank", "noopener,noreferrer");
+  }
+  return (
+    <Panel title="WhatsApp Reminders">
+      {error && <ErrorBox text={error} />}
+      <p className="mb-5 text-sm text-[#6d777a]">
+        You remain in control. Review each message before WhatsApp opens.
+      </p>
+      {items.map((r) => (
+        <div key={r.appointment.id} className="mb-3 rounded-xl border p-4">
+          <div className="flex flex-wrap justify-between gap-3">
+            <span>
+              <b>{r.appointment.subjectName}</b>
+              <p className="text-sm text-[#6d777a]">
+                {r.appointment.serviceName} ·{" "}
+                {new Date(r.appointment.startAt).toLocaleString("en-MY")}
+              </p>
+            </span>
+            <button onClick={() => open(r)} className={primary}>
+              Open WhatsApp
+            </button>
+          </div>
+          <p className="mt-3 rounded-lg bg-[#f8f6f1] p-3 text-sm">
+            {r.message}
+          </p>
+        </div>
+      ))}
+      {!items.length && (
+        <Empty text="No reminders are due in the next 36 hours." />
+      )}
+    </Panel>
+  );
+}
 
-export function NewAppointmentForm({vertical,onDone,onCancel}:{vertical:Vertical;onDone:()=>void;onCancel:()=>void}){const [customers,setCustomers]=useState<Customer[]>([]),[services,setServices]=useState<Service[]>([]),[staff,setStaff]=useState<Staff[]>([]),[customerId,setCustomerId]=useState(""),[error,setError]=useState("");useEffect(()=>{Promise.all([smartPosRequest<{customers:Customer[]}>("/api/smartpos/customers"),smartPosRequest<{services:Service[]}>("/api/smartpos/services"),smartPosRequest<{staff:Staff[]}>("/api/smartpos/staff")]).then(([c,s,t])=>{setCustomers(c.customers);setServices(s.services);setStaff(t.staff)}).catch(e=>setError(e.message))},[]);const selected=customers.find(c=>c.id===customerId);async function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);try{await smartPosRequest("/api/smartpos/appointments",{method:"POST",body:JSON.stringify({customerId,petId:f.get("petId"),serviceId:f.get("serviceId"),staffId:f.get("staffId"),startAt:f.get("startAt")})});onDone()}catch(x){setError(x instanceof Error?x.message:"Could not create appointment.")}}return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"><form onSubmit={submit} className="w-full max-w-lg rounded-3xl bg-[#f8f6f1] p-6"><div className="flex justify-between"><h2 className="font-serif text-3xl">New Appointment</h2><button type="button" onClick={onCancel}>✕</button></div>{error&&<ErrorBox text={error}/>}<div className="mt-5 grid gap-3"><Select label={vertical==="pet"?"Owner":"Client"} value={customerId} set={setCustomerId} options={customers.map(c=>({id:c.id,name:c.name}))}/>{vertical==="pet"&&<label className="text-sm font-semibold">Pet<select required name="petId" className={input}><option value="">Choose pet</option>{selected?.pets.map(p=><option value={p.id} key={p.id}>{p.name} · {p.breed}</option>)}</select></label>}<label className="text-sm font-semibold">Treatment / service and price<select required name="serviceId" className={input}><option value="">Choose service</option>{services.map(s=><option value={s.id} key={s.id}>{s.name} · {money(s.price)}</option>)}</select></label><label className="text-sm font-semibold">Staff member<select required name="staffId" className={input}><option value="">Choose staff</option>{staff.map(s=><option value={s.id} key={s.id}>{s.name}</option>)}</select></label><Field name="startAt" label="Date and time" type="datetime-local"/><button disabled={!customers.length||!services.length||!staff.length} className={primary}>Save Appointment</button></div>{(!customers.length||!services.length||!staff.length)&&<p className="mt-4 text-xs text-[#8b5f35]">Add a customer, priced service and staff member first.</p>}</form></div>}
+export function InsightsPanel() {
+  const [data, setData] = useState<{
+      summary: {
+        customerCount: number;
+        totalRevenue: number;
+        totalCommission: number;
+        averageSpend: number;
+      };
+      customers: {
+        id: string;
+        name: string;
+        totalSpend: number;
+        visitCount: number;
+      }[];
+    } | null>(null),
+    [assistant, setAssistant] = useState<{ type: string; message: string }[]>(
+      [],
+    ),
+    [error, setError] = useState("");
+  useEffect(() => {
+    Promise.all([
+      smartPosRequest<NonNullable<typeof data>>("/api/smartpos/insights"),
+      smartPosRequest<{ messages: { type: string; message: string }[] }>(
+        "/api/smartpos/assistant/daily",
+      ),
+    ])
+      .then(([d, a]) => {
+        setData(d);
+        setAssistant(a.messages);
+      })
+      .catch((e) => setError(e.message));
+  }, []);
+  return (
+    <Panel title="Business Insights">
+      {error && <ErrorBox text={error} />}
+      <div className="grid gap-3 sm:grid-cols-4">
+        <Stat
+          label="Customers"
+          value={String(data?.summary.customerCount || 0)}
+        />
+        <Stat
+          label="Total sales"
+          value={money(data?.summary.totalRevenue || 0)}
+        />
+        <Stat
+          label="Commission"
+          value={money(data?.summary.totalCommission || 0)}
+        />
+        <Stat
+          label="Average spend"
+          value={money(data?.summary.averageSpend || 0)}
+        />
+      </div>
+      <h3 className="mt-7 font-bold">Wedge AI daily notices</h3>
+      <div className="mt-3 grid gap-2">
+        {assistant.map((x) => (
+          <p key={x.type} className="rounded-xl bg-[#f8f6f1] p-4 text-sm">
+            <b>{x.type.replaceAll("_", " ")}: </b>
+            {x.message}
+          </p>
+        ))}
+      </div>
+    </Panel>
+  );
+}
 
-function Panel({title,action,children}:{title:string;action?:React.ReactNode;children:React.ReactNode}){return <div className="rounded-2xl border border-[#20282c]/10 bg-white p-5 shadow-sm sm:p-7"><div className="mb-6 flex items-center justify-between"><h2 className="font-serif text-3xl">{title}</h2>{action}</div>{children}</div>}
-function Field({label,required=true,...props}:{label:string;required?:boolean}&React.InputHTMLAttributes<HTMLInputElement>){return <label className="text-sm font-semibold">{label}<input required={required} {...props} className={input}/></label>}
-function Select({label,value,set,options}:{label:string;value:string;set:(x:string)=>void;options:{id:string;name:string}[]}){return <label className="text-sm font-semibold">{label}<select required value={value} onChange={e=>set(e.target.value)} className={input}><option value="">Choose</option>{options.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>}
-function Empty({text}:{text:string}){return <div className="my-5 rounded-xl border border-dashed p-8 text-center text-sm text-[#6d777a]">{text}</div>}
-function ErrorBox({text}:{text:string}){return <p className="my-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{text}</p>}
-function Tab({active,onClick,text}:{active:boolean;onClick:()=>void;text:string}){return <button onClick={onClick} className={`rounded-full px-4 py-2 text-sm font-bold ${active?"bg-[#20282c] text-white":"border"}`}>{text}</button>}
-function Stat({label,value}:{label:string;value:string}){return <div className="rounded-xl bg-[#f8f6f1] p-4"><p className="text-xs text-[#6d777a]">{label}</p><p className="mt-1 text-2xl font-bold">{value}</p></div>}
-function Item({title,subtitle,price}:{title:string;subtitle:string;price:number}){return <div className="flex justify-between rounded-xl border p-4"><span><b>{title}</b><p className="text-xs text-[#6d777a]">{subtitle}</p></span><b>{money(price)}</b></div>}
+export function NewAppointmentForm({
+  vertical,
+  onDone,
+  onCancel,
+}: {
+  vertical: Vertical;
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  const [customers, setCustomers] = useState<Customer[]>([]),
+    [services, setServices] = useState<Service[]>([]),
+    [staff, setStaff] = useState<Staff[]>([]),
+    [customerId, setCustomerId] = useState(""),
+    [error, setError] = useState("");
+  useEffect(() => {
+    Promise.all([
+      smartPosRequest<{ customers: Customer[] }>("/api/smartpos/customers"),
+      smartPosRequest<{ services: Service[] }>("/api/smartpos/services"),
+      smartPosRequest<{ staff: Staff[] }>("/api/smartpos/staff"),
+    ])
+      .then(([c, s, t]) => {
+        setCustomers(c.customers);
+        setServices(s.services);
+        setStaff(t.staff);
+      })
+      .catch((e) => setError(e.message));
+  }, []);
+  const selected = customers.find((c) => c.id === customerId);
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    try {
+      await smartPosRequest("/api/smartpos/appointments", {
+        method: "POST",
+        body: JSON.stringify({
+          customerId,
+          petId: f.get("petId"),
+          serviceId: f.get("serviceId"),
+          staffId: f.get("staffId"),
+          startAt: f.get("startAt"),
+        }),
+      });
+      onDone();
+    } catch (x) {
+      setError(
+        x instanceof Error ? x.message : "Could not create appointment.",
+      );
+    }
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
+      <form
+        onSubmit={submit}
+        className="w-full max-w-lg rounded-3xl bg-[#f8f6f1] p-6"
+      >
+        <div className="flex justify-between">
+          <h2 className="font-serif text-3xl">New Appointment</h2>
+          <button type="button" onClick={onCancel}>
+            ✕
+          </button>
+        </div>
+        {error && <ErrorBox text={error} />}
+        <div className="mt-5 grid gap-3">
+          <Select
+            label={vertical === "pet" ? "Owner" : "Client"}
+            value={customerId}
+            set={setCustomerId}
+            options={customers.map((c) => ({ id: c.id, name: c.name }))}
+          />
+          {vertical === "pet" && (
+            <label className="text-sm font-semibold">
+              Pet
+              <select required name="petId" className={input}>
+                <option value="">Choose pet</option>
+                {selected?.pets.map((p) => (
+                  <option value={p.id} key={p.id}>
+                    {p.name} · {p.breed}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <label className="text-sm font-semibold">
+            Treatment / service (optional)
+            <select name="serviceId" className={input}>
+              <option value="">Decide later</option>
+              {services.map((s) => (
+                <option value={s.id} key={s.id}>
+                  {s.name} · {money(s.price)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm font-semibold">
+            Staff member (optional)
+            <select name="staffId" className={input}>
+              <option value="">Assign later</option>
+              {staff.map((s) => (
+                <option value={s.id} key={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Field name="startAt" label="Date and time" type="datetime-local" />
+          <button disabled={!customers.length} className={primary}>
+            Save Appointment
+          </button>
+        </div>
+        {!customers.length && (
+          <p className="mt-4 text-xs text-[#8b5f35]">
+            Add a customer before creating an appointment.
+          </p>
+        )}
+      </form>
+    </div>
+  );
+}
+
+function Panel({
+  title,
+  action,
+  children,
+}: {
+  title: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-[#20282c]/10 bg-white p-5 shadow-sm sm:p-7">
+      <div className="mb-6 flex items-center justify-between">
+        <h2 className="font-serif text-3xl">{title}</h2>
+        {action}
+      </div>
+      {children}
+    </div>
+  );
+}
+function Field({
+  label,
+  required = true,
+  ...props
+}: {
+  label: string;
+  required?: boolean;
+} & React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <label className="text-sm font-semibold">
+      {label}
+      <input required={required} {...props} className={input} />
+    </label>
+  );
+}
+function Select({
+  label,
+  value,
+  set,
+  options,
+  required = true,
+}: {
+  label: string;
+  value: string;
+  set: (x: string) => void;
+  options: { id: string; name: string }[];
+  required?: boolean;
+}) {
+  return (
+    <label className="text-sm font-semibold">
+      {label}
+      <select
+        required={required}
+        value={value}
+        onChange={(e) => set(e.target.value)}
+        className={input}
+      >
+        <option value="">{required ? "Choose" : "Not assigned"}</option>
+        {options.map((x) => (
+          <option key={x.id} value={x.id}>
+            {x.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+function Empty({ text }: { text: string }) {
+  return (
+    <div className="my-5 rounded-xl border border-dashed p-8 text-center text-sm text-[#6d777a]">
+      {text}
+    </div>
+  );
+}
+function ErrorBox({ text }: { text: string }) {
+  return (
+    <p className="my-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+      {text}
+    </p>
+  );
+}
+function Tab({
+  active,
+  onClick,
+  text,
+}: {
+  active: boolean;
+  onClick: () => void;
+  text: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-full px-4 py-2 text-sm font-bold ${active ? "bg-[#20282c] text-white" : "border"}`}
+    >
+      {text}
+    </button>
+  );
+}
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl bg-[#f8f6f1] p-4">
+      <p className="text-xs text-[#6d777a]">{label}</p>
+      <p className="mt-1 text-2xl font-bold">{value}</p>
+    </div>
+  );
+}
+function Item({
+  title,
+  subtitle,
+  price,
+}: {
+  title: string;
+  subtitle: string;
+  price: number;
+}) {
+  return (
+    <div className="flex justify-between rounded-xl border p-4">
+      <span>
+        <b>{title}</b>
+        <p className="text-xs text-[#6d777a]">{subtitle}</p>
+      </span>
+      <b>{money(price)}</b>
+    </div>
+  );
+}
