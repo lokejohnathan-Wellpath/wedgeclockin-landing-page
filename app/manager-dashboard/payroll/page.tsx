@@ -50,6 +50,9 @@ type PayrollRecord = {
   otherDeduction: number;
   otHours: number;
   otRate: number;
+  approvedOtMinutes?: number;
+  otSource?: "manual" | "approved-roster";
+  useApprovedRosterOt?: boolean;
   status?: PayrollStatus;
   remarks: string;
   createdAt?: string;
@@ -174,6 +177,8 @@ export default function PayrollPage() {
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [approvedOtMessage, setApprovedOtMessage] = useState("");
+  const [useApprovedRosterOt, setUseApprovedRosterOt] = useState(false);
 
   const selectedEmployee = useMemo(
     () => employees.find((employee) => employee.id === form.employeeId) ?? null,
@@ -225,7 +230,7 @@ export default function PayrollPage() {
 
       try {
         const response = await fetch(
-          `${apiBaseUrl}/api/employees?companyId=${encodeURIComponent(companyId)}`,
+          `${apiBaseUrl}/api/manager/employees`,
           { headers: { Authorization: `Bearer ${token}` } },
         );
         const data = await response.json();
@@ -254,6 +259,49 @@ export default function PayrollPage() {
 
     loadEmployees();
   }, [router]);
+
+  useEffect(() => {
+    async function loadApprovedOvertime() {
+      const token = localStorage.getItem("wc_manager_token");
+      const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+      const month = Number(form.month);
+      const year = Number(form.year);
+
+      if (!token || !apiBaseUrl || !form.employeeId || !month || !year) {
+        setApprovedOtMessage("");
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          `${apiBaseUrl}/api/manager/overtime/approved-total?employeeId=${encodeURIComponent(
+            form.employeeId
+          )}&month=${month}&year=${year}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const data = await response.json();
+        if (!response.ok) throw new Error();
+        const hours = Number(data.hours || 0);
+        const managedByRoster = Boolean(data.managedByRoster);
+        setUseApprovedRosterOt(managedByRoster);
+        if (managedByRoster) {
+          setForm((current) => ({ ...current, otHours: hours.toFixed(2) }));
+        }
+        setApprovedOtMessage(
+          managedByRoster
+            ? hours > 0
+              ? `${hours.toFixed(2)} approved roster OT hour(s) loaded automatically.`
+              : "Roster is active; no OT has been approved for this employee and month."
+            : "Roster OT is not active for this employee and month; manual OT remains available."
+        );
+      } catch {
+        setUseApprovedRosterOt(false);
+        setApprovedOtMessage("Approved roster OT could not be loaded.");
+      }
+    }
+
+    loadApprovedOvertime();
+  }, [form.employeeId, form.month, form.year]);
 
   function updateField<K extends keyof PayrollForm>(
     field: K,
@@ -338,7 +386,7 @@ export default function PayrollPage() {
     if (!token || !apiBaseUrl) return;
 
     const response = await fetch(
-      `${apiBaseUrl}/api/employees/${encodeURIComponent(employee.id)}`,
+      `${apiBaseUrl}/api/manager/employees/${encodeURIComponent(employee.id)}/payroll-defaults`,
       {
         method: "PUT",
         headers: {
@@ -420,6 +468,7 @@ export default function PayrollPage() {
       otRate: parseAmount(form.otRate),
       status: form.status,
       remarks: form.remarks.trim(),
+      useApprovedRosterOt,
     };
 
     setIsSaving(true);
@@ -603,7 +652,6 @@ export default function PayrollPage() {
                   options={years.map((year) => ({ value: String(year), label: String(year) }))}
                 />
               </div>
-
               <SectionTitle title="Salary" />
               <MoneyField
                 label="Basic Salary"
@@ -649,6 +697,20 @@ export default function PayrollPage() {
                   onChange={(value) => updateField("otRate", value)}
                 />
               </div>
+              {approvedOtMessage && (
+                <label className="mt-3 flex items-start gap-3 rounded-2xl border border-[#d4ad63]/20 bg-[#d4ad63]/5 p-4 text-xs leading-5 text-white/55">
+                  <input
+                    type="checkbox"
+                    checked={useApprovedRosterOt}
+                    onChange={(event) => setUseApprovedRosterOt(event.target.checked)}
+                    className="mt-0.5 accent-[#d4ad63]"
+                  />
+                  <span>
+                    <b className="text-[#e4c98f]">Use approved roster OT.</b>{" "}
+                    {approvedOtMessage}
+                  </span>
+                </label>
+              )}
 
               <SectionTitle title="Statutory / Other Deductions" />
               <div className="grid gap-3 sm:grid-cols-2">

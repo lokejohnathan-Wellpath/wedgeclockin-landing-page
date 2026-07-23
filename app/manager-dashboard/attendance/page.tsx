@@ -13,6 +13,12 @@ type AttendanceRow = {
   restOut: string | null;
   restIn: string | null;
   clockOut: string | null;
+  rosterEnabled?: boolean;
+  scheduledStart?: string | null;
+  scheduledEnd?: string | null;
+  lateMinutes?: number;
+  overtimeMinutes?: number;
+  overtimeStatus?: "none" | "pending" | "approved" | "rejected";
   gpsStatus: string;
   todayStatus: string;
 };
@@ -45,6 +51,14 @@ function badge(text: string) {
 
   if (text === "On Rest" || text === "Pending") {
     return `${base} border border-yellow-400/30 bg-yellow-500/10 text-yellow-200`;
+  }
+
+  if (text === "Late" || text === "Rejected") {
+    return `${base} border border-red-400/30 bg-red-500/10 text-red-200`;
+  }
+
+  if (text === "Approved") {
+    return `${base} border border-emerald-400/30 bg-emerald-500/10 text-emerald-200`;
   }
 
   if (text === "Clocked Out") {
@@ -242,6 +256,8 @@ export default function ManagerAttendancePage() {
                     <th className="px-3 py-4 whitespace-nowrap">Rest In</th>
                     <th className="px-3 py-4 whitespace-nowrap">Clock Out</th>
                     <th className="px-3 py-4">GPS</th>
+                    <th className="px-3 py-4">Roster / Late</th>
+                    <th className="px-3 py-4">OT</th>
                     <th className="px-3 py-4">Status</th>
                   </tr>
                 </thead>
@@ -292,6 +308,53 @@ export default function ManagerAttendancePage() {
                         <span className={badge(row.gpsStatus)}>
                           {row.gpsStatus}
                         </span>
+                      </td>
+
+                      <td className="px-3 py-4 align-middle">
+                        {!row.rosterEnabled ? (
+                          <span className={badge("Optional")}>Not used</span>
+                        ) : (row.lateMinutes || 0) > 0 ? (
+                          <div>
+                            <span className={badge("Late")}>Late</span>
+                            <p className="mt-1 whitespace-nowrap text-xs text-red-200/70">
+                              {row.lateMinutes} min · start {formatMalaysiaTime(row.scheduledStart || null)}
+                            </p>
+                          </div>
+                        ) : (
+                          <div>
+                            <span className={badge("Recorded")}>On time</span>
+                            <p className="mt-1 whitespace-nowrap text-xs text-white/35">
+                              start {formatMalaysiaTime(row.scheduledStart || null)}
+                            </p>
+                          </div>
+                        )}
+                      </td>
+
+                      <td className="px-3 py-4 align-middle">
+                        {(row.overtimeMinutes || 0) > 0 ? (
+                          <div>
+                            <span
+                              className={badge(
+                                row.overtimeStatus === "approved"
+                                  ? "Approved"
+                                  : row.overtimeStatus === "rejected"
+                                    ? "Rejected"
+                                    : "Pending"
+                              )}
+                            >
+                              {row.overtimeStatus === "approved"
+                                ? "Approved"
+                                : row.overtimeStatus === "rejected"
+                                  ? "Rejected"
+                                  : "Pending"}
+                            </span>
+                            <p className="mt-1 whitespace-nowrap text-xs text-white/40">
+                              {row.overtimeMinutes} min
+                            </p>
+                          </div>
+                        ) : (
+                          <span className="text-white/35">—</span>
+                        )}
                       </td>
 
                       <td className="px-3 py-4 align-middle">

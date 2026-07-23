@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { calculateMalaysiaStatutory } from "../../lib/malaysiaStatutory";
 
 type Payroll = { employeeId: string; employeeName: string; month: number; year: number; basicSalary: number; allowanceA: number; allowanceB: number; allowanceC: number; otHours: number; otRate: number; taxDeduction: number; otherDeduction: number };
-type Employee = { id: string; icNumber?: string; employeeCode?: string; fullName: string };
+type Employee = { id: string; epfMemberNumber?: string; icNumber?: string; employeeCode?: string; fullName: string };
 
 function csvCell(value: unknown) { return `"${String(value ?? "").replaceAll('"', '""')}"`; }
 function cents(value: number, width: number) { return String(Math.round(value * 100)).padStart(width, "0").slice(-width); }
@@ -60,8 +60,8 @@ export default function ExportPage() {
       if (kind === "epf") {
         const missing = rows.filter(({ employee }) => !employee?.icNumber);
         if (missing.length) throw new Error(`${missing.length} employee(s) are missing an IC number.`);
-        const header = ["IC_NUMBER","EMPLOYEE_NAME","EPF_WAGES","EMPLOYER_CONTRIBUTION","EMPLOYEE_CONTRIBUTION","TOTAL_CONTRIBUTION"];
-        const lines = rows.map(({ record, employee, statutory }) => [employee?.icNumber?.replace(/\D/g, ""), record.employeeName, statutory.epfContributionWages.toFixed(2), statutory.epfEmployer.toFixed(2), statutory.epfEmployee.toFixed(2), (statutory.epfEmployer + statutory.epfEmployee).toFixed(2)].map(csvCell).join(","));
+        const header = ["MEMBER_NUMBER","IC_NUMBER","EMPLOYEE_NAME","EPF_WAGES","EMPLOYER_CONTRIBUTION","EMPLOYEE_CONTRIBUTION","TOTAL_CONTRIBUTION"];
+        const lines = rows.map(({ record, employee, statutory }) => [employee?.epfMemberNumber?.replace(/\D/g, "") || "", employee?.icNumber?.replace(/\D/g, ""), record.employeeName, statutory.epfContributionWages.toFixed(2), statutory.epfEmployer.toFixed(2), statutory.epfEmployee.toFixed(2), (statutory.epfEmployer + statutory.epfEmployee).toFixed(2)].map(csvCell).join(","));
         downloadFile(`epf-e-caruman-${period}.csv`, [header.map(csvCell).join(","), ...lines].join("\r\n"), "text/csv;charset=utf-8");
       }
 

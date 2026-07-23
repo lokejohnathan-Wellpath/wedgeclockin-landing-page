@@ -69,9 +69,9 @@ const modules: ModuleCard[] = [
     href: "/manager-dashboard/gps",
   },
   {
-    title: "Founder John Control Desk",
-    text: "Configure Wedge Works packages, promotions and managed-domain pricing.",
-    href: "/manager-dashboard/founder-control-desk",
+    title: "Duty Roster & OT",
+    text: "Plan optional weekly shifts, detect lateness and approve overtime.",
+    href: "/manager-dashboard/roster",
   },
 ];
 
