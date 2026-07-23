@@ -388,7 +388,7 @@ export default function PayrollPage() {
     const response = await fetch(
       `${apiBaseUrl}/api/manager/employees/${encodeURIComponent(employee.id)}/payroll-defaults`,
       {
-        method: "PUT",
+        method: "PATCH",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
