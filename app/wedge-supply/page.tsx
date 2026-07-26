@@ -6,6 +6,8 @@ import {
   emptySupplyState,
   hasCompletedSetup,
   loadSupplyState,
+  makeId,
+  normaliseOutletCode,
   saveSupplyState,
 } from "./lib/supplyStore";
 import type { SupplyConfig, SupplyState } from "./lib/types";
@@ -19,6 +21,8 @@ export default function WedgeSupplyEntry() {
   const [ready, setReady] = useState(false);
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState("");
+  const [newOutletName, setNewOutletName] = useState("");
+  const [newOutletCode, setNewOutletCode] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -44,18 +48,32 @@ export default function WedgeSupplyEntry() {
     if (
       !config.businessName.trim() ||
       !config.centralLocation.trim() ||
-      !config.outletName.trim()
+      !config.outletName.trim() ||
+      !normaliseOutletCode(config.outletCode || "")
     ) {
       setError("Complete the three business fields before continuing.");
       return;
     }
 
+    const firstCode = normaliseOutletCode(config.outletCode || "");
+    const existingFirst = config.outlets?.[0];
+    const firstOutlet = {
+      id: existingFirst?.id || makeId("outlet"),
+      name: config.outletName.trim(),
+      code: firstCode,
+      active: true,
+      createdAt: existingFirst?.createdAt || new Date().toISOString(),
+    };
+    const outlets = [firstOutlet, ...(config.outlets || []).slice(1)];
     const next: SupplyState = {
       ...state,
       config: {
         businessName: config.businessName.trim(),
         centralLocation: config.centralLocation.trim(),
         outletName: config.outletName.trim(),
+        outletCode: firstCode,
+        outlets,
+        activeOutletId: config.activeOutletId || firstOutlet.id,
         currency: config.currency.trim() || "RM",
       },
     };
@@ -63,6 +81,54 @@ export default function WedgeSupplyEntry() {
     setState(next);
     setConfig(next.config);
     setEditing(false);
+  }
+
+  function addOutlet() {
+    const name = newOutletName.trim();
+    const code = normaliseOutletCode(newOutletCode);
+    if (!name || !code) {
+      setError("Enter an outlet name and a short unique outlet code.");
+      return;
+    }
+    if (
+      (state.config.outlets || []).some(
+        (outlet) =>
+          outlet.code === code ||
+          outlet.name.toLowerCase() === name.toLowerCase(),
+      )
+    ) {
+      setError("That outlet name or code is already registered.");
+      return;
+    }
+    const outlet = {
+      id: makeId("outlet"),
+      name,
+      code,
+      active: true,
+      createdAt: new Date().toISOString(),
+    };
+    const next = {
+      ...state,
+      config: {
+        ...state.config,
+        outlets: [...(state.config.outlets || []), outlet],
+      },
+    };
+    saveSupplyState(next);
+    setState(next);
+    setConfig(next.config);
+    setNewOutletName("");
+    setNewOutletCode("");
+    setError("");
+  }
+
+  function chooseOutlet(outletId: string) {
+    const next = {
+      ...state,
+      config: { ...state.config, activeOutletId: outletId },
+    };
+    saveSupplyState(next);
+    setState(next);
   }
 
   if (!ready) {
@@ -116,17 +182,19 @@ export default function WedgeSupplyEntry() {
               </p>
 
               <div className="mt-9 grid max-w-xl gap-3 sm:grid-cols-3">
-                {["Request clearly", "Approve safely", "Track every movement"].map(
-                  (label, index) => (
-                    <div
-                      key={label}
-                      className="rounded-2xl border border-white/8 bg-white/[.035] p-4"
-                    >
-                      <span className="text-xs text-[#d6ad62]">0{index + 1}</span>
-                      <p className="mt-2 text-sm font-semibold">{label}</p>
-                    </div>
-                  ),
-                )}
+                {[
+                  "Request clearly",
+                  "Approve safely",
+                  "Track every movement",
+                ].map((label, index) => (
+                  <div
+                    key={label}
+                    className="rounded-2xl border border-white/8 bg-white/[.035] p-4"
+                  >
+                    <span className="text-xs text-[#d6ad62]">0{index + 1}</span>
+                    <p className="mt-2 text-sm font-semibold">{label}</p>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -181,6 +249,21 @@ export default function WedgeSupplyEntry() {
                         }
                         placeholder="Example: Ipoh Garden Outlet"
                       />
+                    </label>
+                    <label className="text-sm text-white/65">
+                      First outlet code
+                      <input
+                        className={inputClass}
+                        value={config.outletCode || ""}
+                        onChange={(event) =>
+                          updateConfig("outletCode", event.target.value)
+                        }
+                        placeholder="Example: IPOH"
+                        maxLength={12}
+                      />
+                      <span className="mt-2 block text-xs text-white/35">
+                        Used at the beginning of every delivery order number.
+                      </span>
                     </label>
                     <label className="text-sm text-white/65">
                       Currency
@@ -255,27 +338,64 @@ export default function WedgeSupplyEntry() {
                       </p>
                     </a>
 
-                    <a
-                      href="/wedge-supply/outlet"
-                      className="group rounded-[24px] border border-[#4b7e74]/35 bg-[#0c1215] p-6 transition hover:-translate-y-1 hover:border-[#7fb1a7]"
-                    >
-                      <span className="grid h-12 w-12 place-items-center rounded-2xl bg-[#4b7e74] text-2xl text-white">
-                        ◇
-                      </span>
-                      <p className="mt-5 text-xs font-bold tracking-[.18em] text-[#8fc2b8]">
-                        OUTLET USER
-                      </p>
-                      <h3 className="mt-2 text-xl font-bold">
-                        {state.config.outletName}
-                      </h3>
-                      <p className="mt-3 text-sm leading-6 text-white/50">
-                        Request supplies, follow delivery status, receive goods
-                        and count outlet stock.
-                      </p>
-                      <p className="mt-5 font-bold text-[#b9ded7]">
-                        Enter outlet operations →
-                      </p>
-                    </a>
+                    {(state.config.outlets || []).map((outlet) => (
+                      <a
+                        key={outlet.id}
+                        href="/wedge-supply/outlet"
+                        onClick={() => chooseOutlet(outlet.id)}
+                        className="group rounded-[24px] border border-[#4b7e74]/35 bg-[#0c1215] p-6 transition hover:-translate-y-1 hover:border-[#7fb1a7]"
+                      >
+                        <span className="grid h-12 w-12 place-items-center rounded-2xl bg-[#4b7e74] text-sm font-black text-white">
+                          {outlet.code}
+                        </span>
+                        <p className="mt-5 text-xs font-bold tracking-[.18em] text-[#8fc2b8]">
+                          OUTLET USER · {outlet.code}
+                        </p>
+                        <h3 className="mt-2 text-xl font-bold">
+                          {outlet.name}
+                        </h3>
+                        <p className="mt-3 text-sm leading-6 text-white/50">
+                          Request supplies, follow delivery orders, receive
+                          goods and count this outlet&apos;s stock.
+                        </p>
+                        <p className="mt-5 font-bold text-[#b9ded7]">
+                          Enter outlet operations →
+                        </p>
+                      </a>
+                    ))}
+                  </div>
+
+                  <div className="mt-5 rounded-[24px] border border-dashed border-white/12 bg-black/15 p-5">
+                    <p className="font-bold">Register another outlet</p>
+                    <p className="mt-1 text-sm text-white/40">
+                      Each outlet needs a unique name and code.
+                    </p>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_180px_auto]">
+                      <input
+                        className={inputClass}
+                        value={newOutletName}
+                        onChange={(event) =>
+                          setNewOutletName(event.target.value)
+                        }
+                        placeholder="Outlet name"
+                      />
+                      <input
+                        className={inputClass}
+                        value={newOutletCode}
+                        onChange={(event) =>
+                          setNewOutletCode(event.target.value)
+                        }
+                        placeholder="Code, e.g. KLCC"
+                        maxLength={12}
+                      />
+                      <button
+                        type="button"
+                        onClick={addOutlet}
+                        className="mt-2 rounded-2xl bg-[#4b7e74] px-5 py-3.5 font-bold text-white"
+                      >
+                        Add outlet
+                      </button>
+                    </div>
                   </div>
 
                   <p className="mt-5 text-center text-xs text-white/30">

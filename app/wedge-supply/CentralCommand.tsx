@@ -84,7 +84,7 @@ function Kpi({
   tone,
 }: {
   label: string;
-  value: number;
+  value: string | number;
   note: string;
   tone: string;
 }) {
@@ -125,6 +125,20 @@ export function CentralCommand({
   const pending = state.requests.filter(
     (request) => request.status === "submitted",
   ).length;
+  const inventoryValue = state.items.reduce(
+    (sum, item) =>
+      sum + item.centralStock * Math.max(0, Number(item.unitCost || 0)),
+    0,
+  );
+  const ownProductionValue = state.items
+    .filter((item) =>
+      ["semi-processed", "finished"].includes(item.inventoryType || "raw"),
+    )
+    .reduce(
+      (sum, item) =>
+        sum + item.centralStock * Math.max(0, Number(item.unitCost || 0)),
+      0,
+    );
 
   return (
     <div className="space-y-5">
@@ -152,6 +166,21 @@ export function CentralCommand({
           value={expiry}
           note="Usable stock reaching expiry within seven days"
           tone="bg-violet-400"
+        />
+      </section>
+
+      <section className="grid gap-4 sm:grid-cols-2">
+        <Kpi
+          label="RM trapped in inventory"
+          value={`${state.config.currency} ${inventoryValue.toFixed(2)}`}
+          note="Current Central stock valued at weighted-average cost"
+          tone="bg-[#d6ad62]"
+        />
+        <Kpi
+          label="Own production and WIP"
+          value={`${state.config.currency} ${ownProductionValue.toFixed(2)}`}
+          note="Finished and semi-processed stock still held at Central"
+          tone="bg-[#4b7e74]"
         />
       </section>
 
@@ -288,7 +317,8 @@ export function CentralCommand({
           <div>
             <h2 className="font-black">Inventory control board</h2>
             <p className="mt-1 text-sm text-white/38">
-              Physical stock minus committed dispatches, compared with par and learned demand.
+              Physical stock minus committed dispatches, compared with par and
+              learned demand.
             </p>
           </div>
           <button
@@ -324,8 +354,12 @@ export function CentralCommand({
                   </div>
                   <div className="mt-4 grid grid-cols-3 gap-2 text-center">
                     <div className="rounded-xl bg-black/15 p-2.5">
-                      <p className="text-[10px] uppercase text-white/30">Held</p>
-                      <p className="mt-1 font-black">{insight.item.centralStock}</p>
+                      <p className="text-[10px] uppercase text-white/30">
+                        Held
+                      </p>
+                      <p className="mt-1 font-black">
+                        {insight.item.centralStock}
+                      </p>
                     </div>
                     <div className="rounded-xl bg-black/15 p-2.5">
                       <p className="text-[10px] uppercase text-white/30">
@@ -523,7 +557,9 @@ export function SupplyCalendar({
               type="button"
               onClick={() => {
                 const current = new Date(`${today}T12:00:00+08:00`);
-                setMonth(new Date(current.getFullYear(), current.getMonth(), 1));
+                setMonth(
+                  new Date(current.getFullYear(), current.getMonth(), 1),
+                );
                 setSelected(today);
               }}
               className="rounded-xl border border-white/12 px-4 py-2.5 text-sm font-bold"
@@ -557,7 +593,9 @@ export function SupplyCalendar({
                 key={key}
                 onClick={() => setSelected(key)}
                 className={`min-h-24 border-b border-r border-white/6 p-2 text-left transition hover:bg-white/[.04] ${
-                  selected === key ? "bg-[#d6ad62]/10 ring-1 ring-inset ring-[#d6ad62]/45" : ""
+                  selected === key
+                    ? "bg-[#d6ad62]/10 ring-1 ring-inset ring-[#d6ad62]/45"
+                    : ""
                 } ${inMonth ? "" : "opacity-30"}`}
               >
                 <span

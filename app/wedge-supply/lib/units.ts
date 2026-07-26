@@ -39,7 +39,9 @@ export function convertQuantity(
   if (unitMeta[fromUnit].dimension !== unitMeta[toUnit].dimension) {
     throw new Error(`Cannot convert ${fromUnit} to ${toUnit}.`);
   }
-  return (quantity * unitMeta[fromUnit].baseFactor) / unitMeta[toUnit].baseFactor;
+  return (
+    (quantity * unitMeta[fromUnit].baseFactor) / unitMeta[toUnit].baseFactor
+  );
 }
 
 export function readableQuantity(quantity: number, unit: string) {

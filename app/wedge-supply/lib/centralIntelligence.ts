@@ -110,8 +110,10 @@ export function buildDemandLines(state: SupplyState): DemandLine[] {
       const requested = requests
         .filter((request) => request.status === "submitted")
         .reduce((sum, request) => sum + request.quantity, 0);
-      const approved = requests
-        .reduce((sum, request) => sum + centralCommitment(request), 0);
+      const approved = requests.reduce(
+        (sum, request) => sum + centralCommitment(request),
+        0,
+      );
       const dispatched = requests
         .filter((request) =>
           ["dispatched", "supplier-dispatched"].includes(request.status),
@@ -130,8 +132,7 @@ export function buildDemandLines(state: SupplyState): DemandLine[] {
       };
     })
     .filter(
-      (line) =>
-        line.requested > 0 || line.approved > 0 || line.dispatched > 0,
+      (line) => line.requested > 0 || line.approved > 0 || line.dispatched > 0,
     );
 }
 
@@ -141,9 +142,7 @@ function learnedWeeklyDemand(itemId: string, requests: SupplyRequest[]) {
   );
   if (!history.length) return { demand: 0, count: 0 };
 
-  const dates = history
-    .map((request) => request.createdAt.slice(0, 10))
-    .sort();
+  const dates = history.map((request) => request.createdAt.slice(0, 10)).sort();
   const spanDays = Math.max(
     7,
     daysBetween(dates[0], dates[dates.length - 1]) + 1,
@@ -159,9 +158,7 @@ export function buildStockInsights(state: SupplyState): StockInsight[] {
   const today = malaysiaDate();
   return state.items.map((item) => {
     const committed = state.requests
-      .filter(
-        (request) => request.itemId === item.id,
-      )
+      .filter((request) => request.itemId === item.id)
       .reduce((sum, request) => sum + centralCommitment(request), 0);
     const learned = learnedWeeklyDemand(item.id, state.requests);
     const available = item.centralStock - committed;
@@ -256,10 +253,7 @@ export function buildSuggestions(state: SupplyState): SupplySuggestion[] {
         unit: item.unit,
         dueDate: supplierClosureAhead
           ? today
-          : addDays(
-              today,
-              Math.max(0, Number(item.supplierLeadTimeDays || 0)),
-            ),
+          : addDays(today, Math.max(0, Number(item.supplierLeadTimeDays || 0))),
         confidence: Math.min(92, 38 + learning.count * 9),
         evidenceCount: learning.count,
         recipeId: recipe?.id,

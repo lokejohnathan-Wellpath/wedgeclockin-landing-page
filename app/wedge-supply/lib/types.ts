@@ -29,10 +29,21 @@ export type PurchaseOrderStatus =
   | "received"
   | "cancelled";
 
+export type SupplyOutlet = {
+  id: string;
+  name: string;
+  code: string;
+  active: boolean;
+  createdAt: string;
+};
+
 export type SupplyConfig = {
   businessName: string;
   centralLocation: string;
   outletName: string;
+  outletCode?: string;
+  outlets?: SupplyOutlet[];
+  activeOutletId?: string;
   currency: string;
 };
 
@@ -45,6 +56,7 @@ export type SupplyItem = {
   supplier: string;
   centralStock: number;
   outletStock: number;
+  outletStocks?: Record<string, number>;
   reorderLevel: number;
   expiryDate: string;
   inventoryType?: InventoryType;
@@ -53,6 +65,8 @@ export type SupplyItem = {
   safetyStock?: number;
   supplierLeadTimeDays?: number;
   minimumOrderQuantity?: number;
+  unitCost?: number;
+  lastPurchasePrice?: number;
 };
 
 export type SupplyRequest = {
@@ -60,6 +74,8 @@ export type SupplyRequest = {
   itemId: string;
   itemName: string;
   outletName: string;
+  outletId?: string;
+  outletCode?: string;
   quantity: number;
   unit: string;
   requestedQuantity?: number;
@@ -68,6 +84,8 @@ export type SupplyRequest = {
   allocatedQuantity?: number;
   linkedPurchaseOrderId?: string;
   linkedProductionBatchId?: string;
+  deliveryOrderId?: string;
+  deliveryOrderNumber?: string;
   neededBy: string;
   note: string;
   status: RequestStatus;
@@ -90,6 +108,12 @@ export type PurchaseOrder = {
   linkedRequestId?: string;
   purchaseUnit?: string;
   stockQuantity?: number;
+  destinationOutletId?: string;
+  destinationOutletCode?: string;
+  purchaseUnitPrice?: number;
+  totalCost?: number;
+  deliveryOrderId?: string;
+  deliveryOrderNumber?: string;
 };
 
 export type RecipeIngredient = {
@@ -109,6 +133,7 @@ export type SupplyRecipe = {
   outputQuantity: number;
   outputUnit: string;
   ingredients: RecipeIngredient[];
+  processingCostPerBatch?: number;
 };
 
 export type ProductionBatch = {
@@ -121,6 +146,8 @@ export type ProductionBatch = {
   createdAt: string;
   linkedRequestId?: string;
   producedQuantity?: number;
+  productionCost?: number;
+  outputUnitCost?: number;
 };
 
 export type ProductionAllocation = {
@@ -130,10 +157,29 @@ export type ProductionAllocation = {
   itemId: string;
   itemName: string;
   outletName: string;
+  outletId?: string;
+  outletCode?: string;
   quantity: number;
   unit: string;
   status: "allocated" | "dispatched" | "received";
   createdAt: string;
+};
+
+export type DeliveryOrder = {
+  id: string;
+  number: string;
+  outletId: string;
+  outletCode: string;
+  outletName: string;
+  requestId: string;
+  itemId: string;
+  itemName: string;
+  quantity: number;
+  unit: string;
+  route: FulfilmentRoute;
+  status: "dispatched" | "received";
+  dispatchedAt: string;
+  receivedAt?: string;
 };
 
 export type SupplyActivity = {
@@ -158,7 +204,7 @@ export type ManualPlanningEvent = {
 };
 
 export type SupplyState = {
-  version: 2;
+  version: 3;
   config: SupplyConfig;
   items: SupplyItem[];
   requests: SupplyRequest[];
@@ -169,4 +215,5 @@ export type SupplyState = {
   intelligence: IntelligenceState;
   planningEvents: ManualPlanningEvent[];
   productionAllocations: ProductionAllocation[];
+  deliveryOrders: DeliveryOrder[];
 };
