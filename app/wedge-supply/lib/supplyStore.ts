@@ -124,9 +124,150 @@ function migrateSupplyState(value: unknown): SupplyState {
       ?.id ||
     outlets[0]?.id ||
     "";
+  let migratedItems = candidate.items.map((item) => ({
+    ...item,
+    safetyStock: Math.max(
+      0,
+      Number(item.safetyStock ?? item.reorderLevel ?? 0),
+    ),
+    supplierLeadTimeDays: Math.max(0, Number(item.supplierLeadTimeDays ?? 2)),
+    minimumOrderQuantity: Math.max(0, Number(item.minimumOrderQuantity ?? 0)),
+    inventoryType: item.inventoryType ?? ("raw" as const),
+    purchaseUnit: item.purchaseUnit ?? item.unit,
+    purchasePackSize: Math.max(0.000001, Number(item.purchasePackSize ?? 1)),
+    unitCost: Math.max(0, Number(item.unitCost ?? 0)),
+    lastPurchasePrice: Math.max(0, Number(item.lastPurchasePrice ?? 0)),
+    outletStocks:
+      item.outletStocks ??
+      (outlets[0]
+        ? { [outlets[0].id]: Math.max(0, Number(item.outletStock ?? 0)) }
+        : {}),
+  }));
+  const migratedRecipes = candidate.recipes.map((recipe) => {
+    const currentOutput = migratedItems.find(
+      (item) => item.id === recipe.outputItemId,
+    );
+    const outputName = recipe.name.trim();
+    if (
+      !currentOutput ||
+      !outputName ||
+      currentOutput.name.trim().toLowerCase() === outputName.toLowerCase()
+    ) {
+      return recipe;
+    }
+
+    let correctedOutput = migratedItems.find(
+      (item) => item.name.trim().toLowerCase() === outputName.toLowerCase(),
+    );
+    if (!correctedOutput) {
+      correctedOutput = {
+        id: `produced-${recipe.id}`,
+        name: outputName,
+        sku: `PROD-${String(migratedItems.length + 1).padStart(4, "0")}`,
+        category: "Own production / WIP",
+        unit: recipe.outputUnit || currentOutput.unit,
+        supplier: "",
+        centralStock: 0,
+        outletStock: 0,
+        outletStocks: {},
+        reorderLevel: 0,
+        expiryDate: "",
+        inventoryType: "semi-processed",
+        purchaseUnit: recipe.outputUnit || currentOutput.unit,
+        purchasePackSize: 1,
+        safetyStock: 0,
+        supplierLeadTimeDays: 0,
+        minimumOrderQuantity: 0,
+        unitCost: 0,
+        lastPurchasePrice: 0,
+      };
+      migratedItems.push(correctedOutput);
+    }
+
+    const completedBatches = candidate.productionBatches.filter(
+      (batch) =>
+        batch.recipeId === recipe.id &&
+        batch.status === "completed" &&
+        Number(batch.producedQuantity || 0) > 0,
+    );
+    const totalProduced = completedBatches.reduce(
+      (sum, batch) => sum + Number(batch.producedQuantity || 0),
+      0,
+    );
+    const totalProductionCost = completedBatches.reduce(
+      (sum, batch) => sum + Number(batch.productionCost || 0),
+      0,
+    );
+    const completedBatchIds = new Set(
+      completedBatches.map((batch) => batch.id),
+    );
+    const alreadyDispatched = (candidate.productionAllocations ?? [])
+      .filter(
+        (allocation) =>
+          completedBatchIds.has(allocation.batchId) &&
+          ["dispatched", "received"].includes(allocation.status),
+      )
+      .reduce((sum, allocation) => sum + Number(allocation.quantity || 0), 0);
+    const heldProduced = Math.max(0, totalProduced - alreadyDispatched);
+    const movedQuantity = Math.min(
+      heldProduced,
+      Math.max(0, Number(currentOutput.centralStock || 0)),
+    );
+    const movedValue =
+      totalProduced > 0
+        ? totalProductionCost * (movedQuantity / totalProduced)
+        : 0;
+
+    if (movedQuantity > 0) {
+      const oldStock = Number(currentOutput.centralStock || 0);
+      const oldValue = oldStock * Number(currentOutput.unitCost || 0);
+      const remainingStock = Math.max(0, oldStock - movedQuantity);
+      const remainingValue = Math.max(0, oldValue - movedValue);
+      const outputStock = Number(correctedOutput.centralStock || 0);
+      const outputValue =
+        outputStock * Number(correctedOutput.unitCost || 0) + movedValue;
+
+      migratedItems = migratedItems.map((item) => {
+        if (item.id === currentOutput.id) {
+          const looksRaw =
+            (item.category || "").toLowerCase().includes("raw") ||
+            (item.sku || "").toLowerCase().includes("raw");
+          return {
+            ...item,
+            centralStock: remainingStock,
+            unitCost: remainingStock > 0 ? remainingValue / remainingStock : 0,
+            inventoryType: looksRaw ? ("raw" as const) : item.inventoryType,
+          };
+        }
+        if (item.id === correctedOutput.id) {
+          const nextStock = outputStock + movedQuantity;
+          return {
+            ...item,
+            centralStock: nextStock,
+            unitCost: nextStock > 0 ? outputValue / nextStock : 0,
+            inventoryType: "semi-processed" as const,
+          };
+        }
+        return item;
+      });
+    }
+
+    return {
+      ...recipe,
+      outputItemId: correctedOutput.id,
+      outputItemName: correctedOutput.name,
+      outputUnit: correctedOutput.unit,
+    };
+  });
   const productionOutputIds = new Set(
-    candidate.recipes.map((recipe) => recipe.outputItemId),
+    migratedRecipes.map((recipe) => recipe.outputItemId),
   );
+  migratedItems = migratedItems.map((item) => ({
+    ...item,
+    inventoryType: productionOutputIds.has(item.id)
+      ? ("semi-processed" as const)
+      : item.inventoryType,
+  }));
   return {
     ...candidate,
     version: 3,
@@ -137,27 +278,8 @@ function migrateSupplyState(value: unknown): SupplyState {
       outlets,
       activeOutletId,
     },
-    items: candidate.items.map((item) => ({
-      ...item,
-      safetyStock: Math.max(
-        0,
-        Number(item.safetyStock ?? item.reorderLevel ?? 0),
-      ),
-      supplierLeadTimeDays: Math.max(0, Number(item.supplierLeadTimeDays ?? 2)),
-      minimumOrderQuantity: Math.max(0, Number(item.minimumOrderQuantity ?? 0)),
-      inventoryType: productionOutputIds.has(item.id)
-        ? "semi-processed"
-        : (item.inventoryType ?? "raw"),
-      purchaseUnit: item.purchaseUnit ?? item.unit,
-      purchasePackSize: Math.max(0.000001, Number(item.purchasePackSize ?? 1)),
-      unitCost: Math.max(0, Number(item.unitCost ?? 0)),
-      lastPurchasePrice: Math.max(0, Number(item.lastPurchasePrice ?? 0)),
-      outletStocks:
-        item.outletStocks ??
-        (outlets[0]
-          ? { [outlets[0].id]: Math.max(0, Number(item.outletStock ?? 0)) }
-          : {}),
-    })),
+    items: migratedItems,
+    recipes: migratedRecipes,
     requests: candidate.requests.map((request) => {
       const outlet =
         outlets.find((entry) => entry.id === request.outletId) ||

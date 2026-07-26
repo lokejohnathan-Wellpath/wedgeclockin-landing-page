@@ -1315,38 +1315,40 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
 
   function createRecipe(event: React.FormEvent) {
     event.preventDefault();
-    const outputItem = state.items.find(
-      (candidate) => candidate.id === recipeForm.outputItemId,
+    const outputName = recipeForm.name.trim();
+    const existingOutputItem = state.items.find(
+      (candidate) =>
+        candidate.name.trim().toLowerCase() === outputName.toLowerCase(),
     );
     const outputQuantity = Number(recipeForm.outputQuantity);
     const processingCostPerBatch = Number(
       recipeForm.processingCostPerBatch || 0,
     );
     if (
-      !recipeForm.name.trim() ||
-      !outputItem ||
+      !outputName ||
       !recipeForm.outputUnit ||
       !Number.isFinite(outputQuantity) ||
       outputQuantity <= 0 ||
       !Number.isFinite(processingCostPerBatch) ||
       processingCostPerBatch < 0 ||
       !recipeIngredients.length ||
-      recipeIngredients.some(
-        (ingredient) => ingredient.itemId === outputItem.id,
-      )
+      (existingOutputItem &&
+        recipeIngredients.some(
+          (ingredient) => ingredient.itemId === existingOutputItem.id,
+        ))
     ) {
       setError(
-        "Enter a rule name, output quantity and at least one different input ingredient.",
+        "Enter the produced item name, output quantity and at least one different input ingredient.",
       );
       return;
     }
-    let normalizedOutput = 0;
+    const outputItemId = existingOutputItem?.id || makeId("produced");
+    const outputUnit = existingOutputItem?.unit || recipeForm.outputUnit;
+    let normalizedOutput = outputQuantity;
     try {
-      normalizedOutput = convertQuantity(
-        outputQuantity,
-        recipeForm.outputUnit,
-        outputItem.unit,
-      );
+      normalizedOutput = existingOutputItem
+        ? convertQuantity(outputQuantity, recipeForm.outputUnit, outputUnit)
+        : outputQuantity;
     } catch (conversionError) {
       setError(
         conversionError instanceof Error
@@ -1357,30 +1359,61 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
     }
     const recipe: SupplyRecipe = {
       id: makeId("recipe"),
-      name: recipeForm.name.trim(),
-      outputItemId: outputItem.id,
-      outputItemName: outputItem.name,
+      name: outputName,
+      outputItemId,
+      outputItemName: outputName,
       outputQuantity: normalizedOutput,
-      outputUnit: outputItem.unit,
+      outputUnit,
       ingredients: recipeIngredients,
       processingCostPerBatch,
     };
-    commit(
-      (current) => ({
+    commit((current) => {
+      const outputExists = current.items.some(
+        (item) => item.id === outputItemId,
+      );
+      const producedItem: SupplyItem = {
+        id: outputItemId,
+        name: outputName,
+        sku: `PROD-${String(current.items.length + 1).padStart(4, "0")}`,
+        category: "Own production / WIP",
+        unit: outputUnit,
+        supplier: "",
+        centralStock: 0,
+        outletStock: 0,
+        outletStocks: {},
+        reorderLevel: 0,
+        expiryDate: "",
+        inventoryType: "semi-processed",
+        purchaseUnit: outputUnit,
+        purchasePackSize: 1,
+        safetyStock: 0,
+        supplierLeadTimeDays: 0,
+        minimumOrderQuantity: 0,
+        unitCost: 0,
+        lastPurchasePrice: 0,
+      };
+      return {
         ...current,
-        items: current.items.map((item) =>
-          item.id === recipe.outputItemId
-            ? { ...item, inventoryType: "semi-processed" as const }
-            : item,
-        ),
+        items: outputExists
+          ? current.items.map((item) =>
+              item.id === recipe.outputItemId
+                ? {
+                    ...item,
+                    name: outputName,
+                    inventoryType: "semi-processed" as const,
+                  }
+                : item,
+            )
+          : [...current.items, producedItem],
         recipes: [...current.recipes, recipe],
         activities: [
-          activity(`${recipe.name} production recipe created.`),
+          activity(
+            `${recipe.name} production rule created; ${outputName} is the output stock item.`,
+          ),
           ...current.activities,
         ],
-      }),
-      "Production rule created with all listed ingredients.",
-    );
+      };
+    }, "Production rule created with all listed ingredients.");
     setRecipeForm({
       name: "",
       outputItemId: "",
@@ -2906,7 +2939,6 @@ function Production({
   planBatch: (event: React.FormEvent) => void;
   completeBatch: (id: string) => void;
 }) {
-  const outputItem = items.find((item) => item.id === recipeForm.outputItemId);
   const ingredientItem = items.find(
     (item) => item.id === recipeForm.ingredientItemId,
   );
@@ -2921,10 +2953,10 @@ function Production({
             Define what one production batch consumes and produces. Business
             items remain fully configurable.
           </p>
-          {items.length >= 2 ? (
+          {items.length >= 1 ? (
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               <label className={`${labelClass} sm:col-span-2`}>
-                Recipe name
+                Produced item name
                 <input
                   className={`${inputClass} mt-2`}
                   value={recipeForm.name}
@@ -2934,31 +2966,12 @@ function Production({
                       name: event.target.value,
                     }))
                   }
-                  placeholder="Example: Chicken rice preparation"
+                  placeholder="Example: Soy Sauce Chicken"
                 />
-              </label>
-              <label className={labelClass}>
-                Finished item
-                <select
-                  className={`${inputClass} mt-2`}
-                  value={recipeForm.outputItemId}
-                  onChange={(event) =>
-                    setRecipeForm((current) => ({
-                      ...current,
-                      outputItemId: event.target.value,
-                      outputUnit:
-                        (items.find((item) => item.id === event.target.value)
-                          ?.unit as CoreUnit) || "",
-                    }))
-                  }
-                >
-                  <option value="">Choose output</option>
-                  {items.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name}
-                    </option>
-                  ))}
-                </select>
+                <span className="mt-2 block text-xs leading-5 text-white/35">
+                  This exact name becomes a separate Own production / WIP stock
+                  item automatically.
+                </span>
               </label>
               <label className={labelClass}>
                 Output per batch
@@ -2986,7 +2999,7 @@ function Production({
                     }
                   >
                     <option value="">Unit</option>
-                    {compatibleUnits(outputItem?.unit || "").map((unit) => (
+                    {coreUnits.map((unit) => (
                       <option key={unit} value={unit}>
                         {unit}
                       </option>
@@ -3116,8 +3129,8 @@ function Production({
             </div>
           ) : (
             <p className="mt-5 rounded-xl bg-black/20 p-4 text-sm text-white/45">
-              Add at least one ingredient and one production output item in
-              Inventory first.
+              Add at least one ingredient in Inventory first. The produced item
+              is created automatically when you save the rule.
             </p>
           )}
         </form>
