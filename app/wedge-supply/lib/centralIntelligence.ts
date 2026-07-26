@@ -39,7 +39,6 @@ export type SupplySuggestion = {
   quantity: number;
   unit: string;
   dueDate: string;
-  confidence: number;
   evidenceCount: number;
   recipeId?: string;
 };
@@ -254,7 +253,6 @@ export function buildSuggestions(state: SupplyState): SupplySuggestion[] {
         dueDate: supplierClosureAhead
           ? today
           : addDays(today, Math.max(0, Number(item.supplierLeadTimeDays || 0))),
-        confidence: Math.min(92, 38 + learning.count * 9),
         evidenceCount: learning.count,
         recipeId: recipe?.id,
       });
@@ -274,7 +272,6 @@ export function buildSuggestions(state: SupplyState): SupplySuggestion[] {
         quantity: item.centralStock,
         unit: item.unit,
         dueDate: item.expiryDate,
-        confidence: 100,
         evidenceCount: 1,
       });
     }
@@ -341,7 +338,7 @@ export function buildPlanningEvents(state: SupplyState): PlanningEvent[] {
       date: suggestion.dueDate,
       type: "suggestion",
       title: suggestion.title,
-      detail: `Draft recommendation · ${suggestion.confidence}% confidence`,
+      detail: "Draft recommendation from current stock and operating history",
       tone: suggestion.priority === "critical" ? "red" : "grey",
     }),
   );

@@ -203,7 +203,7 @@ export function CentralCommand({
             <span className="rounded-full border border-[#4b7e74]/30 bg-[#4b7e74]/10 px-3 py-1.5 text-xs font-bold text-[#a9d2ca]">
               {state.requests.length < 3
                 ? "Learning your operation"
-                : `${Math.min(92, 38 + state.requests.length * 7)}% pattern confidence`}
+                : "Based on your operating history"}
             </span>
           </div>
           {suggestions.length ? (
@@ -221,9 +221,6 @@ export function CentralCommand({
                           }`}
                         >
                           {suggestion.priority}
-                        </span>
-                        <span className="text-xs text-white/30">
-                          {suggestion.confidence}% confidence
                         </span>
                       </div>
                       <h3 className="mt-3 text-lg font-black">

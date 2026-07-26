@@ -26,8 +26,24 @@ export type RequestStatus =
 export type PurchaseOrderStatus =
   | "ordered"
   | "supplier-dispatched"
+  | "partially-received"
   | "received"
   | "cancelled";
+
+export type DirectSupplierCostMode = "quantity-only" | "actual-cost";
+
+export type LedgerMovement =
+  | "opening"
+  | "purchase-receipt"
+  | "production-input"
+  | "production-output"
+  | "dispatch-out"
+  | "outlet-receipt"
+  | "direct-receipt"
+  | "wastage"
+  | "adjustment"
+  | "return"
+  | "reversal";
 
 export type SupplyOutlet = {
   id: string;
@@ -45,6 +61,10 @@ export type SupplyConfig = {
   outlets?: SupplyOutlet[];
   activeOutletId?: string;
   currency: string;
+  directSupplierCostMode?: DirectSupplierCostMode;
+  includeDirectSupplierCostInCsv?: boolean;
+  inventoryCategories?: string[];
+  lockedMonths?: string[];
 };
 
 export type SupplyItem = {
@@ -114,6 +134,11 @@ export type PurchaseOrder = {
   totalCost?: number;
   deliveryOrderId?: string;
   deliveryOrderNumber?: string;
+  internalDirectReference?: string;
+  supplierDeliveryOrderNumber?: string;
+  supplierInvoiceNumber?: string;
+  receivedStockQuantity?: number;
+  returnedStockQuantity?: number;
 };
 
 export type RecipeIngredient = {
@@ -148,6 +173,12 @@ export type ProductionBatch = {
   producedQuantity?: number;
   productionCost?: number;
   outputUnitCost?: number;
+  plannedOutputQuantity?: number;
+  actualOutputQuantity?: number;
+  wastageQuantity?: number;
+  batchNumber?: string;
+  expiryDate?: string;
+  completedAt?: string;
 };
 
 export type ProductionAllocation = {
@@ -177,9 +208,75 @@ export type DeliveryOrder = {
   quantity: number;
   unit: string;
   route: FulfilmentRoute;
-  status: "dispatched" | "received";
+  status: "dispatched" | "partially-received" | "received" | "discrepancy" | "void";
   dispatchedAt: string;
   receivedAt?: string;
+  lines?: DeliveryOrderLine[];
+  supplierDeliveryOrderNumber?: string;
+  supplierName?: string;
+  supplierInvoiceNumber?: string;
+  receivingNote?: string;
+  voidReason?: string;
+};
+
+export type DeliveryOrderLine = {
+  id: string;
+  requestId: string;
+  itemId: string;
+  itemName: string;
+  dispatchedQuantity: number;
+  receivedQuantity: number;
+  damagedQuantity: number;
+  unit: string;
+  unitCost: number;
+};
+
+export type StockLedgerEntry = {
+  id: string;
+  postedAt: string;
+  effectiveDate: string;
+  movement: LedgerMovement;
+  itemId: string;
+  itemName: string;
+  locationId: string;
+  locationCode: string;
+  quantityDelta: number;
+  unit: string;
+  unitCost: number;
+  valueDelta: number;
+  sourceType: "item" | "po" | "batch" | "do" | "receipt" | "count" | "return";
+  sourceId: string;
+  reference: string;
+  status: "posted" | "reversed";
+  reversalOf?: string;
+  reason?: string;
+  route?: FulfilmentRoute;
+};
+
+export type StockCount = {
+  id: string;
+  number: string;
+  locationId: string;
+  itemId: string;
+  systemQuantity: number;
+  countedQuantity: number;
+  unit: string;
+  reason: string;
+  status: "draft" | "posted" | "void";
+  createdAt: string;
+  postedAt?: string;
+};
+
+export type SupplierCreditNote = {
+  id: string;
+  number: string;
+  purchaseOrderId: string;
+  itemId: string;
+  quantity: number;
+  unit: string;
+  amount: number;
+  reason: string;
+  createdAt: string;
 };
 
 export type SupplyActivity = {
@@ -204,7 +301,7 @@ export type ManualPlanningEvent = {
 };
 
 export type SupplyState = {
-  version: 3;
+  version: 4;
   config: SupplyConfig;
   items: SupplyItem[];
   requests: SupplyRequest[];
@@ -216,4 +313,7 @@ export type SupplyState = {
   planningEvents: ManualPlanningEvent[];
   productionAllocations: ProductionAllocation[];
   deliveryOrders: DeliveryOrder[];
+  ledger: StockLedgerEntry[];
+  stockCounts: StockCount[];
+  supplierCreditNotes: SupplierCreditNote[];
 };

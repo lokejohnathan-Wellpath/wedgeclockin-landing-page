@@ -12,10 +12,21 @@ export const emptyConfig: SupplyConfig = {
   outlets: [],
   activeOutletId: "",
   currency: "RM",
+  directSupplierCostMode: "quantity-only",
+  includeDirectSupplierCostInCsv: false,
+  inventoryCategories: [
+    "Raw",
+    "Sauces",
+    "Herbs & spices",
+    "Packaging",
+    "Own production / WIP",
+    "Direct supply",
+  ],
+  lockedMonths: [],
 };
 
 export const emptySupplyState: SupplyState = {
-  version: 3,
+  version: 4,
   config: emptyConfig,
   items: [],
   requests: [],
@@ -31,6 +42,9 @@ export const emptySupplyState: SupplyState = {
   planningEvents: [],
   productionAllocations: [],
   deliveryOrders: [],
+  ledger: [],
+  stockCounts: [],
+  supplierCreditNotes: [],
 };
 
 export function makeId(prefix: string) {
@@ -71,7 +85,7 @@ function isSupplyState(value: unknown) {
     activities?: unknown;
   };
   return (
-    [1, 2, 3].includes(candidate.version || 0) &&
+    [1, 2, 3, 4].includes(candidate.version || 0) &&
     Boolean(candidate.config) &&
     Array.isArray(candidate.items) &&
     Array.isArray(candidate.requests) &&
@@ -90,12 +104,18 @@ function migrateSupplyState(value: unknown): SupplyState {
     | "planningEvents"
     | "productionAllocations"
     | "deliveryOrders"
+    | "ledger"
+    | "stockCounts"
+    | "supplierCreditNotes"
   > & {
     version?: number;
     intelligence?: SupplyState["intelligence"];
     planningEvents?: SupplyState["planningEvents"];
     productionAllocations?: SupplyState["productionAllocations"];
     deliveryOrders?: SupplyState["deliveryOrders"];
+    ledger?: SupplyState["ledger"];
+    stockCounts?: SupplyState["stockCounts"];
+    supplierCreditNotes?: SupplyState["supplierCreditNotes"];
   };
   const legacyOutletId = "outlet-legacy";
   const legacyOutletCode =
@@ -270,13 +290,21 @@ function migrateSupplyState(value: unknown): SupplyState {
   }));
   return {
     ...candidate,
-    version: 3,
+    version: 4,
     config: {
       ...candidate.config,
       outletName: outlets[0]?.name || candidate.config.outletName || "",
       outletCode: outlets[0]?.code || legacyOutletCode,
       outlets,
       activeOutletId,
+      directSupplierCostMode:
+        candidate.config.directSupplierCostMode ?? "quantity-only",
+      includeDirectSupplierCostInCsv:
+        candidate.config.includeDirectSupplierCostInCsv ?? false,
+      inventoryCategories:
+        candidate.config.inventoryCategories ??
+        emptyConfig.inventoryCategories,
+      lockedMonths: candidate.config.lockedMonths ?? [],
     },
     items: migratedItems,
     recipes: migratedRecipes,
@@ -301,7 +329,29 @@ function migrateSupplyState(value: unknown): SupplyState {
     },
     planningEvents: candidate.planningEvents ?? [],
     productionAllocations: candidate.productionAllocations ?? [],
-    deliveryOrders: candidate.deliveryOrders ?? [],
+    deliveryOrders: (candidate.deliveryOrders ?? []).map((order) => ({
+      ...order,
+      lines:
+        order.lines ??
+        [
+          {
+            id: `line-${order.id}`,
+            requestId: order.requestId,
+            itemId: order.itemId,
+            itemName: order.itemName,
+            dispatchedQuantity: order.quantity,
+            receivedQuantity: order.status === "received" ? order.quantity : 0,
+            damagedQuantity: 0,
+            unit: order.unit,
+            unitCost:
+              migratedItems.find((item) => item.id === order.itemId)?.unitCost ??
+              0,
+          },
+        ],
+    })),
+    ledger: candidate.ledger ?? [],
+    stockCounts: candidate.stockCounts ?? [],
+    supplierCreditNotes: candidate.supplierCreditNotes ?? [],
   };
 }
 

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CentralCommand, SupplyCalendar } from "./CentralCommand";
+import { OperationalControl } from "./OperationalControl";
 import type { SupplySuggestion } from "./lib/centralIntelligence";
 import {
   activity,
@@ -25,6 +26,15 @@ import type {
   SupplyRole,
   SupplyState,
 } from "./lib/types";
+import type { DeliveryOrder } from "./lib/types";
+import {
+  buildDeliveryLines,
+  ledgerEntry,
+  nextDocumentNumber,
+  productionPosting,
+  reconcileDelivery,
+  resolveFulfilmentRoute,
+} from "./lib/operations";
 import {
   compatibleUnits,
   convertQuantity,
@@ -38,7 +48,8 @@ type CentralView =
   | "requests"
   | "inventory"
   | "purchasing"
-  | "production";
+  | "production"
+  | "closing";
 type OutletView = "overview" | "request" | "receiving" | "stock";
 type View = CentralView | OutletView;
 type ItemFormState = {
@@ -282,12 +293,19 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
   }
 
   function nextDeliveryOrderNumber(current: SupplyState, outletCode: string) {
-    const date = todayKey().replaceAll("-", "");
-    const prefix = `${outletCode}-DO-${date}-`;
-    const next =
-      current.deliveryOrders.filter((order) => order.number.startsWith(prefix))
-        .length + 1;
-    return `${prefix}${String(next).padStart(4, "0")}`;
+    return nextDocumentNumber(current.deliveryOrders, outletCode, "DO");
+  }
+
+  function isCurrentMonthLocked(current = state) {
+    return current.config.lockedMonths?.includes(todayKey().slice(0, 7));
+  }
+
+  function requireOpenMonth() {
+    if (!isCurrentMonthLocked()) return true;
+    setError(
+      "This month is locked. Unlock it in Month Close & CSV before posting a new stock movement.",
+    );
+    return false;
   }
 
   function isForActiveOutlet(request: SupplyRequest) {
@@ -439,6 +457,7 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
 
   function addItem(event: React.FormEvent) {
     event.preventDefault();
+    if (!requireOpenMonth()) return;
     const openingStock = Number(itemForm.openingStock);
     const unitCost = Number(itemForm.unitCost || 0);
     const reorderLevel = Number(itemForm.reorderLevel);
@@ -500,14 +519,32 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
       expiryDate: itemForm.expiryDate,
     };
     commit(
-      (current) => ({
-        ...current,
-        items: [...current.items, item],
-        activities: [
-          activity(`${item.name} added to the shared item list.`),
-          ...current.activities,
-        ],
-      }),
+      (current) => {
+        const opening =
+          openingStock > 0
+            ? ledgerEntry({
+                id: makeId("ledger"),
+                movement: "opening",
+                item,
+                locationId: "central",
+                locationCode: "CENTRAL",
+                quantityDelta: openingStock,
+                sourceType: "item",
+                sourceId: item.id,
+                reference: `OPENING-${item.sku || item.id}`,
+                valueOverride: openingStock * unitCost,
+              })
+            : null;
+        return {
+          ...current,
+          items: [...current.items, item],
+          ledger: opening ? [opening, ...current.ledger] : current.ledger,
+          activities: [
+            activity(`${item.name} added to the shared item list.`),
+            ...current.activities,
+          ],
+        };
+      },
       `${item.name} added successfully.`,
     );
     setItemForm({
@@ -714,19 +751,204 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
   function decideRequest(id: string, status: "approved" | "rejected") {
     const request = state.requests.find((candidate) => candidate.id === id);
     if (!request) return;
+    const item = state.items.find(
+      (candidate) => candidate.id === request.itemId,
+    );
+    const recipe = state.recipes.find(
+      (candidate) => candidate.outputItemId === request.itemId,
+    );
+    const automaticRoute = item
+      ? resolveFulfilmentRoute(item, Boolean(recipe))
+      : ("central-stock" as const);
+    if (
+      status === "approved" &&
+      automaticRoute === "direct-supplier" &&
+      (!item?.supplier.trim() ||
+        (state.config.directSupplierCostMode === "actual-cost" &&
+          Number(item.lastPurchasePrice || 0) <= 0))
+    ) {
+      setError(
+        !item?.supplier.trim()
+          ? `Add the preferred supplier to ${item?.name || request.itemName} in Inventory before approval.`
+          : `Actual supplier cost mode is on. Add the last supplier cost to ${item.name} before approval.`,
+      );
+      setView("inventory");
+      return;
+    }
+    const now = new Date().toISOString();
+    const directOrderId = makeId("po");
+    const directDeliveryId = makeId("do");
+    const productionBatchId = makeId("batch");
     commit(
-      (current) => ({
-        ...current,
-        requests: current.requests.map((candidate) =>
-          candidate.id === id
-            ? { ...candidate, status, updatedAt: new Date().toISOString() }
-            : candidate,
-        ),
-        activities: [
-          activity(`${request.itemName} request ${status}.`),
-          ...current.activities,
-        ],
-      }),
+      (current) => {
+        if (status === "rejected" || !item) {
+          return {
+            ...current,
+            requests: current.requests.map((candidate) =>
+              candidate.id === id
+                ? { ...candidate, status, updatedAt: now }
+                : candidate,
+            ),
+            activities: [
+              activity(`${request.itemName} request ${status}.`),
+              ...current.activities,
+            ],
+          };
+        }
+
+        if (automaticRoute === "direct-supplier") {
+          const outlet =
+            current.config.outlets?.find(
+              (candidate) => candidate.id === request.outletId,
+            ) || activeOutlet;
+          const packSize = Math.max(
+            0.000001,
+            Number(item.purchasePackSize || 1),
+          );
+          const purchaseQuantity =
+            Math.ceil((request.quantity / packSize) * 1000) / 1000;
+          const purchaseUnitPrice = Number(item.lastPurchasePrice || 0);
+          const internalReference = nextDocumentNumber(
+            current.deliveryOrders,
+            outlet.code,
+            "DD",
+          );
+          const order: PurchaseOrder = {
+            id: directOrderId,
+            itemId: item.id,
+            itemName: item.name,
+            supplier: item.supplier,
+            quantity: purchaseQuantity,
+            unit: item.unit,
+            expectedDate: request.neededBy,
+            status: "supplier-dispatched",
+            createdAt: now,
+            destination: "outlet",
+            outletName: outlet.name,
+            destinationOutletId: outlet.id,
+            destinationOutletCode: outlet.code,
+            linkedRequestId: request.id,
+            purchaseUnit: item.purchaseUnit || item.unit,
+            stockQuantity: request.quantity,
+            purchaseUnitPrice,
+            totalCost: purchaseQuantity * purchaseUnitPrice,
+            deliveryOrderId: directDeliveryId,
+            deliveryOrderNumber: internalReference,
+            internalDirectReference: internalReference,
+          };
+          const deliveryOrder: DeliveryOrder = {
+            id: directDeliveryId,
+            number: internalReference,
+            outletId: outlet.id,
+            outletCode: outlet.code,
+            outletName: outlet.name,
+            requestId: request.id,
+            itemId: item.id,
+            itemName: item.name,
+            quantity: request.quantity,
+            unit: item.unit,
+            route: "direct-supplier",
+            status: "dispatched",
+            dispatchedAt: now,
+            supplierName: item.supplier,
+            lines: buildDeliveryLines([request], current.items),
+          };
+          return {
+            ...current,
+            purchaseOrders: [order, ...current.purchaseOrders],
+            deliveryOrders: [deliveryOrder, ...current.deliveryOrders],
+            requests: current.requests.map((candidate) =>
+              candidate.id === id
+                ? {
+                    ...candidate,
+                    status: "supplier-dispatched",
+                    fulfilmentRoute: "direct-supplier",
+                    linkedPurchaseOrderId: order.id,
+                    allocatedQuantity: request.quantity,
+                    deliveryOrderId: deliveryOrder.id,
+                    deliveryOrderNumber: deliveryOrder.number,
+                    updatedAt: now,
+                  }
+                : candidate,
+            ),
+            activities: [
+              activity(
+                `${request.itemName} approved as Direct Supply from ${item.supplier} to ${outlet.name}.`,
+              ),
+              ...current.activities,
+            ],
+          };
+        }
+
+        if (
+          automaticRoute === "central-production" &&
+          recipe &&
+          item.centralStock < request.quantity
+        ) {
+          const multiplier = Math.max(
+            1,
+            Math.ceil(request.quantity / recipe.outputQuantity),
+          );
+          return {
+            ...current,
+            productionBatches: [
+              {
+                id: productionBatchId,
+                recipeId: recipe.id,
+                recipeName: recipe.name,
+                multiplier,
+                scheduledDate: request.neededBy,
+                status: "planned",
+                createdAt: now,
+                linkedRequestId: request.id,
+                plannedOutputQuantity: recipe.outputQuantity * multiplier,
+              },
+              ...current.productionBatches,
+            ],
+            requests: current.requests.map((candidate) =>
+              candidate.id === id
+                ? {
+                    ...candidate,
+                    status: "in-production",
+                    fulfilmentRoute: "central-production",
+                    linkedProductionBatchId: productionBatchId,
+                    updatedAt: now,
+                  }
+                : candidate,
+            ),
+            activities: [
+              activity(
+                `${request.itemName} approved as Own Production; ${multiplier} batch(es) planned automatically.`,
+              ),
+              ...current.activities,
+            ],
+          };
+        }
+
+        return {
+          ...current,
+          requests: current.requests.map((candidate) =>
+            candidate.id === id
+              ? {
+                  ...candidate,
+                  status: "approved",
+                  fulfilmentRoute: automaticRoute,
+                  updatedAt: now,
+                }
+              : candidate,
+          ),
+          activities: [
+            activity(
+              `${request.itemName} approved as ${
+                automaticRoute === "central-production"
+                  ? "Own Production"
+                  : "Central Stock"
+              }.`,
+            ),
+            ...current.activities,
+          ],
+        };
+      },
       `Request ${status}.`,
     );
   }
@@ -748,7 +970,9 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
       destination: "outlet",
       linkedRequestId: request.id,
       purchaseUnit: item.purchaseUnit || item.unit,
-      purchaseUnitPrice: "",
+      purchaseUnitPrice: item.lastPurchasePrice
+        ? String(item.lastPurchasePrice)
+        : "",
       destinationOutletId: request.outletId || activeOutlet.id,
     });
     setView("purchasing");
@@ -782,7 +1006,76 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
     );
   }
 
+  function prepareCentralPurchase(request: SupplyRequest) {
+    const item = state.items.find(
+      (candidate) => candidate.id === request.itemId,
+    );
+    if (!item) {
+      setError("The requested item no longer exists.");
+      return;
+    }
+    const shortage = Math.max(
+      0,
+      request.quantity - Number(item.centralStock || 0),
+    );
+    const packSize = Math.max(0.000001, Number(item.purchasePackSize || 1));
+    setPoForm({
+      itemId: request.itemId,
+      supplier: item.supplier || "",
+      quantity: String(
+        Math.ceil(((shortage || request.quantity) / packSize) * 1000) / 1000,
+      ),
+      expectedDate: request.neededBy,
+      destination: "central",
+      linkedRequestId: "",
+      purchaseUnit: item.purchaseUnit || item.unit,
+      purchaseUnitPrice: item.lastPurchasePrice
+        ? String(item.lastPurchasePrice)
+        : "",
+      destinationOutletId: "",
+    });
+    setView("purchasing");
+    setMessage(
+      "Central purchase draft prepared from the saved supplier and pack details.",
+    );
+  }
+
+  function routeApprovedRequest(request: SupplyRequest) {
+    const item = state.items.find(
+      (candidate) => candidate.id === request.itemId,
+    );
+    if (!item) {
+      setError("The requested item no longer exists.");
+      return;
+    }
+    const recipe = state.recipes.find(
+      (candidate) => candidate.outputItemId === request.itemId,
+    );
+    if (item.inventoryType === "direct-supply") {
+      prepareDirectPurchase(request);
+      return;
+    }
+    if (recipe) {
+      if (item.centralStock >= request.quantity) {
+        setView("requests");
+        setMessage(
+          "Automatic route: existing Central production stock is ready for dispatch.",
+        );
+      } else {
+        prepareProductionForRequest(request);
+      }
+      return;
+    }
+    if (item.centralStock >= request.quantity) {
+      setView("requests");
+      setMessage("Automatic route: Central stock is ready for dispatch.");
+      return;
+    }
+    prepareCentralPurchase(request);
+  }
+
   function dispatchRequest(request: SupplyRequest) {
+    if (!requireOpenMonth()) return;
     const item = state.items.find(
       (candidate) => candidate.id === request.itemId,
     );
@@ -823,7 +1116,20 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
             : ("central-stock" as const),
         status: "dispatched" as const,
         dispatchedAt: new Date().toISOString(),
+        lines: buildDeliveryLines([request], current.items),
       };
+      const dispatchLedger = ledgerEntry({
+        id: makeId("ledger"),
+        movement: "dispatch-out",
+        item,
+        locationId: "central",
+        locationCode: "CENTRAL",
+        quantityDelta: -dispatchQuantity,
+        sourceType: "do",
+        sourceId: deliveryOrder.id,
+        reference: deliveryOrder.number,
+        route: deliveryOrder.route,
+      });
       return {
         ...current,
         items: current.items.map((candidate) =>
@@ -846,6 +1152,7 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
             : candidate,
         ),
         deliveryOrders: [deliveryOrder, ...current.deliveryOrders],
+        ledger: [dispatchLedger, ...current.ledger],
         productionAllocations: current.productionAllocations.map(
           (allocation) =>
             allocation.requestId === request.id
@@ -862,47 +1169,271 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
     }, "Dispatch recorded. The outlet must confirm the actual quantity received.");
   }
 
-  function confirmReceived(request: SupplyRequest) {
-    if (
-      !window.confirm("Confirm that the full dispatched quantity was received?")
-    ) {
+  function dispatchReadyForOutlet(outletId: string) {
+    if (!requireOpenMonth()) return;
+    const ready = state.requests.filter(
+      (request) =>
+        request.outletId === outletId &&
+        ["approved", "ready-for-dispatch"].includes(request.status) &&
+        request.fulfilmentRoute !== "direct-supplier",
+    );
+    if (!ready.length) {
+      setError("No approved Central-stock lines are ready for this outlet.");
       return;
     }
-    const receivedQuantity = request.allocatedQuantity || request.quantity;
+    const required = new Map<string, number>();
+    ready.forEach((request) =>
+      required.set(
+        request.itemId,
+        (required.get(request.itemId) || 0) +
+          (request.allocatedQuantity || request.quantity),
+      ),
+    );
+    const shortage = state.items.find(
+      (item) => Number(item.centralStock || 0) < (required.get(item.id) || 0),
+    );
+    if (shortage) {
+      setError(
+        `Cannot create the combined DO. ${shortage.name} has ${shortage.centralStock} ${shortage.unit}, but all selected requests need ${required.get(shortage.id)} ${shortage.unit}.`,
+      );
+      return;
+    }
+    commit((current) => {
+      const outlet =
+        current.config.outlets?.find((candidate) => candidate.id === outletId) ||
+        activeOutlet;
+      const lines = buildDeliveryLines(ready, current.items);
+      const deliveryOrder: DeliveryOrder = {
+        id: makeId("do"),
+        number: nextDeliveryOrderNumber(current, outlet.code),
+        outletId: outlet.id,
+        outletCode: outlet.code,
+        outletName: outlet.name,
+        requestId: ready[0].id,
+        itemId: ready[0].itemId,
+        itemName: ready.length === 1 ? ready[0].itemName : `${ready.length} items`,
+        quantity: lines.reduce((sum, line) => sum + line.dispatchedQuantity, 0),
+        unit: ready.length === 1 ? ready[0].unit : "mixed",
+        route: "central-stock",
+        status: "dispatched",
+        dispatchedAt: new Date().toISOString(),
+        lines,
+      };
+      const requestIds = new Set(ready.map((request) => request.id));
+      const ledgers = lines.map((line) => {
+        const item = current.items.find((candidate) => candidate.id === line.itemId)!;
+        return ledgerEntry({
+          id: makeId("ledger"),
+          movement: "dispatch-out",
+          item,
+          locationId: "central",
+          locationCode: "CENTRAL",
+          quantityDelta: -line.dispatchedQuantity,
+          sourceType: "do",
+          sourceId: deliveryOrder.id,
+          reference: deliveryOrder.number,
+          route: "central-stock",
+        });
+      });
+      return {
+        ...current,
+        items: current.items.map((item) => ({
+          ...item,
+          centralStock:
+            item.centralStock - Number(required.get(item.id) || 0),
+        })),
+        requests: current.requests.map((request) =>
+          requestIds.has(request.id)
+            ? {
+                ...request,
+                status: "dispatched",
+                deliveryOrderId: deliveryOrder.id,
+                deliveryOrderNumber: deliveryOrder.number,
+                updatedAt: new Date().toISOString(),
+              }
+            : request,
+        ),
+        deliveryOrders: [deliveryOrder, ...current.deliveryOrders],
+        ledger: [...ledgers, ...current.ledger],
+        activities: [
+          activity(
+            `${deliveryOrder.number}: ${lines.length} line(s) dispatched to ${outlet.name}.`,
+          ),
+          ...current.activities,
+        ],
+      };
+    }, "One multi-line delivery order was created for the outlet.");
+  }
+
+  function confirmReceived(request: SupplyRequest) {
+    if (!requireOpenMonth()) return;
+    const dispatchedQuantity = request.allocatedQuantity || request.quantity;
+    const receivedText = window.prompt(
+      `Actual good quantity received for ${request.itemName} (${request.unit})`,
+      String(dispatchedQuantity),
+    );
+    if (receivedText === null) return;
+    const damagedText = window.prompt(
+      `Damaged/rejected quantity (${request.unit})`,
+      "0",
+    );
+    if (damagedText === null) return;
+    const receivedQuantity = Number(receivedText);
+    const damagedQuantity = Number(damagedText);
+    if (
+      !Number.isFinite(receivedQuantity) ||
+      receivedQuantity < 0 ||
+      !Number.isFinite(damagedQuantity) ||
+      damagedQuantity < 0 ||
+      receivedQuantity + damagedQuantity > dispatchedQuantity
+    ) {
+      setError(
+        "Received and damaged quantities must be zero or more and cannot exceed the dispatched quantity.",
+      );
+      return;
+    }
+    const direct = request.fulfilmentRoute === "direct-supplier";
+    const linkedPurchaseOrder = state.purchaseOrders.find(
+      (candidate) => candidate.id === request.linkedPurchaseOrderId,
+    );
+    const directItem = state.items.find(
+      (candidate) => candidate.id === request.itemId,
+    );
+    const supplierName =
+      direct
+        ? window
+            .prompt(
+              "Supplier name",
+              linkedPurchaseOrder?.supplier || directItem?.supplier || "",
+            )
+            ?.trim() || ""
+        : "";
+    const supplierDo =
+      direct
+        ? window.prompt("Supplier delivery order number", "")?.trim() || ""
+        : "";
+    if (direct && (!supplierName || !supplierDo)) {
+      setError(
+        "Enter both the supplier name and supplier delivery order number before receiving Direct Supply.",
+      );
+      return;
+    }
     const outletId = request.outletId || activeOutlet.id;
     commit(
-      (current) => ({
-        ...current,
-        items: current.items.map((item) =>
-          item.id === request.itemId
-            ? {
-                ...item,
-                outletStock:
-                  outletId === current.config.outlets?.[0]?.id
-                    ? stockAtOutlet(item, outletId, current.config.outlets) +
-                      receivedQuantity
-                    : item.outletStock,
-                outletStocks: {
-                  ...(item.outletStocks || {}),
-                  [outletId]:
-                    stockAtOutlet(item, outletId, current.config.outlets) +
-                    receivedQuantity,
-                },
-              }
-            : item,
-        ),
+      (current) => {
+        const item = current.items.find(
+          (candidate) => candidate.id === request.itemId,
+        );
+        if (!item) return current;
+        const order = current.deliveryOrders.find(
+          (candidate) => candidate.id === request.deliveryOrderId,
+        );
+        const line = order?.lines?.find(
+          (candidate) => candidate.requestId === request.id,
+        );
+        const actual = line
+          ? {
+              [line.id]: {
+                received: receivedQuantity,
+                damaged: damagedQuantity,
+              },
+            }
+          : {};
+        const reconciled = order
+          ? reconcileDelivery(order, actual)
+          : { lines: [], status: "received" as const };
+        const nextLines =
+          order?.lines?.map((candidate) =>
+            candidate.requestId === request.id
+              ? {
+                  ...candidate,
+                  receivedQuantity,
+                  damagedQuantity,
+                }
+              : candidate,
+          ) || reconciled.lines;
+        const allLinesClosed =
+          nextLines.length > 0 &&
+          nextLines.every(
+            (candidate) =>
+              candidate.receivedQuantity + candidate.damagedQuantity >=
+              candidate.dispatchedQuantity,
+          );
+        const hasDifference = nextLines.some(
+          (candidate) =>
+            candidate.receivedQuantity + candidate.damagedQuantity !==
+            candidate.dispatchedQuantity,
+        );
+        const po = current.purchaseOrders.find(
+          (candidate) => candidate.id === request.linkedPurchaseOrderId,
+        );
+        const includeValue =
+          !direct ||
+          (current.config.directSupplierCostMode === "actual-cost" &&
+            current.config.includeDirectSupplierCostInCsv);
+        const unitCost =
+          direct && current.config.directSupplierCostMode === "actual-cost"
+            ? Number(po?.totalCost || 0) /
+              Math.max(1, Number(po?.stockQuantity || po?.quantity || 1))
+            : Number(item.unitCost || 0);
+        const postingItem = { ...item, unitCost };
+        return {
+          ...current,
+          items: current.items.map((candidate) =>
+            candidate.id === request.itemId
+              ? {
+                  ...candidate,
+                  unitCost:
+                    direct &&
+                    current.config.directSupplierCostMode === "actual-cost"
+                      ? unitCost
+                      : candidate.unitCost,
+                  outletStock:
+                    outletId === current.config.outlets?.[0]?.id
+                      ? stockAtOutlet(
+                          candidate,
+                          outletId,
+                          current.config.outlets,
+                        ) + receivedQuantity
+                      : candidate.outletStock,
+                  outletStocks: {
+                    ...(candidate.outletStocks || {}),
+                    [outletId]:
+                      stockAtOutlet(
+                        candidate,
+                        outletId,
+                        current.config.outlets,
+                      ) + receivedQuantity,
+                  },
+                }
+              : candidate,
+          ),
         requests: current.requests.map((candidate) =>
           candidate.id === request.id
             ? {
                 ...candidate,
-                status: "received",
+                status:
+                  receivedQuantity + damagedQuantity === dispatchedQuantity
+                    ? "received"
+                    : "dispatched",
                 updatedAt: new Date().toISOString(),
               }
             : candidate,
         ),
         purchaseOrders: current.purchaseOrders.map((order) =>
           order.id === request.linkedPurchaseOrderId
-            ? { ...order, status: "received" }
+            ? {
+                ...order,
+                status:
+                  receivedQuantity + damagedQuantity === dispatchedQuantity
+                    ? "received"
+                    : "partially-received",
+                supplierDeliveryOrderNumber:
+                  supplierDo || order.supplierDeliveryOrderNumber,
+                supplier: supplierName || order.supplier,
+                receivedStockQuantity:
+                  Number(order.receivedStockQuantity || 0) + receivedQuantity,
+              }
             : order,
         ),
         productionAllocations: current.productionAllocations.map(
@@ -915,18 +1446,48 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
           order.id === request.deliveryOrderId
             ? {
                 ...order,
-                status: "received" as const,
-                receivedAt: new Date().toISOString(),
+                lines: nextLines,
+                status: hasDifference
+                  ? ("discrepancy" as const)
+                  : allLinesClosed
+                    ? ("received" as const)
+                    : ("partially-received" as const),
+                receivedAt:
+                  allLinesClosed
+                    ? new Date().toISOString()
+                    : order.receivedAt,
+                supplierDeliveryOrderNumber:
+                  supplierDo || order.supplierDeliveryOrderNumber,
+                supplierName: supplierName || order.supplierName,
               }
             : order,
         ),
+        ledger: [
+          ledgerEntry({
+            id: makeId("ledger"),
+            movement: direct ? "direct-receipt" : "outlet-receipt",
+            item: postingItem,
+            locationId: outletId,
+            locationCode: request.outletCode || activeOutlet.code,
+            quantityDelta: receivedQuantity,
+            sourceType: "receipt",
+            sourceId: request.deliveryOrderId || request.id,
+            reference: request.deliveryOrderNumber || "RECEIPT",
+            route: request.fulfilmentRoute,
+            valueOverride: includeValue ? receivedQuantity * unitCost : 0,
+          }),
+          ...current.ledger,
+        ],
         activities: [
           activity(
-            `${request.deliveryOrderNumber || "Delivery"}: ${request.outletName} received ${receivedQuantity} ${request.unit} of ${request.itemName}.`,
+            `${request.deliveryOrderNumber || "Delivery"}: ${request.outletName} received ${receivedQuantity} ${request.unit} of ${request.itemName}${
+              direct ? ` from ${supplierName}; supplier DO ${supplierDo}.` : "."
+            }`,
           ),
           ...current.activities,
         ],
-      }),
+        };
+      },
       "Delivery received and outlet stock updated.",
     );
   }
@@ -947,11 +1508,17 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
       quantity <= 0 ||
       !Number.isFinite(purchaseUnitPrice) ||
       purchaseUnitPrice < 0 ||
+      (poForm.destination === "outlet" &&
+        state.config.directSupplierCostMode === "actual-cost" &&
+        purchaseUnitPrice <= 0) ||
       (poForm.destination === "outlet" && !poForm.destinationOutletId) ||
       !poForm.expectedDate
     ) {
       setError(
-        "Choose an item and enter the supplier, quantity and expected date.",
+        state.config.directSupplierCostMode === "actual-cost" &&
+          poForm.destination === "outlet"
+          ? "Actual supplier cost mode is on. Enter a supplier unit price above zero."
+          : "Choose an item and enter the supplier, quantity and expected date.",
       );
       return;
     }
@@ -1063,6 +1630,7 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
   }
 
   function markSupplierDispatched(order: PurchaseOrder) {
+    if (!requireOpenMonth()) return;
     if (order.destination !== "outlet" || !order.linkedRequestId) return;
     commit((current) => {
       const request = current.requests.find(
@@ -1076,7 +1644,11 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
         ) || activeOutlet;
       const deliveryOrder = {
         id: makeId("do"),
-        number: nextDeliveryOrderNumber(current, outlet.code),
+        number: nextDocumentNumber(
+          current.deliveryOrders,
+          outlet.code,
+          "DD",
+        ),
         outletId: outlet.id,
         outletCode: outlet.code,
         outletName: outlet.name,
@@ -1088,6 +1660,7 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
         route: "direct-supplier" as const,
         status: "dispatched" as const,
         dispatchedAt: new Date().toISOString(),
+        lines: buildDeliveryLines([request], current.items),
       };
       return {
         ...current,
@@ -1098,6 +1671,7 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
                 status: "supplier-dispatched" as const,
                 deliveryOrderId: deliveryOrder.id,
                 deliveryOrderNumber: deliveryOrder.number,
+                internalDirectReference: deliveryOrder.number,
               }
             : candidate,
         ),
@@ -1125,30 +1699,48 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
   }
 
   function receivePurchaseOrder(order: PurchaseOrder) {
+    if (!requireOpenMonth()) return;
     if (order.destination === "outlet") {
       setError(
         "Direct-to-outlet orders must be received by the outlet, not posted into Central stock.",
       );
       return;
     }
-    if (
-      !window.confirm(
-        "Confirm that the full purchase order quantity was received?",
-      )
-    ) {
+    const orderedQuantity = order.stockQuantity || order.quantity;
+    const receivedText = window.prompt(
+      `Actual stock quantity received for ${order.itemName} (${order.unit})`,
+      String(Math.max(0, orderedQuantity - Number(order.receivedStockQuantity || 0))),
+    );
+    if (receivedText === null) return;
+    const receivedQuantity = Number(receivedText);
+    if (!Number.isFinite(receivedQuantity) || receivedQuantity <= 0) {
+      setError("Enter the actual quantity received, greater than zero.");
       return;
     }
+    const supplierDo =
+      window.prompt("Supplier delivery order number", order.supplierDeliveryOrderNumber || "")?.trim() || "";
+    const supplierInvoice =
+      window.prompt("Supplier invoice number (optional)", order.supplierInvoiceNumber || "")?.trim() || "";
     commit(
-      (current) => ({
+      (current) => {
+        const currentItem = current.items.find((item) => item.id === order.itemId);
+        if (!currentItem) return current;
+        const remainingBefore = Math.max(
+          0,
+          orderedQuantity - Number(order.receivedStockQuantity || 0),
+        );
+        const accepted = Math.min(receivedQuantity, remainingBefore);
+        const perStockUnitCost =
+          Number(order.totalCost || 0) / Math.max(1, Number(order.stockQuantity || order.quantity));
+        return {
         ...current,
         items: current.items.map((item) =>
           item.id === order.itemId
             ? (() => {
-                const receivedQuantity = order.stockQuantity || order.quantity;
                 const existingValue =
                   item.centralStock * Number(item.unitCost || 0);
-                const receivedValue = Number(order.totalCost || 0);
-                const newStock = item.centralStock + receivedQuantity;
+                const receivedValue = accepted * perStockUnitCost;
+                const newStock = item.centralStock + accepted;
                 return {
                   ...item,
                   centralStock: newStock,
@@ -1163,22 +1755,52 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
         ),
         purchaseOrders: current.purchaseOrders.map((candidate) =>
           candidate.id === order.id
-            ? { ...candidate, status: "received" }
+            ? {
+                ...candidate,
+                status:
+                  Number(candidate.receivedStockQuantity || 0) + accepted >=
+                  orderedQuantity
+                    ? "received"
+                    : "partially-received",
+                receivedStockQuantity:
+                  Number(candidate.receivedStockQuantity || 0) + accepted,
+                supplierDeliveryOrderNumber:
+                  supplierDo || candidate.supplierDeliveryOrderNumber,
+                supplierInvoiceNumber:
+                  supplierInvoice || candidate.supplierInvoiceNumber,
+              }
             : candidate,
         ),
+        ledger: [
+          ledgerEntry({
+            id: makeId("ledger"),
+            movement: "purchase-receipt",
+            item: { ...currentItem, unitCost: perStockUnitCost },
+            locationId: "central",
+            locationCode: "CENTRAL",
+            quantityDelta: accepted,
+            sourceType: "po",
+            sourceId: order.id,
+            reference: supplierDo || order.id,
+            valueOverride: accepted * perStockUnitCost,
+          }),
+          ...current.ledger,
+        ],
         activities: [
           activity(
             `${order.quantity} ${order.purchaseUnit || order.unit} of ${order.itemName} received from ${order.supplier}; weighted inventory cost updated.`,
           ),
           ...current.activities,
         ],
-      }),
+      };
+      },
       "Goods received and central stock updated.",
     );
   }
 
   function addStock(event: React.FormEvent) {
     event.preventDefault();
+    if (!requireOpenMonth()) return;
     const quantity = Number(stockForm.quantity);
     const item = state.items.find(
       (candidate) => candidate.id === stockForm.itemId,
@@ -1199,6 +1821,20 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
               }
             : candidate,
         ),
+        ledger: [
+          ledgerEntry({
+            id: makeId("ledger"),
+            movement: "adjustment",
+            item,
+            locationId: "central",
+            locationCode: "CENTRAL",
+            quantityDelta: quantity,
+            sourceType: "count",
+            sourceId: stockForm.itemId,
+            reference: `MANUAL-RECEIPT-${todayKey()}`,
+          }),
+          ...current.ledger,
+        ],
         activities: [
           activity(
             `${quantity} ${item.unit} of ${item.name} added to central stock.`,
@@ -1213,6 +1849,7 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
 
   function recordWastage(event: React.FormEvent) {
     event.preventDefault();
+    if (!requireOpenMonth()) return;
     const quantity = Number(wastageForm.quantity);
     const item = state.items.find(
       (candidate) => candidate.id === wastageForm.itemId,
@@ -1251,6 +1888,20 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
               }
             : candidate,
         ),
+        ledger: [
+          ledgerEntry({
+            id: makeId("ledger"),
+            movement: "wastage",
+            item,
+            locationId: activeOutlet.id,
+            locationCode: activeOutlet.code,
+            quantityDelta: -quantity,
+            sourceType: "count",
+            sourceId: wastageForm.itemId,
+            reference: `WASTE-${todayKey()}`,
+          }),
+          ...current.ledger,
+        ],
         activities: [
           activity(
             `${quantity} ${item.unit} of ${item.name} adjusted at ${activeOutlet.name} (${activeOutlet.code}): ${wastageForm.reason.trim()}.`,
@@ -1482,6 +2133,7 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
   }
 
   function completeBatch(batchId: string) {
+    if (!requireOpenMonth()) return;
     const batch = state.productionBatches.find(
       (candidate) => candidate.id === batchId,
     );
@@ -1506,26 +2158,45 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
       );
       return;
     }
+    const plannedOutput = recipe.outputQuantity * batch.multiplier;
+    const actualText = window.prompt(
+      `Actual output completed (${recipe.outputUnit})`,
+      String(plannedOutput),
+    );
+    if (actualText === null) return;
+    const wastageText = window.prompt(
+      `Production wastage/reject quantity (${recipe.outputUnit})`,
+      "0",
+    );
+    if (wastageText === null) return;
+    const actualOutput = Number(actualText);
+    const wastageQuantity = Number(wastageText);
     if (
-      !window.confirm("Complete this batch and post all ingredient movements?")
+      !Number.isFinite(actualOutput) ||
+      actualOutput <= 0 ||
+      !Number.isFinite(wastageQuantity) ||
+      wastageQuantity < 0 ||
+      wastageQuantity >= actualOutput
     ) {
+      setError(
+        "Actual output must be above zero; wastage must be zero or more and lower than actual output.",
+      );
       return;
     }
-    const producedQuantity = recipe.outputQuantity * batch.multiplier;
-    const ingredientCost = recipe.ingredients.reduce((total, ingredient) => {
-      const item = state.items.find(
-        (candidate) => candidate.id === ingredient.itemId,
-      );
-      return (
-        total +
-        ingredient.quantity * batch.multiplier * Number(item?.unitCost || 0)
-      );
-    }, 0);
-    const productionCost =
-      ingredientCost +
-      Number(recipe.processingCostPerBatch || 0) * batch.multiplier;
-    const outputUnitCost =
-      producedQuantity > 0 ? productionCost / producedQuantity : 0;
+    const batchNumber =
+      window.prompt("Batch/lot number", `BATCH-${todayKey().replaceAll("-", "")}`)?.trim() || "";
+    const expiryDate =
+      window.prompt("Expiry date (YYYY-MM-DD, optional)", "")?.trim() || "";
+    const posting = productionPosting({
+      items: state.items,
+      recipe,
+      batch,
+      actualOutput,
+      wastage: wastageQuantity,
+    });
+    const producedQuantity = posting.goodOutput;
+    const productionCost = posting.totalCost;
+    const outputUnitCost = posting.outputUnitCost;
     const linkedRequest = state.requests.find(
       (request) => request.id === batch.linkedRequestId,
     );
@@ -1535,39 +2206,23 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
     commit(
       (current) => ({
         ...current,
-        items: current.items.map((item) => {
-          const ingredient = recipe.ingredients.find(
-            (candidate) => candidate.itemId === item.id,
-          );
-          if (ingredient) {
-            return {
-              ...item,
-              centralStock:
-                item.centralStock - ingredient.quantity * batch.multiplier,
-            };
-          }
-          if (item.id === recipe.outputItemId) {
-            const newStock = item.centralStock + producedQuantity;
-            return {
-              ...item,
-              inventoryType: "semi-processed" as const,
-              centralStock: newStock,
-              unitCost:
-                newStock > 0
-                  ? (item.centralStock * Number(item.unitCost || 0) +
-                      productionCost) /
-                    newStock
-                  : outputUnitCost,
-            };
-          }
-          return item;
-        }),
+        items: posting.items.map((item) =>
+          item.id === recipe.outputItemId && expiryDate
+            ? { ...item, expiryDate }
+            : item,
+        ),
         productionBatches: current.productionBatches.map((candidate) =>
           candidate.id === batch.id
             ? {
                 ...candidate,
                 status: "completed",
                 producedQuantity,
+                plannedOutputQuantity: plannedOutput,
+                actualOutputQuantity: actualOutput,
+                wastageQuantity,
+                batchNumber,
+                expiryDate,
+                completedAt: new Date().toISOString(),
                 productionCost,
                 outputUnitCost,
               }
@@ -1605,6 +2260,64 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
                 ),
               ]
             : current.productionAllocations,
+        ledger: [
+          ...recipe.ingredients.map((ingredient) => {
+            const item = current.items.find(
+              (candidate) => candidate.id === ingredient.itemId,
+            )!;
+            return ledgerEntry({
+              id: makeId("ledger"),
+              movement: "production-input",
+              item,
+              locationId: "central",
+              locationCode: "CENTRAL",
+              quantityDelta: -ingredient.quantity * batch.multiplier,
+              sourceType: "batch",
+              sourceId: batch.id,
+              reference: batchNumber || batch.id,
+            });
+          }),
+          ledgerEntry({
+            id: makeId("ledger"),
+            movement: "production-output",
+            item: {
+              ...current.items.find(
+                (candidate) => candidate.id === recipe.outputItemId,
+              )!,
+              unitCost: outputUnitCost,
+            },
+            locationId: "central",
+            locationCode: "CENTRAL",
+            quantityDelta: producedQuantity,
+            sourceType: "batch",
+            sourceId: batch.id,
+            reference: batchNumber || batch.id,
+            valueOverride: productionCost,
+          }),
+          ...(wastageQuantity > 0
+            ? [
+                ledgerEntry({
+                  id: makeId("ledger"),
+                  movement: "wastage",
+                  item: {
+                    ...current.items.find(
+                      (candidate) => candidate.id === recipe.outputItemId,
+                    )!,
+                    unitCost: outputUnitCost,
+                  },
+                  locationId: "central",
+                  locationCode: "CENTRAL",
+                  quantityDelta: -wastageQuantity,
+                  sourceType: "batch",
+                  sourceId: batch.id,
+                  reference: batchNumber || batch.id,
+                  reason: "Production wastage",
+                  valueOverride: 0,
+                }),
+              ]
+            : []),
+          ...current.ledger,
+        ],
         activities: [
           activity(
             `${batch.multiplier} batch(es) of ${recipe.name} completed. ${readableQuantity(
@@ -1634,15 +2347,34 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
     );
   }
 
-  const centralNav: { id: CentralView; label: string; symbol: string }[] = [
+  const newRequestCount = state.requests.filter(
+    (request) => request.status === "submitted",
+  ).length;
+  const centralNav: {
+    id: CentralView;
+    label: string;
+    symbol: string;
+    badge?: number;
+  }[] = [
     { id: "overview", label: "Command Centre", symbol: "⌂" },
     { id: "calendar", label: "Planning Calendar", symbol: "▦" },
-    { id: "requests", label: "Outlet Requests", symbol: "✓" },
+    {
+      id: "requests",
+      label: "Outlet Requests",
+      symbol: "✓",
+      badge: newRequestCount,
+    },
     { id: "inventory", label: "Inventory", symbol: "□" },
     { id: "purchasing", label: "Purchasing", symbol: "↗" },
     { id: "production", label: "Production", symbol: "⚙" },
+    { id: "closing", label: "Month Close & CSV", symbol: "⇩" },
   ];
-  const outletNav: { id: OutletView; label: string; symbol: string }[] = [
+  const outletNav: {
+    id: OutletView;
+    label: string;
+    symbol: string;
+    badge?: number;
+  }[] = [
     { id: "overview", label: "Overview", symbol: "⌂" },
     { id: "request", label: "New Request", symbol: "+" },
     { id: "receiving", label: "Receiving", symbol: "↓" },
@@ -1718,7 +2450,17 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
                 }`}
               >
                 <span className="text-lg">{item.symbol}</span>
-                {item.label}
+                <span className="min-w-0 flex-1">{item.label}</span>
+                {Boolean(item.badge) && (
+                  <span
+                    aria-label={`${item.badge} new outlet request${
+                      item.badge === 1 ? "" : "s"
+                    }`}
+                    className="grid h-6 min-w-6 place-items-center rounded-full bg-red-500 px-1.5 text-xs font-black text-white shadow-[0_0_0_3px_rgba(239,68,68,.16)]"
+                  >
+                    {item.badge! > 99 ? "99+" : item.badge}
+                  </span>
+                )}
               </button>
             ))}
           </nav>
@@ -1806,31 +2548,10 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
             <CentralRequests
               requests={state.requests}
               items={state.items}
+              recipes={state.recipes}
               decideRequest={decideRequest}
               dispatchRequest={dispatchRequest}
-              prepareDirectPurchase={prepareDirectPurchase}
-              prepareProductionForRequest={prepareProductionForRequest}
-              openCentralPurchase={(request) => {
-                const item = state.items.find(
-                  (candidate) => candidate.id === request.itemId,
-                );
-                const shortage = Math.max(
-                  0,
-                  request.quantity - Number(item?.centralStock || 0),
-                );
-                setPoForm({
-                  itemId: request.itemId,
-                  supplier: item?.supplier || "",
-                  quantity: String(shortage || request.quantity),
-                  expectedDate: request.neededBy,
-                  destination: "central",
-                  linkedRequestId: "",
-                  purchaseUnit: item?.purchaseUnit || item?.unit || "",
-                  purchaseUnitPrice: "",
-                  destinationOutletId: "",
-                });
-                setView("purchasing");
-              }}
+              dispatchReadyForOutlet={dispatchReadyForOutlet}
             />
           )}
 
@@ -1876,6 +2597,216 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
               createRecipe={createRecipe}
               planBatch={planBatch}
               completeBatch={completeBatch}
+            />
+          )}
+
+          {role === "central" && view === "closing" && (
+            <OperationalControl
+              state={state}
+              onChangeConfig={(directSupplierCostMode, includeDirectSupplierCostInCsv) =>
+                commit(
+                  (current) => ({
+                    ...current,
+                    config: {
+                      ...current.config,
+                      directSupplierCostMode,
+                      includeDirectSupplierCostInCsv,
+                    },
+                  }),
+                  "Direct supplier export policy saved.",
+                )
+              }
+              onToggleMonthLock={(month) =>
+                commit(
+                  (current) => {
+                    const locked = current.config.lockedMonths || [];
+                    return {
+                      ...current,
+                      config: {
+                        ...current.config,
+                        lockedMonths: locked.includes(month)
+                          ? locked.filter((entry) => entry !== month)
+                          : [...locked, month],
+                      },
+                    };
+                  },
+                  "Month lock updated.",
+                )
+              }
+              onPostStockCount={(itemId, locationId, countedQuantity, reason) => {
+                if (!requireOpenMonth()) return;
+                commit(
+                  (current) => {
+                    const item = current.items.find(
+                      (candidate) => candidate.id === itemId,
+                    );
+                    if (!item) return current;
+                    const outlet = current.config.outlets?.find(
+                      (candidate) => candidate.id === locationId,
+                    );
+                    const systemQuantity =
+                      locationId === "central"
+                        ? item.centralStock
+                        : Number(item.outletStocks?.[locationId] || 0);
+                    const difference = countedQuantity - systemQuantity;
+                    const countId = makeId("count");
+                    const countNumber = `COUNT-${todayKey().replaceAll("-", "")}-${String(
+                      current.stockCounts.length + 1,
+                    ).padStart(4, "0")}`;
+                    return {
+                      ...current,
+                      items: current.items.map((candidate) =>
+                        candidate.id !== itemId
+                          ? candidate
+                          : locationId === "central"
+                            ? { ...candidate, centralStock: countedQuantity }
+                            : {
+                                ...candidate,
+                                outletStock:
+                                  locationId === current.config.outlets?.[0]?.id
+                                    ? countedQuantity
+                                    : candidate.outletStock,
+                                outletStocks: {
+                                  ...(candidate.outletStocks || {}),
+                                  [locationId]: countedQuantity,
+                                },
+                              },
+                      ),
+                      stockCounts: [
+                        {
+                          id: countId,
+                          number: countNumber,
+                          locationId,
+                          itemId,
+                          systemQuantity,
+                          countedQuantity,
+                          unit: item.unit,
+                          reason,
+                          status: "posted",
+                          createdAt: new Date().toISOString(),
+                          postedAt: new Date().toISOString(),
+                        },
+                        ...current.stockCounts,
+                      ],
+                      ledger:
+                        difference === 0
+                          ? current.ledger
+                          : [
+                              ledgerEntry({
+                                id: makeId("ledger"),
+                                movement: "adjustment",
+                                item,
+                                locationId,
+                                locationCode:
+                                  locationId === "central"
+                                    ? "CENTRAL"
+                                    : outlet?.code || "OUTLET",
+                                quantityDelta: difference,
+                                sourceType: "count",
+                                sourceId: countId,
+                                reference: countNumber,
+                                reason,
+                              }),
+                              ...current.ledger,
+                            ],
+                      activities: [
+                        activity(
+                          `${countNumber}: ${item.name} counted at ${countedQuantity} ${item.unit}; adjustment ${difference} ${item.unit}.`,
+                        ),
+                        ...current.activities,
+                      ],
+                    };
+                  },
+                  "Stock count posted with an auditable adjustment.",
+                );
+              }}
+              onReverseLedger={(ledgerId, reason) => {
+                if (!requireOpenMonth()) return;
+                commit(
+                  (current) => {
+                    const original = current.ledger.find(
+                      (entry) =>
+                        entry.id === ledgerId && entry.status === "posted",
+                    );
+                    if (!original) return current;
+                    const item = current.items.find(
+                      (candidate) => candidate.id === original.itemId,
+                    );
+                    if (!item) return current;
+                    const reverseQuantity = -original.quantityDelta;
+                    const isCentral = original.locationId === "central";
+                    const currentOutlet = Number(
+                      item.outletStocks?.[original.locationId] || 0,
+                    );
+                    if (
+                      (isCentral && item.centralStock + reverseQuantity < 0) ||
+                      (!isCentral && currentOutlet + reverseQuantity < 0)
+                    ) {
+                      setError(
+                        "This reversal would make stock negative. Post a physical stock count instead.",
+                      );
+                      return current;
+                    }
+                    const reversal = {
+                      ...ledgerEntry({
+                        id: makeId("ledger"),
+                        movement: "reversal",
+                        item,
+                        locationId: original.locationId,
+                        locationCode: original.locationCode,
+                        quantityDelta: reverseQuantity,
+                        sourceType: original.sourceType,
+                        sourceId: original.sourceId,
+                        reference: `REV-${original.reference}`,
+                        valueOverride: -original.valueDelta,
+                        reason,
+                      }),
+                      reversalOf: original.id,
+                    };
+                    return {
+                      ...current,
+                      items: current.items.map((candidate) =>
+                        candidate.id !== item.id
+                          ? candidate
+                          : isCentral
+                            ? {
+                                ...candidate,
+                                centralStock:
+                                  candidate.centralStock + reverseQuantity,
+                              }
+                            : {
+                                ...candidate,
+                                outletStock:
+                                  original.locationId ===
+                                  current.config.outlets?.[0]?.id
+                                    ? candidate.outletStock + reverseQuantity
+                                    : candidate.outletStock,
+                                outletStocks: {
+                                  ...(candidate.outletStocks || {}),
+                                  [original.locationId]:
+                                    currentOutlet + reverseQuantity,
+                                },
+                              },
+                      ),
+                      ledger: [
+                        reversal,
+                        ...current.ledger.map((entry) =>
+                          entry.id === original.id
+                            ? { ...entry, status: "reversed" as const, reason }
+                            : entry,
+                        ),
+                      ],
+                      activities: [
+                        activity(
+                          `${original.reference} reversed: ${reason}`,
+                        ),
+                        ...current.activities,
+                      ],
+                    };
+                  },
+                  "Posted movement reversed with a reason.",
+                );
+              }}
             />
           )}
 
@@ -2088,19 +3019,17 @@ function Overview({
 function CentralRequests({
   requests,
   items,
+  recipes,
   decideRequest,
   dispatchRequest,
-  prepareDirectPurchase,
-  prepareProductionForRequest,
-  openCentralPurchase,
+  dispatchReadyForOutlet,
 }: {
   requests: SupplyRequest[];
   items: SupplyItem[];
+  recipes: SupplyRecipe[];
   decideRequest: (id: string, status: "approved" | "rejected") => void;
   dispatchRequest: (request: SupplyRequest) => void;
-  prepareDirectPurchase: (request: SupplyRequest) => void;
-  prepareProductionForRequest: (request: SupplyRequest) => void;
-  openCentralPurchase: (request: SupplyRequest) => void;
+  dispatchReadyForOutlet: (outletId: string) => void;
 }) {
   if (!requests.length) {
     return (
@@ -2114,8 +3043,62 @@ function CentralRequests({
   }
   return (
     <div className="space-y-4">
+      {Array.from(
+        new Map(
+          requests
+            .filter(
+              (request) =>
+                request.outletId &&
+                ["approved", "ready-for-dispatch"].includes(request.status) &&
+                request.fulfilmentRoute !== "direct-supplier" &&
+                items.find((item) => item.id === request.itemId)
+                  ?.inventoryType !== "direct-supply",
+            )
+            .map((request) => [
+              request.outletId!,
+              {
+                id: request.outletId!,
+                name: request.outletName,
+                code: request.outletCode || "OUTLET",
+              },
+            ]),
+        ).values(),
+      ).map((outlet) => (
+        <div
+          key={outlet.id}
+          className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#d6ad62]/30 bg-[#d6ad62]/8 p-4"
+        >
+          <div>
+            <p className="font-black">
+              Combine ready lines for {outlet.name}
+            </p>
+            <p className="mt-1 text-xs text-white/40">
+              Creates one outlet-coded multi-line delivery order.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => dispatchReadyForOutlet(outlet.id)}
+            className="rounded-xl bg-[#d6ad62] px-5 py-3 font-black text-[#0a1013]"
+          >
+            Create combined {outlet.code}-DO
+          </button>
+        </div>
+      ))}
       {requests.map((request) => {
         const item = items.find((candidate) => candidate.id === request.itemId);
+        const recipe = recipes.find(
+          (candidate) => candidate.outputItemId === request.itemId,
+        );
+        const automaticRouteCode = item
+          ? resolveFulfilmentRoute(item, Boolean(recipe))
+          : "central-stock";
+        const automaticRoute =
+          automaticRouteCode === "direct-supplier"
+            ? "Direct supplier"
+            : automaticRouteCode === "central-production"
+              ? "Central production"
+              : "Central stock";
         const dispatchQuantity = request.allocatedQuantity || request.quantity;
         const enough = Number(item?.centralStock || 0) >= dispatchQuantity;
         const requestedDisplay =
@@ -2157,6 +3140,9 @@ function CentralRequests({
                 Outlet note: {request.note}
               </p>
             )}
+            <p className="mt-4 inline-flex rounded-lg border border-[#4b7e74]/35 bg-[#4b7e74]/10 px-3 py-2 text-xs font-bold text-[#b7ddd5]">
+              Fulfilment: {automaticRoute}
+            </p>
             <div className="mt-5 flex flex-wrap gap-2">
               {request.status === "submitted" && (
                 <>
@@ -2165,7 +3151,7 @@ function CentralRequests({
                     onClick={() => decideRequest(request.id, "approved")}
                     className="rounded-xl bg-emerald-600 px-5 py-3 font-bold text-white"
                   >
-                    Approve request
+                    Approve – {automaticRoute}
                   </button>
                   <button
                     type="button"
@@ -2178,35 +3164,19 @@ function CentralRequests({
               )}
               {request.status === "approved" && (
                 <>
-                  <button
-                    type="button"
-                    onClick={() => dispatchRequest(request)}
-                    disabled={!enough}
-                    className="rounded-xl bg-[#d6ad62] px-5 py-3 font-black text-[#0a1013] disabled:cursor-not-allowed disabled:opacity-35"
-                  >
-                    Dispatch &amp; create DO
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => prepareDirectPurchase(request)}
-                    className="rounded-xl border border-sky-400/30 bg-sky-500/10 px-5 py-3 font-bold text-sky-100"
-                  >
-                    Supplier delivers to outlet
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => prepareProductionForRequest(request)}
-                    className="rounded-xl border border-[#4b7e74]/60 px-5 py-3 font-bold text-[#b7ddd5]"
-                  >
-                    Process at Central
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openCentralPurchase(request)}
-                    className="rounded-xl border border-white/12 px-5 py-3 font-bold"
-                  >
-                    Buy into Central stock
-                  </button>
+                  {enough ? (
+                    <button
+                      type="button"
+                      onClick={() => dispatchRequest(request)}
+                      className="rounded-xl bg-[#d6ad62] px-5 py-3 font-black text-[#0a1013]"
+                    >
+                      Dispatch &amp; create DO
+                    </button>
+                  ) : (
+                    <p className="rounded-xl border border-amber-400/25 bg-amber-500/10 px-4 py-3 text-sm font-bold text-amber-100">
+                      Approved. Waiting for Central stock replenishment.
+                    </p>
+                  )}
                 </>
               )}
               {request.status === "ready-for-dispatch" && (
@@ -3244,11 +4214,24 @@ function Production({
                     </p>
                   )}
                   {batch.status === "completed" && (
-                    <p className="mt-1 text-xs text-[#e5bd72]">
-                      Production cost: RM{" "}
-                      {Number(batch.productionCost || 0).toFixed(2)} · Unit
-                      cost: RM {Number(batch.outputUnitCost || 0).toFixed(4)}
-                    </p>
+                    <>
+                      <p className="mt-1 text-xs text-[#e5bd72]">
+                        Planned: {Number(batch.plannedOutputQuantity || 0)} ·
+                        Actual good output:{" "}
+                        {Number(
+                          batch.producedQuantity ||
+                            batch.actualOutputQuantity ||
+                            0,
+                        )}{" "}
+                        · Wastage: {Number(batch.wastageQuantity || 0)}
+                      </p>
+                      <p className="mt-1 text-xs text-[#e5bd72]">
+                        Batch: {batch.batchNumber || "Not recorded"} ·
+                        Production cost: RM{" "}
+                        {Number(batch.productionCost || 0).toFixed(2)} · Unit
+                        cost: RM {Number(batch.outputUnitCost || 0).toFixed(4)}
+                      </p>
+                    </>
                   )}
                 </div>
                 {batch.status === "planned" && (
