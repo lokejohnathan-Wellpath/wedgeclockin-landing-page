@@ -16,7 +16,7 @@ export const emptyConfig: SupplyConfig = {
 };
 
 export const emptySupplyState: SupplyState = {
-  version: 1,
+  version: 2,
   config: emptyConfig,
   items: [],
   requests: [],
@@ -24,6 +24,13 @@ export const emptySupplyState: SupplyState = {
   recipes: [],
   productionBatches: [],
   activities: [],
+  intelligence: {
+    dismissedSuggestionIds: [],
+    approvedSuggestionCount: 0,
+    lastReviewedAt: "",
+  },
+  planningEvents: [],
+  productionAllocations: [],
 };
 
 export function makeId(prefix: string) {
@@ -42,11 +49,20 @@ export function activity(message: string): SupplyActivity {
   };
 }
 
-function isSupplyState(value: unknown): value is SupplyState {
+function isSupplyState(value: unknown) {
   if (!value || typeof value !== "object") return false;
-  const candidate = value as Partial<SupplyState>;
+  const candidate = value as {
+    version?: number;
+    config?: unknown;
+    items?: unknown;
+    requests?: unknown;
+    purchaseOrders?: unknown;
+    recipes?: unknown;
+    productionBatches?: unknown;
+    activities?: unknown;
+  };
   return (
-    candidate.version === 1 &&
+    (candidate.version === 1 || candidate.version === 2) &&
     Boolean(candidate.config) &&
     Array.isArray(candidate.items) &&
     Array.isArray(candidate.requests) &&
@@ -57,6 +73,40 @@ function isSupplyState(value: unknown): value is SupplyState {
   );
 }
 
+function migrateSupplyState(value: unknown): SupplyState {
+  const candidate = value as Omit<
+    SupplyState,
+    "version" | "intelligence" | "planningEvents" | "productionAllocations"
+  > & {
+    version?: number;
+    intelligence?: SupplyState["intelligence"];
+    planningEvents?: SupplyState["planningEvents"];
+    productionAllocations?: SupplyState["productionAllocations"];
+  };
+  return {
+    ...candidate,
+    version: 2,
+    items: candidate.items.map((item) => ({
+      ...item,
+      safetyStock: Math.max(0, Number(item.safetyStock ?? item.reorderLevel ?? 0)),
+      supplierLeadTimeDays: Math.max(0, Number(item.supplierLeadTimeDays ?? 2)),
+      minimumOrderQuantity: Math.max(0, Number(item.minimumOrderQuantity ?? 0)),
+      inventoryType: item.inventoryType ?? "raw",
+      purchaseUnit: item.purchaseUnit ?? item.unit,
+      purchasePackSize: Math.max(0.000001, Number(item.purchasePackSize ?? 1)),
+    })),
+    intelligence: {
+      dismissedSuggestionIds:
+        candidate.intelligence?.dismissedSuggestionIds ?? [],
+      approvedSuggestionCount:
+        candidate.intelligence?.approvedSuggestionCount ?? 0,
+      lastReviewedAt: candidate.intelligence?.lastReviewedAt ?? "",
+    },
+    planningEvents: candidate.planningEvents ?? [],
+    productionAllocations: candidate.productionAllocations ?? [],
+  };
+}
+
 export function loadSupplyState(): SupplyState {
   if (typeof window === "undefined") return emptySupplyState;
 
@@ -64,7 +114,7 @@ export function loadSupplyState(): SupplyState {
     const stored = window.localStorage.getItem(SUPPLY_STORAGE_KEY);
     if (!stored) return emptySupplyState;
     const parsed = JSON.parse(stored) as unknown;
-    return isSupplyState(parsed) ? parsed : emptySupplyState;
+    return isSupplyState(parsed) ? migrateSupplyState(parsed) : emptySupplyState;
   } catch {
     return emptySupplyState;
   }

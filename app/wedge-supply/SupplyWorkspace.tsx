@@ -3,6 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  CentralCommand,
+  SupplyCalendar,
+} from "./CentralCommand";
+import type { SupplySuggestion } from "./lib/centralIntelligence";
+import {
   activity,
   emptySupplyState,
   hasCompletedSetup,
@@ -12,16 +17,27 @@ import {
   SUPPLY_STORAGE_KEY,
 } from "./lib/supplyStore";
 import type {
+  CoreUnit,
+  InventoryType,
+  ManualPlanningEvent,
   PurchaseOrder,
+  RecipeIngredient,
   SupplyItem,
   SupplyRecipe,
   SupplyRequest,
   SupplyRole,
   SupplyState,
 } from "./lib/types";
+import {
+  compatibleUnits,
+  convertQuantity,
+  coreUnits,
+  readableQuantity,
+} from "./lib/units";
 
 type CentralView =
   | "overview"
+  | "calendar"
   | "requests"
   | "inventory"
   | "purchasing"
@@ -33,9 +49,15 @@ type ItemFormState = {
   sku: string;
   category: string;
   unit: string;
+  inventoryType: InventoryType;
+  purchaseUnit: string;
+  purchasePackSize: string;
   supplier: string;
   openingStock: string;
   reorderLevel: string;
+  safetyStock: string;
+  supplierLeadTimeDays: string;
+  minimumOrderQuantity: string;
   expiryDate: string;
 };
 
@@ -176,14 +198,21 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
     sku: "",
     category: "",
     unit: "",
+    inventoryType: "raw",
+    purchaseUnit: "",
+    purchasePackSize: "1",
     supplier: "",
     openingStock: "",
     reorderLevel: "",
+    safetyStock: "",
+    supplierLeadTimeDays: "2",
+    minimumOrderQuantity: "",
     expiryDate: "",
   });
   const [requestForm, setRequestForm] = useState({
     itemId: "",
     quantity: "",
+    unit: "" as CoreUnit | "",
     neededBy: futureDate(1),
     note: "",
   });
@@ -192,6 +221,9 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
     supplier: "",
     quantity: "",
     expectedDate: futureDate(3),
+    destination: "central" as "central" | "outlet",
+    linkedRequestId: "",
+    purchaseUnit: "",
   });
   const [stockForm, setStockForm] = useState({
     itemId: "",
@@ -207,13 +239,19 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
     name: "",
     outputItemId: "",
     outputQuantity: "",
+    outputUnit: "" as CoreUnit | "",
     ingredientItemId: "",
     ingredientQuantity: "",
+    ingredientUnit: "" as CoreUnit | "",
   });
+  const [recipeIngredients, setRecipeIngredients] = useState<RecipeIngredient[]>(
+    [],
+  );
   const [batchForm, setBatchForm] = useState({
     recipeId: "",
     multiplier: "1",
     scheduledDate: todayKey(),
+    linkedRequestId: "",
   });
 
   useEffect(() => {
@@ -340,13 +378,26 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
     event.preventDefault();
     const openingStock = Number(itemForm.openingStock);
     const reorderLevel = Number(itemForm.reorderLevel);
+    const safetyStock = Number(itemForm.safetyStock || 0);
+    const supplierLeadTimeDays = Number(itemForm.supplierLeadTimeDays || 0);
+    const minimumOrderQuantity = Number(itemForm.minimumOrderQuantity || 0);
+    const purchasePackSize = Number(itemForm.purchasePackSize || 1);
     if (
       !itemForm.name.trim() ||
       !itemForm.unit.trim() ||
       !Number.isFinite(openingStock) ||
       openingStock < 0 ||
       !Number.isFinite(reorderLevel) ||
-      reorderLevel < 0
+      reorderLevel < 0 ||
+      !Number.isFinite(safetyStock) ||
+      safetyStock < 0 ||
+      !Number.isFinite(supplierLeadTimeDays) ||
+      supplierLeadTimeDays < 0 ||
+      !Number.isFinite(minimumOrderQuantity) ||
+      minimumOrderQuantity < 0 ||
+      !coreUnits.includes(itemForm.unit as CoreUnit) ||
+      !Number.isFinite(purchasePackSize) ||
+      purchasePackSize <= 0
     ) {
       setError("Enter an item name, unit and valid stock quantities.");
       return;
@@ -367,10 +418,16 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
       sku: itemForm.sku.trim(),
       category: itemForm.category.trim(),
       unit: itemForm.unit.trim(),
+      inventoryType: itemForm.inventoryType,
+      purchaseUnit: itemForm.purchaseUnit.trim() || itemForm.unit.trim(),
+      purchasePackSize,
       supplier: itemForm.supplier.trim(),
       centralStock: openingStock,
       outletStock: 0,
       reorderLevel,
+      safetyStock,
+      supplierLeadTimeDays,
+      minimumOrderQuantity,
       expiryDate: itemForm.expiryDate,
     };
     commit(
@@ -389,19 +446,155 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
       sku: "",
       category: "",
       unit: "",
+      inventoryType: "raw",
+      purchaseUnit: "",
+      purchasePackSize: "1",
       supplier: "",
       openingStock: "",
       reorderLevel: "",
+      safetyStock: "",
+      supplierLeadTimeDays: "2",
+      minimumOrderQuantity: "",
       expiryDate: "",
     });
+  }
+
+  function useSuggestion(suggestion: SupplySuggestion) {
+    const item = state.items.find(
+      (candidate) => candidate.id === suggestion.itemId,
+    );
+    if (!item) {
+      setError("The suggested item is no longer available.");
+      return;
+    }
+
+    commit(
+      (current) => ({
+        ...current,
+        intelligence: {
+          ...current.intelligence,
+          approvedSuggestionCount:
+            current.intelligence.approvedSuggestionCount + 1,
+          lastReviewedAt: new Date().toISOString(),
+        },
+        activities: [
+          activity(
+            `Manager accepted a ${suggestion.kind} recommendation for ${item.name} as a draft.`,
+          ),
+          ...current.activities,
+        ],
+      }),
+      "Draft prepared. Review it before creating any commitment.",
+    );
+
+    if (suggestion.kind === "production" && suggestion.recipeId) {
+      const recipe = state.recipes.find(
+        (candidate) => candidate.id === suggestion.recipeId,
+      );
+      setBatchForm({
+        recipeId: suggestion.recipeId,
+        multiplier: String(
+          Math.max(
+            1,
+            Math.ceil(
+              suggestion.quantity / Math.max(1, recipe?.outputQuantity || 1),
+            ),
+          ),
+        ),
+        scheduledDate: suggestion.dueDate,
+        linkedRequestId: "",
+      });
+      setView("production");
+      return;
+    }
+
+    setPoForm({
+      itemId: item.id,
+      supplier: item.supplier,
+      quantity: String(suggestion.quantity),
+      expectedDate: suggestion.dueDate,
+      destination: "central",
+      linkedRequestId: "",
+      purchaseUnit: item.purchaseUnit || item.unit,
+    });
+    setView("purchasing");
+  }
+
+  function dismissSuggestion(suggestion: SupplySuggestion) {
+    commit(
+      (current) => ({
+        ...current,
+        intelligence: {
+          ...current.intelligence,
+          dismissedSuggestionIds: Array.from(
+            new Set([
+              ...current.intelligence.dismissedSuggestionIds,
+              suggestion.id,
+            ]),
+          ),
+          lastReviewedAt: new Date().toISOString(),
+        },
+        activities: [
+          activity(`Manager dismissed recommendation: ${suggestion.title}.`),
+          ...current.activities,
+        ],
+      }),
+      "Recommendation dismissed for this planning cycle.",
+    );
+  }
+
+  function addPlanningEvent(
+    event: Omit<ManualPlanningEvent, "id" | "createdAt">,
+  ) {
+    const calendarEvent: ManualPlanningEvent = {
+      ...event,
+      id: makeId("plan"),
+      createdAt: new Date().toISOString(),
+    };
+    commit(
+      (current) => ({
+        ...current,
+        planningEvents: [...current.planningEvents, calendarEvent],
+        activities: [
+          activity(
+            `${calendarEvent.title} added to the operating calendar for ${formatDate(
+              calendarEvent.date,
+            )}.`,
+          ),
+          ...current.activities,
+        ],
+      }),
+      "Calendar item added.",
+    );
   }
 
   function createRequest(event: React.FormEvent) {
     event.preventDefault();
     const item = state.items.find((candidate) => candidate.id === requestForm.itemId);
     const quantity = Number(requestForm.quantity);
-    if (!item || !Number.isFinite(quantity) || quantity <= 0 || !requestForm.neededBy) {
+    if (
+      !item ||
+      !Number.isFinite(quantity) ||
+      quantity <= 0 ||
+      !requestForm.neededBy ||
+      !requestForm.unit
+    ) {
       setError("Choose an item, quantity and required date.");
+      return;
+    }
+    let normalizedQuantity = 0;
+    try {
+      normalizedQuantity = convertQuantity(
+        quantity,
+        requestForm.unit,
+        item.unit,
+      );
+    } catch (conversionError) {
+      setError(
+        conversionError instanceof Error
+          ? conversionError.message
+          : "The selected unit is not compatible with this item.",
+      );
       return;
     }
     const request: SupplyRequest = {
@@ -409,8 +602,10 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
       itemId: item.id,
       itemName: item.name,
       outletName: state.config.outletName,
-      quantity,
+      quantity: normalizedQuantity,
       unit: item.unit,
+      requestedQuantity: quantity,
+      requestedUnit: requestForm.unit,
       neededBy: requestForm.neededBy,
       note: requestForm.note.trim(),
       status: "submitted",
@@ -423,7 +618,7 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
         requests: [request, ...current.requests],
         activities: [
           activity(
-            `${state.config.outletName} requested ${quantity} ${item.unit} of ${item.name}.`,
+            `${state.config.outletName} requested ${quantity} ${requestForm.unit} of ${item.name}.`,
           ),
           ...current.activities,
         ],
@@ -433,6 +628,7 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
     setRequestForm({
       itemId: "",
       quantity: "",
+      unit: "",
       neededBy: futureDate(1),
       note: "",
     });
@@ -459,13 +655,61 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
     );
   }
 
+  function prepareDirectPurchase(request: SupplyRequest) {
+    const item = state.items.find((candidate) => candidate.id === request.itemId);
+    if (!item) {
+      setError("The requested item no longer exists.");
+      return;
+    }
+    const packSize = Math.max(0.000001, Number(item.purchasePackSize || 1));
+    setPoForm({
+      itemId: item.id,
+      supplier: item.supplier,
+      quantity: String(Math.ceil((request.quantity / packSize) * 1000) / 1000),
+      expectedDate: request.neededBy,
+      destination: "outlet",
+      linkedRequestId: request.id,
+      purchaseUnit: item.purchaseUnit || item.unit,
+    });
+    setView("purchasing");
+    setMessage(
+      "Direct-to-outlet draft prepared. Review the supplier and quantity before creating the purchase order.",
+    );
+  }
+
+  function prepareProductionForRequest(request: SupplyRequest) {
+    const recipe = state.recipes.find(
+      (candidate) => candidate.outputItemId === request.itemId,
+    );
+    if (!recipe) {
+      setError(
+        `Create a production rule that outputs ${request.itemName} before selecting Central Production.`,
+      );
+      setView("production");
+      return;
+    }
+    setBatchForm({
+      recipeId: recipe.id,
+      multiplier: String(
+        Math.max(1, Math.ceil(request.quantity / recipe.outputQuantity)),
+      ),
+      scheduledDate: request.neededBy,
+      linkedRequestId: request.id,
+    });
+    setView("production");
+    setMessage(
+      "Production draft linked to the outlet request. Review the batch before planning it.",
+    );
+  }
+
   function dispatchRequest(request: SupplyRequest) {
     const item = state.items.find((candidate) => candidate.id === request.itemId);
     if (!item) {
       setError("The requested item no longer exists.");
       return;
     }
-    if (item.centralStock < request.quantity) {
+    const dispatchQuantity = request.allocatedQuantity || request.quantity;
+    if (item.centralStock < dispatchQuantity) {
       setError(
         `Not enough central stock. Available: ${item.centralStock} ${item.unit}. Create a purchase order for the shortage.`,
       );
@@ -478,7 +722,7 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
           candidate.id === item.id
             ? {
                 ...candidate,
-                centralStock: candidate.centralStock - request.quantity,
+                centralStock: candidate.centralStock - dispatchQuantity,
               }
             : candidate,
         ),
@@ -491,9 +735,14 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
               }
             : candidate,
         ),
+        productionAllocations: current.productionAllocations.map((allocation) =>
+          allocation.requestId === request.id
+            ? { ...allocation, status: "dispatched" }
+            : allocation,
+        ),
         activities: [
           activity(
-            `${request.quantity} ${request.unit} of ${request.itemName} dispatched to ${request.outletName}.`,
+            `${dispatchQuantity} ${request.unit} of ${request.itemName} dispatched to ${request.outletName}.`,
           ),
           ...current.activities,
         ],
@@ -506,12 +755,13 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
     if (!window.confirm("Confirm that the full dispatched quantity was received?")) {
       return;
     }
+    const receivedQuantity = request.allocatedQuantity || request.quantity;
     commit(
       (current) => ({
         ...current,
         items: current.items.map((item) =>
           item.id === request.itemId
-            ? { ...item, outletStock: item.outletStock + request.quantity }
+            ? { ...item, outletStock: item.outletStock + receivedQuantity }
             : item,
         ),
         requests: current.requests.map((candidate) =>
@@ -523,9 +773,19 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
               }
             : candidate,
         ),
+        purchaseOrders: current.purchaseOrders.map((order) =>
+          order.id === request.linkedPurchaseOrderId
+            ? { ...order, status: "received" }
+            : order,
+        ),
+        productionAllocations: current.productionAllocations.map((allocation) =>
+          allocation.requestId === request.id
+            ? { ...allocation, status: "received" }
+            : allocation,
+        ),
         activities: [
           activity(
-            `${request.outletName} received ${request.quantity} ${request.unit} of ${request.itemName}.`,
+            `${request.outletName} received ${receivedQuantity} ${request.unit} of ${request.itemName}.`,
           ),
           ...current.activities,
         ],
@@ -538,6 +798,8 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
     event.preventDefault();
     const item = state.items.find((candidate) => candidate.id === poForm.itemId);
     const quantity = Number(poForm.quantity);
+    const stockQuantity =
+      quantity * Math.max(0.000001, Number(item?.purchasePackSize || 1));
     if (
       !item ||
       !poForm.supplier.trim() ||
@@ -548,6 +810,9 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
       setError("Choose an item and enter the supplier, quantity and expected date.");
       return;
     }
+    const linkedRequestId =
+      poForm.linkedRequestId ||
+      (poForm.destination === "outlet" ? makeId("request") : undefined);
     const order: PurchaseOrder = {
       id: makeId("po"),
       itemId: item.id,
@@ -558,18 +823,69 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
       expectedDate: poForm.expectedDate,
       status: "ordered",
       createdAt: new Date().toISOString(),
+      destination: poForm.destination,
+      outletName:
+        poForm.destination === "outlet" ? state.config.outletName : undefined,
+      linkedRequestId,
+      purchaseUnit: poForm.purchaseUnit || item.purchaseUnit || item.unit,
+      stockQuantity,
     };
     commit(
-      (current) => ({
-        ...current,
-        purchaseOrders: [order, ...current.purchaseOrders],
-        activities: [
-          activity(
-            `Purchase order created for ${quantity} ${item.unit} of ${item.name}.`,
-          ),
-          ...current.activities,
-        ],
-      }),
+      (current) => {
+        const existingLinkedRequest = current.requests.some(
+          (request) => request.id === linkedRequestId,
+        );
+        const directReceivingRequest: SupplyRequest | null =
+          order.destination === "outlet" &&
+          linkedRequestId &&
+          !existingLinkedRequest
+            ? {
+                id: linkedRequestId,
+                itemId: item.id,
+                itemName: item.name,
+                outletName: state.config.outletName,
+                quantity: stockQuantity,
+                unit: item.unit,
+                requestedQuantity: stockQuantity,
+                requestedUnit: item.unit as CoreUnit,
+                fulfilmentRoute: "direct-supplier",
+                linkedPurchaseOrderId: order.id,
+                neededBy: order.expectedDate,
+                note: "Direct supply order created by Central operations.",
+                status: "awaiting-supplier",
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              }
+            : null;
+        return {
+          ...current,
+          purchaseOrders: [order, ...current.purchaseOrders],
+          requests: [
+            ...(directReceivingRequest ? [directReceivingRequest] : []),
+            ...current.requests.map((request) =>
+              request.id === linkedRequestId
+                ? {
+                    ...request,
+                    status: "awaiting-supplier" as const,
+                    fulfilmentRoute: "direct-supplier" as const,
+                    linkedPurchaseOrderId: order.id,
+                    updatedAt: new Date().toISOString(),
+                  }
+                : request,
+            ),
+          ],
+          activities: [
+            activity(
+              `Purchase order created for ${quantity} ${order.purchaseUnit} of ${item.name}${
+                order.destination === "outlet"
+                  ? `, shipping directly to ${order.outletName}`
+                  : ""
+              }.`,
+            ),
+            ...current.activities,
+          ],
+        };
+      },
       "Purchase order recorded.",
     );
     setPoForm({
@@ -577,10 +893,50 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
       supplier: "",
       quantity: "",
       expectedDate: futureDate(3),
+      destination: "central",
+      linkedRequestId: "",
+      purchaseUnit: "",
     });
   }
 
+  function markSupplierDispatched(order: PurchaseOrder) {
+    if (order.destination !== "outlet" || !order.linkedRequestId) return;
+    commit(
+      (current) => ({
+        ...current,
+        purchaseOrders: current.purchaseOrders.map((candidate) =>
+          candidate.id === order.id
+            ? { ...candidate, status: "supplier-dispatched" }
+            : candidate,
+        ),
+        requests: current.requests.map((request) =>
+          request.id === order.linkedRequestId
+            ? {
+                ...request,
+                status: "supplier-dispatched",
+                allocatedQuantity: request.quantity,
+                updatedAt: new Date().toISOString(),
+              }
+            : request,
+        ),
+        activities: [
+          activity(
+            `${order.supplier} marked as dispatching ${order.itemName} directly to ${order.outletName}.`,
+          ),
+          ...current.activities,
+        ],
+      }),
+      "Supplier dispatch recorded. Outlet receiving is now available.",
+    );
+  }
+
   function receivePurchaseOrder(order: PurchaseOrder) {
+    if (order.destination === "outlet") {
+      setError(
+        "Direct-to-outlet orders must be received by the outlet, not posted into Central stock.",
+      );
+      return;
+    }
     if (!window.confirm("Confirm that the full purchase order quantity was received?")) {
       return;
     }
@@ -589,7 +945,11 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
         ...current,
         items: current.items.map((item) =>
           item.id === order.itemId
-            ? { ...item, centralStock: item.centralStock + order.quantity }
+            ? {
+                ...item,
+                centralStock:
+                  item.centralStock + (order.stockQuantity || order.quantity),
+              }
             : item,
         ),
         purchaseOrders: current.purchaseOrders.map((candidate) =>
@@ -599,7 +959,7 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
         ),
         activities: [
           activity(
-            `${order.quantity} ${order.unit} of ${order.itemName} received from ${order.supplier}.`,
+            `${order.quantity} ${order.purchaseUnit || order.unit} of ${order.itemName} received from ${order.supplier}.`,
           ),
           ...current.activities,
         ],
@@ -677,28 +1037,88 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
     setWastageForm({ itemId: "", quantity: "", reason: "" });
   }
 
+  function addRecipeIngredient() {
+    const ingredient = state.items.find(
+      (candidate) => candidate.id === recipeForm.ingredientItemId,
+    );
+    const ingredientQuantity = Number(recipeForm.ingredientQuantity);
+    if (
+      !ingredient ||
+      !Number.isFinite(ingredientQuantity) ||
+      ingredientQuantity <= 0 ||
+      !recipeForm.ingredientUnit
+    ) {
+      setError("Choose an ingredient, unit and valid quantity.");
+      return;
+    }
+    let normalizedQuantity = 0;
+    const enteredUnit = recipeForm.ingredientUnit as CoreUnit;
+    try {
+      normalizedQuantity = convertQuantity(
+        ingredientQuantity,
+        enteredUnit,
+        ingredient.unit,
+      );
+    } catch (conversionError) {
+      setError(
+        conversionError instanceof Error
+          ? conversionError.message
+          : "Ingredient unit is incompatible.",
+      );
+      return;
+    }
+    setRecipeIngredients((current) => [
+      ...current.filter((entry) => entry.itemId !== ingredient.id),
+      {
+        itemId: ingredient.id,
+        itemName: ingredient.name,
+        quantity: normalizedQuantity,
+        unit: ingredient.unit,
+        enteredQuantity: ingredientQuantity,
+        enteredUnit,
+      },
+    ]);
+    setRecipeForm((current) => ({
+      ...current,
+      ingredientItemId: "",
+      ingredientQuantity: "",
+      ingredientUnit: "",
+    }));
+    setError("");
+  }
+
   function createRecipe(event: React.FormEvent) {
     event.preventDefault();
     const outputItem = state.items.find(
       (candidate) => candidate.id === recipeForm.outputItemId,
     );
-    const ingredient = state.items.find(
-      (candidate) => candidate.id === recipeForm.ingredientItemId,
-    );
     const outputQuantity = Number(recipeForm.outputQuantity);
-    const ingredientQuantity = Number(recipeForm.ingredientQuantity);
     if (
       !recipeForm.name.trim() ||
       !outputItem ||
-      !ingredient ||
-      outputItem.id === ingredient.id ||
+      !recipeForm.outputUnit ||
       !Number.isFinite(outputQuantity) ||
       outputQuantity <= 0 ||
-      !Number.isFinite(ingredientQuantity) ||
-      ingredientQuantity <= 0
+      !recipeIngredients.length ||
+      recipeIngredients.some((ingredient) => ingredient.itemId === outputItem.id)
     ) {
       setError(
-        "Enter a recipe name, different input/output items and valid quantities.",
+        "Enter a rule name, output quantity and at least one different input ingredient.",
+      );
+      return;
+    }
+    let normalizedOutput = 0;
+    try {
+      normalizedOutput = convertQuantity(
+        outputQuantity,
+        recipeForm.outputUnit,
+        outputItem.unit,
+      );
+    } catch (conversionError) {
+      setError(
+        conversionError instanceof Error
+          ? conversionError.message
+          : "Output unit is incompatible.",
       );
       return;
     }
@@ -707,16 +1127,9 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
       name: recipeForm.name.trim(),
       outputItemId: outputItem.id,
       outputItemName: outputItem.name,
-      outputQuantity,
+      outputQuantity: normalizedOutput,
       outputUnit: outputItem.unit,
-      ingredients: [
-        {
-          itemId: ingredient.id,
-          itemName: ingredient.name,
-          quantity: ingredientQuantity,
-          unit: ingredient.unit,
-        },
-      ],
+      ingredients: recipeIngredients,
     };
     commit(
       (current) => ({
@@ -727,15 +1140,18 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
           ...current.activities,
         ],
       }),
-      "Recipe created. More ingredients can be added in the next production release.",
+      "Production rule created with all listed ingredients.",
     );
     setRecipeForm({
       name: "",
       outputItemId: "",
       outputQuantity: "",
+      outputUnit: "",
       ingredientItemId: "",
       ingredientQuantity: "",
+      ingredientUnit: "",
     });
+    setRecipeIngredients([]);
   }
 
   function planBatch(event: React.FormEvent) {
@@ -756,19 +1172,40 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
       scheduledDate: batchForm.scheduledDate || todayKey(),
       status: "planned" as const,
       createdAt: new Date().toISOString(),
+      linkedRequestId: batchForm.linkedRequestId || undefined,
     };
     commit(
       (current) => ({
         ...current,
         productionBatches: [batch, ...current.productionBatches],
+        requests: current.requests.map((request) =>
+          request.id === batch.linkedRequestId
+            ? {
+                ...request,
+                status: "in-production",
+                fulfilmentRoute: "central-production",
+                linkedProductionBatchId: batch.id,
+                updatedAt: new Date().toISOString(),
+              }
+            : request,
+        ),
         activities: [
-          activity(`${multiplier} batch(es) of ${recipe.name} planned.`),
+          activity(
+            `${multiplier} batch(es) of ${recipe.name} planned${
+              batch.linkedRequestId ? " for an outlet request" : ""
+            }.`,
+          ),
           ...current.activities,
         ],
       }),
       "Production batch planned.",
     );
-    setBatchForm({ recipeId: "", multiplier: "1", scheduledDate: todayKey() });
+    setBatchForm({
+      recipeId: "",
+      multiplier: "1",
+      scheduledDate: todayKey(),
+      linkedRequestId: "",
+    });
   }
 
   function completeBatch(batchId: string) {
@@ -797,6 +1234,13 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
     if (!window.confirm("Complete this batch and post all ingredient movements?")) {
       return;
     }
+    const producedQuantity = recipe.outputQuantity * batch.multiplier;
+    const linkedRequest = state.requests.find(
+      (request) => request.id === batch.linkedRequestId,
+    );
+    const allocatedQuantity = linkedRequest
+      ? Math.min(linkedRequest.quantity, producedQuantity)
+      : 0;
     commit(
       (current) => ({
         ...current,
@@ -822,11 +1266,53 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
         }),
         productionBatches: current.productionBatches.map((candidate) =>
           candidate.id === batch.id
-            ? { ...candidate, status: "completed" }
+            ? { ...candidate, status: "completed", producedQuantity }
             : candidate,
         ),
+        requests: current.requests.map((request) =>
+          request.id === batch.linkedRequestId
+            ? {
+                ...request,
+                status: "ready-for-dispatch",
+                allocatedQuantity,
+                updatedAt: new Date().toISOString(),
+              }
+            : request,
+        ),
+        productionAllocations:
+          linkedRequest && allocatedQuantity > 0
+            ? [
+                {
+                  id: makeId("allocation"),
+                  batchId: batch.id,
+                  requestId: linkedRequest.id,
+                  itemId: linkedRequest.itemId,
+                  itemName: linkedRequest.itemName,
+                  outletName: linkedRequest.outletName,
+                  quantity: allocatedQuantity,
+                  unit: linkedRequest.unit,
+                  status: "allocated" as const,
+                  createdAt: new Date().toISOString(),
+                },
+                ...current.productionAllocations.filter(
+                  (allocation) => allocation.requestId !== linkedRequest.id,
+                ),
+              ]
+            : current.productionAllocations,
         activities: [
-          activity(`${batch.multiplier} batch(es) of ${recipe.name} completed.`),
+          activity(
+            `${batch.multiplier} batch(es) of ${recipe.name} completed. ${readableQuantity(
+              producedQuantity,
+              recipe.outputUnit,
+            )}${
+              linkedRequest
+                ? ` produced; ${readableQuantity(
+                    allocatedQuantity,
+                    linkedRequest.unit,
+                  )} allocated to ${linkedRequest.outletName} and ready for dispatch.`
+                : " posted to Central stock."
+            }`,
+          ),
           ...current.activities,
         ],
       }),
@@ -843,7 +1329,8 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
   }
 
   const centralNav: { id: CentralView; label: string; symbol: string }[] = [
-    { id: "overview", label: "Overview", symbol: "⌂" },
+    { id: "overview", label: "Command Centre", symbol: "⌂" },
+    { id: "calendar", label: "Planning Calendar", symbol: "▦" },
     { id: "requests", label: "Outlet Requests", symbol: "✓" },
     { id: "inventory", label: "Inventory", symbol: "□" },
     { id: "purchasing", label: "Purchasing", symbol: "↗" },
@@ -942,7 +1429,9 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
               </p>
               <h1 className="mt-2 text-3xl font-black sm:text-4xl">
                 {view === "overview"
-                  ? "Today at a glance"
+                  ? role === "central"
+                    ? "Master control"
+                    : "Today at a glance"
                   : navItems.find((item) => item.id === view)?.label}
               </h1>
             </div>
@@ -965,7 +1454,25 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
             </div>
           )}
 
-          {view === "overview" && (
+          {role === "central" && view === "overview" && (
+            <CentralCommand
+              state={state}
+              onOpenRequests={() => setView("requests")}
+              onOpenInventory={() => setView("inventory")}
+              onOpenCalendar={() => setView("calendar")}
+              onUseSuggestion={useSuggestion}
+              onDismissSuggestion={dismissSuggestion}
+            />
+          )}
+
+          {role === "central" && view === "calendar" && (
+            <SupplyCalendar
+              state={state}
+              onAddPlanningEvent={addPlanningEvent}
+            />
+          )}
+
+          {role === "outlet" && view === "overview" && (
             <Overview
               role={role}
               state={state}
@@ -985,7 +1492,9 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
               items={state.items}
               decideRequest={decideRequest}
               dispatchRequest={dispatchRequest}
-              openPurchase={(request) => {
+              prepareDirectPurchase={prepareDirectPurchase}
+              prepareProductionForRequest={prepareProductionForRequest}
+              openCentralPurchase={(request) => {
                 const item = state.items.find(
                   (candidate) => candidate.id === request.itemId,
                 );
@@ -998,6 +1507,9 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
                   supplier: item?.supplier || "",
                   quantity: String(shortage || request.quantity),
                   expectedDate: request.neededBy,
+                  destination: "central",
+                  linkedRequestId: "",
+                  purchaseUnit: item?.purchaseUnit || item?.unit || "",
                 });
                 setView("purchasing");
               }}
@@ -1024,6 +1536,7 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
               setPoForm={setPoForm}
               createPurchaseOrder={createPurchaseOrder}
               receivePurchaseOrder={receivePurchaseOrder}
+              markSupplierDispatched={markSupplierDispatched}
             />
           )}
 
@@ -1034,6 +1547,9 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
               batches={state.productionBatches}
               recipeForm={recipeForm}
               setRecipeForm={setRecipeForm}
+              recipeIngredients={recipeIngredients}
+              setRecipeIngredients={setRecipeIngredients}
+              addRecipeIngredient={addRecipeIngredient}
               batchForm={batchForm}
               setBatchForm={setBatchForm}
               createRecipe={createRecipe}
@@ -1220,13 +1736,17 @@ function CentralRequests({
   items,
   decideRequest,
   dispatchRequest,
-  openPurchase,
+  prepareDirectPurchase,
+  prepareProductionForRequest,
+  openCentralPurchase,
 }: {
   requests: SupplyRequest[];
   items: SupplyItem[];
   decideRequest: (id: string, status: "approved" | "rejected") => void;
   dispatchRequest: (request: SupplyRequest) => void;
-  openPurchase: (request: SupplyRequest) => void;
+  prepareDirectPurchase: (request: SupplyRequest) => void;
+  prepareProductionForRequest: (request: SupplyRequest) => void;
+  openCentralPurchase: (request: SupplyRequest) => void;
 }) {
   if (!requests.length) {
     return (
@@ -1242,7 +1762,12 @@ function CentralRequests({
     <div className="space-y-4">
       {requests.map((request) => {
         const item = items.find((candidate) => candidate.id === request.itemId);
-        const enough = Number(item?.centralStock || 0) >= request.quantity;
+        const dispatchQuantity = request.allocatedQuantity || request.quantity;
+        const enough = Number(item?.centralStock || 0) >= dispatchQuantity;
+        const requestedDisplay =
+          request.requestedQuantity && request.requestedUnit
+            ? readableQuantity(request.requestedQuantity, request.requestedUnit)
+            : readableQuantity(request.quantity, request.unit);
         return (
           <article key={request.id} className={`${panelClass} p-5 sm:p-6`}>
             <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1257,10 +1782,11 @@ function CentralRequests({
               </div>
               <div className="text-right">
                 <p className="text-2xl font-black text-[#e5bd72]">
-                  {request.quantity} {request.unit}
+                  {requestedDisplay}
                 </p>
                 <p className={`mt-1 text-xs ${enough ? "text-emerald-300" : "text-red-300"}`}>
-                  Central stock: {item?.centralStock ?? 0} {request.unit}
+                  Central stock:{" "}
+                  {readableQuantity(item?.centralStock ?? 0, request.unit)}
                 </p>
               </div>
             </div>
@@ -1296,16 +1822,56 @@ function CentralRequests({
                     disabled={!enough}
                     className="rounded-xl bg-[#d6ad62] px-5 py-3 font-black text-[#0a1013] disabled:cursor-not-allowed disabled:opacity-35"
                   >
-                    Dispatch available stock
+                    Dispatch Central stock
                   </button>
                   <button
                     type="button"
-                    onClick={() => openPurchase(request)}
+                    onClick={() => prepareDirectPurchase(request)}
+                    className="rounded-xl border border-sky-400/30 bg-sky-500/10 px-5 py-3 font-bold text-sky-100"
+                  >
+                    Supplier delivers to outlet
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => prepareProductionForRequest(request)}
+                    className="rounded-xl border border-[#4b7e74]/60 px-5 py-3 font-bold text-[#b7ddd5]"
+                  >
+                    Process at Central
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openCentralPurchase(request)}
                     className="rounded-xl border border-white/12 px-5 py-3 font-bold"
                   >
-                    Create purchase order
+                    Buy into Central stock
                   </button>
                 </>
+              )}
+              {request.status === "ready-for-dispatch" && (
+                <button
+                  type="button"
+                  onClick={() => dispatchRequest(request)}
+                  disabled={!enough}
+                  className="rounded-xl bg-[#d6ad62] px-5 py-3 font-black text-[#0a1013] disabled:cursor-not-allowed disabled:opacity-35"
+                >
+                  Dispatch processed goods
+                </button>
+              )}
+              {request.status === "awaiting-supplier" && (
+                <p className="text-sm text-amber-100">
+                  Purchase order sent. Waiting for supplier dispatch.
+                </p>
+              )}
+              {request.status === "supplier-dispatched" && (
+                <p className="text-sm text-sky-200">
+                  Supplier is delivering directly to the outlet.
+                </p>
+              )}
+              {request.status === "in-production" && (
+                <p className="text-sm text-amber-100">
+                  Central production is planned. Complete the batch to allocate
+                  finished goods.
+                </p>
               )}
               {request.status === "dispatched" && (
                 <p className="text-sm text-sky-200">
@@ -1357,7 +1923,7 @@ function CentralInventory({
               <thead className="bg-black/15 text-white/38">
                 <tr>
                   <th className="px-5 py-4">Item</th>
-                  <th className="px-5 py-4">Unit</th>
+                  <th className="px-5 py-4">Type / unit</th>
                   <th className="px-5 py-4">Central</th>
                   <th className="px-5 py-4">Outlet</th>
                   <th className="px-5 py-4">Reorder</th>
@@ -1373,9 +1939,21 @@ function CentralInventory({
                         {item.sku || "No SKU"} · {item.category || "Uncategorised"}
                       </p>
                     </td>
-                    <td className="px-5 py-4 text-white/55">{item.unit}</td>
-                    <td className="px-5 py-4 font-bold">{item.centralStock}</td>
-                    <td className="px-5 py-4 text-white/55">{item.outletStock}</td>
+                    <td className="px-5 py-4 text-white/55">
+                      <p className="capitalize">
+                        {(item.inventoryType || "raw").replace("-", " ")}
+                      </p>
+                      <p className="mt-1 text-xs text-white/30">
+                        Stock in {item.unit} · 1 {item.purchaseUnit || item.unit} ={" "}
+                        {item.purchasePackSize || 1} {item.unit}
+                      </p>
+                    </td>
+                    <td className="px-5 py-4 font-bold">
+                      {readableQuantity(item.centralStock, item.unit)}
+                    </td>
+                    <td className="px-5 py-4 text-white/55">
+                      {readableQuantity(item.outletStock, item.unit)}
+                    </td>
                     <td className="px-5 py-4">
                       <span
                         className={
@@ -1411,14 +1989,61 @@ function CentralInventory({
             ADD ITEM
           </p>
           <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+            <label className={labelClass}>
+              Stock unit
+              <select
+                className={`${inputClass} mt-2`}
+                value={itemForm.unit}
+                onChange={(event) =>
+                  setItemForm((current) => ({
+                    ...current,
+                    unit: event.target.value,
+                  }))
+                }
+              >
+                <option value="">Choose kg, g, L, ml or pcs</option>
+                {coreUnits.map((unit) => (
+                  <option key={unit} value={unit}>
+                    {unit}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className={labelClass}>
+              Item type
+              <select
+                className={`${inputClass} mt-2`}
+                value={itemForm.inventoryType}
+                onChange={(event) =>
+                  setItemForm((current) => ({
+                    ...current,
+                    inventoryType: event.target.value as InventoryType,
+                  }))
+                }
+              >
+                <option value="raw">Raw ingredient / stock</option>
+                <option value="semi-processed">Semi-processed / WIP</option>
+                <option value="finished">Finished product</option>
+                <option value="packaging">Packaging</option>
+                <option value="direct-supply">Usually direct supplied</option>
+              </select>
+            </label>
             {([
               ["name", "Item name", "Chicken thigh"],
               ["sku", "SKU (optional)", "RAW-001"],
               ["category", "Category", "Raw ingredient"],
-              ["unit", "Unit", "kg, carton, tray"],
+              ["purchaseUnit", "Supplier purchase unit", "carton, bag, bottle"],
+              [
+                "purchasePackSize",
+                "Stock quantity in 1 purchase unit",
+                "Example: 12 bottles × 1 L = 12",
+              ],
               ["supplier", "Preferred supplier", "Supplier name"],
               ["openingStock", "Opening central stock", "0"],
-              ["reorderLevel", "Reorder alert level", "10"],
+              ["reorderLevel", "Par level", "10"],
+              ["safetyStock", "Safety stock", "5"],
+              ["supplierLeadTimeDays", "Supplier lead time (days)", "2"],
+              ["minimumOrderQuantity", "Minimum order quantity", "0"],
             ] as [keyof ItemFormState, string, string][]).map(
               ([field, label, placeholder]) => (
               <label key={field} className={labelClass}>
@@ -1434,7 +2059,14 @@ function CentralInventory({
                   }
                   placeholder={placeholder}
                   inputMode={
-                    ["openingStock", "reorderLevel"].includes(field)
+                    [
+                      "openingStock",
+                      "reorderLevel",
+                      "safetyStock",
+                      "supplierLeadTimeDays",
+                      "minimumOrderQuantity",
+                      "purchasePackSize",
+                    ].includes(field)
                       ? "decimal"
                       : undefined
                   }
@@ -1442,6 +2074,10 @@ function CentralInventory({
               </label>
               ),
             )}
+            <p className="text-xs leading-5 text-white/35 sm:col-span-2 xl:col-span-1 2xl:col-span-2">
+              Example: stock unit L, purchase unit carton, pack conversion 12
+              means one carton adds 12 L. Use pcs for countable stock.
+            </p>
             <label className={`${labelClass} sm:col-span-2 xl:col-span-1 2xl:col-span-2`}>
               Nearest expiry (optional)
               <input
@@ -1532,14 +2168,25 @@ function Purchasing({
   setPoForm,
   createPurchaseOrder,
   receivePurchaseOrder,
+  markSupplierDispatched,
 }: {
   items: SupplyItem[];
   orders: PurchaseOrder[];
-  poForm: { itemId: string; supplier: string; quantity: string; expectedDate: string };
+  poForm: {
+    itemId: string;
+    supplier: string;
+    quantity: string;
+    expectedDate: string;
+    destination: "central" | "outlet";
+    linkedRequestId: string;
+    purchaseUnit: string;
+  };
   setPoForm: React.Dispatch<React.SetStateAction<typeof poForm>>;
   createPurchaseOrder: (event: React.FormEvent) => void;
   receivePurchaseOrder: (order: PurchaseOrder) => void;
+  markSupplierDispatched: (order: PurchaseOrder) => void;
 }) {
+  const selectedItem = items.find((item) => item.id === poForm.itemId);
   return (
     <div className="grid gap-5 xl:grid-cols-[.8fr_1.2fr]">
       <form onSubmit={createPurchaseOrder} className={`${panelClass} p-5`}>
@@ -1561,6 +2208,8 @@ function Purchasing({
                     ...current,
                     itemId: event.target.value,
                     supplier: item?.supplier || current.supplier,
+                    purchaseUnit:
+                      item?.purchaseUnit || item?.unit || current.purchaseUnit,
                   }));
                 }}
               >
@@ -1587,7 +2236,23 @@ function Purchasing({
               />
             </label>
             <label className={labelClass}>
-              Quantity
+              Delivery route
+              <select
+                className={`${inputClass} mt-2`}
+                value={poForm.destination}
+                onChange={(event) =>
+                  setPoForm((current) => ({
+                    ...current,
+                    destination: event.target.value as "central" | "outlet",
+                  }))
+                }
+              >
+                <option value="central">Receive into Central stock</option>
+                <option value="outlet">Supplier delivers directly to outlet</option>
+              </select>
+            </label>
+            <label className={labelClass}>
+              Quantity ({poForm.purchaseUnit || selectedItem?.unit || "purchase unit"})
               <input
                 className={`${inputClass} mt-2`}
                 value={poForm.quantity}
@@ -1601,6 +2266,22 @@ function Purchasing({
                 placeholder="0"
               />
             </label>
+            {selectedItem && (
+              <div className="rounded-xl border border-white/8 bg-black/15 p-4 text-sm leading-6 text-white/48">
+                1 {selectedItem.purchaseUnit || selectedItem.unit} posts as{" "}
+                {readableQuantity(
+                  selectedItem.purchasePackSize || 1,
+                  selectedItem.unit,
+                )}
+                . This order equals{" "}
+                {readableQuantity(
+                  Number(poForm.quantity || 0) *
+                    (selectedItem.purchasePackSize || 1),
+                  selectedItem.unit,
+                )}
+                .
+              </div>
+            )}
             <label className={labelClass}>
               Expected delivery
               <input
@@ -1646,12 +2327,17 @@ function Purchasing({
                     <p className="mt-2 text-sm text-white/42">
                       {order.supplier} · expected {formatDate(order.expectedDate)}
                     </p>
+                    <p className="mt-1 text-xs text-white/35">
+                      {order.destination === "outlet"
+                        ? `Direct to ${order.outletName || "outlet"} — bypasses Central stock`
+                        : "Receive into Central stock"}
+                    </p>
                   </div>
                   <p className="text-xl font-black text-[#e5bd72]">
-                    {order.quantity} {order.unit}
+                    {order.quantity} {order.purchaseUnit || order.unit}
                   </p>
                 </div>
-                {order.status === "ordered" && (
+                {order.status === "ordered" && order.destination !== "outlet" && (
                   <button
                     type="button"
                     onClick={() => receivePurchaseOrder(order)}
@@ -1659,6 +2345,21 @@ function Purchasing({
                   >
                     Confirm goods received
                   </button>
+                )}
+                {order.status === "ordered" && order.destination === "outlet" && (
+                  <button
+                    type="button"
+                    onClick={() => markSupplierDispatched(order)}
+                    className="mt-4 rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-bold text-white"
+                  >
+                    Supplier dispatched to outlet
+                  </button>
+                )}
+                {order.status === "supplier-dispatched" && (
+                  <p className="mt-4 text-sm text-sky-200">
+                    Waiting for the outlet to inspect and confirm physical
+                    receiving.
+                  </p>
                 )}
               </div>
             ))}
@@ -1682,6 +2383,9 @@ function Production({
   batches,
   recipeForm,
   setRecipeForm,
+  recipeIngredients,
+  setRecipeIngredients,
+  addRecipeIngredient,
   batchForm,
   setBatchForm,
   createRecipe,
@@ -1695,16 +2399,32 @@ function Production({
     name: string;
     outputItemId: string;
     outputQuantity: string;
+    outputUnit: CoreUnit | "";
     ingredientItemId: string;
     ingredientQuantity: string;
+    ingredientUnit: CoreUnit | "";
   };
   setRecipeForm: React.Dispatch<React.SetStateAction<typeof recipeForm>>;
-  batchForm: { recipeId: string; multiplier: string; scheduledDate: string };
+  recipeIngredients: RecipeIngredient[];
+  setRecipeIngredients: React.Dispatch<
+    React.SetStateAction<RecipeIngredient[]>
+  >;
+  addRecipeIngredient: () => void;
+  batchForm: {
+    recipeId: string;
+    multiplier: string;
+    scheduledDate: string;
+    linkedRequestId: string;
+  };
   setBatchForm: React.Dispatch<React.SetStateAction<typeof batchForm>>;
   createRecipe: (event: React.FormEvent) => void;
   planBatch: (event: React.FormEvent) => void;
   completeBatch: (id: string) => void;
 }) {
+  const outputItem = items.find((item) => item.id === recipeForm.outputItemId);
+  const ingredientItem = items.find(
+    (item) => item.id === recipeForm.ingredientItemId,
+  );
   return (
     <div className="space-y-5">
       <div className="grid gap-5 xl:grid-cols-2">
@@ -1741,6 +2461,9 @@ function Production({
                     setRecipeForm((current) => ({
                       ...current,
                       outputItemId: event.target.value,
+                      outputUnit:
+                        (items.find((item) => item.id === event.target.value)
+                          ?.unit as CoreUnit) || "",
                     }))
                   }
                 >
@@ -1754,18 +2477,37 @@ function Production({
               </label>
               <label className={labelClass}>
                 Output per batch
-                <input
-                  className={`${inputClass} mt-2`}
-                  value={recipeForm.outputQuantity}
-                  onChange={(event) =>
-                    setRecipeForm((current) => ({
-                      ...current,
-                      outputQuantity: event.target.value,
-                    }))
-                  }
-                  inputMode="decimal"
-                  placeholder="0"
-                />
+                <div className="mt-2 grid grid-cols-[1fr_92px] gap-2">
+                  <input
+                    className={inputClass}
+                    value={recipeForm.outputQuantity}
+                    onChange={(event) =>
+                      setRecipeForm((current) => ({
+                        ...current,
+                        outputQuantity: event.target.value,
+                      }))
+                    }
+                    inputMode="decimal"
+                    placeholder="0"
+                  />
+                  <select
+                    className={inputClass}
+                    value={recipeForm.outputUnit}
+                    onChange={(event) =>
+                      setRecipeForm((current) => ({
+                        ...current,
+                        outputUnit: event.target.value as CoreUnit,
+                      }))
+                    }
+                  >
+                    <option value="">Unit</option>
+                    {compatibleUnits(outputItem?.unit || "").map((unit) => (
+                      <option key={unit} value={unit}>
+                        {unit}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </label>
               <label className={labelClass}>
                 Ingredient
@@ -1776,6 +2518,9 @@ function Production({
                     setRecipeForm((current) => ({
                       ...current,
                       ingredientItemId: event.target.value,
+                      ingredientUnit:
+                        (items.find((item) => item.id === event.target.value)
+                          ?.unit as CoreUnit) || "",
                     }))
                   }
                 >
@@ -1789,19 +2534,79 @@ function Production({
               </label>
               <label className={labelClass}>
                 Ingredient per batch
-                <input
-                  className={`${inputClass} mt-2`}
-                  value={recipeForm.ingredientQuantity}
-                  onChange={(event) =>
-                    setRecipeForm((current) => ({
-                      ...current,
-                      ingredientQuantity: event.target.value,
-                    }))
-                  }
-                  inputMode="decimal"
-                  placeholder="0"
-                />
+                <div className="mt-2 grid grid-cols-[1fr_92px] gap-2">
+                  <input
+                    className={inputClass}
+                    value={recipeForm.ingredientQuantity}
+                    onChange={(event) =>
+                      setRecipeForm((current) => ({
+                        ...current,
+                        ingredientQuantity: event.target.value,
+                      }))
+                    }
+                    inputMode="decimal"
+                    placeholder="0"
+                  />
+                  <select
+                    className={inputClass}
+                    value={recipeForm.ingredientUnit}
+                    onChange={(event) =>
+                      setRecipeForm((current) => ({
+                        ...current,
+                        ingredientUnit: event.target.value as CoreUnit,
+                      }))
+                    }
+                  >
+                    <option value="">Unit</option>
+                    {compatibleUnits(ingredientItem?.unit || "").map((unit) => (
+                      <option key={unit} value={unit}>
+                        {unit}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </label>
+              <button
+                type="button"
+                onClick={addRecipeIngredient}
+                className="rounded-xl border border-[#4b7e74]/60 px-5 py-3 font-bold text-[#b7ddd5] sm:col-span-2"
+              >
+                Add ingredient to this rule
+              </button>
+              {recipeIngredients.length > 0 && (
+                <div className="space-y-2 rounded-2xl bg-black/20 p-4 sm:col-span-2">
+                  <p className="text-xs font-bold tracking-[.16em] text-white/35">
+                    INGREDIENTS PER BATCH
+                  </p>
+                  {recipeIngredients.map((ingredient) => (
+                    <div
+                      key={ingredient.itemId}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-white/7 px-3 py-2"
+                    >
+                      <p className="text-sm">
+                        {ingredient.itemName} ·{" "}
+                        {readableQuantity(
+                          ingredient.enteredQuantity || ingredient.quantity,
+                          ingredient.enteredUnit || ingredient.unit,
+                        )}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setRecipeIngredients((current) =>
+                            current.filter(
+                              (entry) => entry.itemId !== ingredient.itemId,
+                            ),
+                          )
+                        }
+                        className="text-sm font-bold text-red-200"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
               <button
                 type="submit"
                 className="rounded-xl bg-[#d6ad62] px-5 py-3.5 font-black text-[#0a1013] sm:col-span-2"
@@ -1825,6 +2630,13 @@ function Production({
           </p>
           {recipes.length ? (
             <div className="mt-5 space-y-4">
+              {batchForm.linkedRequestId && (
+                <div className="rounded-xl border border-sky-400/25 bg-sky-500/10 p-4 text-sm leading-6 text-sky-100">
+                  Linked to an outlet request. Completing the batch posts its
+                  output to Central stock and reserves the requested quantity
+                  for dispatch.
+                </div>
+              )}
               <label className={labelClass}>
                 Recipe
                 <select
@@ -1907,6 +2719,14 @@ function Production({
                   <p className="mt-2 text-sm text-white/40">
                     {batch.multiplier} batch(es) · {formatDate(batch.scheduledDate)}
                   </p>
+                  {batch.linkedRequestId && (
+                    <p className="mt-1 text-xs text-sky-200">
+                      Linked outlet request
+                      {batch.status === "completed"
+                        ? " · output allocated and ready for dispatch"
+                        : ""}
+                    </p>
+                  )}
                 </div>
                 {batch.status === "planned" && (
                   <button
@@ -1942,10 +2762,17 @@ function OutletRequest({
 }: {
   items: SupplyItem[];
   outletName: string;
-  requestForm: { itemId: string; quantity: string; neededBy: string; note: string };
+  requestForm: {
+    itemId: string;
+    quantity: string;
+    unit: CoreUnit | "";
+    neededBy: string;
+    note: string;
+  };
   setRequestForm: React.Dispatch<React.SetStateAction<typeof requestForm>>;
   createRequest: (event: React.FormEvent) => void;
 }) {
+  const selectedItem = items.find((item) => item.id === requestForm.itemId);
   return (
     <div className="mx-auto max-w-3xl">
       <form onSubmit={createRequest} className={`${panelClass} p-5 sm:p-7`}>
@@ -1968,12 +2795,16 @@ function OutletRequest({
                 <select
                   className={`${inputClass} mt-2`}
                   value={requestForm.itemId}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    const item = items.find(
+                      (candidate) => candidate.id === event.target.value,
+                    );
                     setRequestForm((current) => ({
                       ...current,
                       itemId: event.target.value,
-                    }))
-                  }
+                      unit: (item?.unit as CoreUnit) || "",
+                    }));
+                  }}
                 >
                   <option value="">Choose the item</option>
                   {items.map((item) => (
@@ -1985,18 +2816,38 @@ function OutletRequest({
               </label>
               <label className={labelClass}>
                 Quantity needed
-                <input
-                  className={`${inputClass} mt-2`}
-                  value={requestForm.quantity}
-                  onChange={(event) =>
-                    setRequestForm((current) => ({
-                      ...current,
-                      quantity: event.target.value,
-                    }))
-                  }
-                  inputMode="decimal"
-                  placeholder="0"
-                />
+                <div className="mt-2 grid grid-cols-[1fr_92px] gap-2">
+                  <input
+                    className={inputClass}
+                    value={requestForm.quantity}
+                    onChange={(event) =>
+                      setRequestForm((current) => ({
+                        ...current,
+                        quantity: event.target.value,
+                      }))
+                    }
+                    inputMode="decimal"
+                    placeholder="0"
+                  />
+                  <select
+                    className={inputClass}
+                    value={requestForm.unit}
+                    onChange={(event) =>
+                      setRequestForm((current) => ({
+                        ...current,
+                        unit: event.target.value as CoreUnit,
+                      }))
+                    }
+                    disabled={!selectedItem}
+                  >
+                    <option value="">Unit</option>
+                    {compatibleUnits(selectedItem?.unit || "").map((unit) => (
+                      <option key={unit} value={unit}>
+                        {unit}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </label>
               <label className={labelClass}>
                 Needed by
@@ -2059,8 +2910,34 @@ function OutletReceiving({
   confirmReceived: (request: SupplyRequest) => void;
 }) {
   const relevant = requests.filter((request) =>
-    ["approved", "dispatched", "received"].includes(request.status),
+    [
+      "approved",
+      "awaiting-supplier",
+      "supplier-dispatched",
+      "in-production",
+      "ready-for-dispatch",
+      "dispatched",
+      "received",
+    ].includes(request.status),
   );
+  const statusMessage = (request: SupplyRequest) => {
+    switch (request.status) {
+      case "approved":
+        return "Central is choosing the safest fulfilment route.";
+      case "awaiting-supplier":
+        return "Central ordered this directly from the supplier.";
+      case "supplier-dispatched":
+        return "Supplier shipment is on the way. Receive only after inspection.";
+      case "in-production":
+        return "Central is processing this item.";
+      case "ready-for-dispatch":
+        return "Production is complete and Central is preparing dispatch.";
+      case "dispatched":
+        return "Central shipment is on the way.";
+      default:
+        return "Completed";
+    }
+  };
   return (
     <div className={`${panelClass} overflow-hidden`}>
       <div className="border-b border-white/8 p-5">
@@ -2082,11 +2959,23 @@ function OutletReceiving({
                   <StatusBadge status={request.status} />
                 </div>
                 <p className="mt-2 text-sm text-white/42">
-                  {request.quantity} {request.unit} · needed{" "}
+                  {readableQuantity(
+                    request.allocatedQuantity || request.quantity,
+                    request.unit,
+                  )}{" "}
+                  · needed{" "}
                   {formatDate(request.neededBy)}
                 </p>
+                <p className="mt-1 text-xs text-white/32">
+                  Route:{" "}
+                  {request.fulfilmentRoute === "direct-supplier"
+                    ? "Supplier → outlet"
+                    : request.fulfilmentRoute === "central-production"
+                      ? "Central processing → outlet"
+                      : "Central stock → outlet"}
+                </p>
               </div>
-              {request.status === "dispatched" ? (
+              {["dispatched", "supplier-dispatched"].includes(request.status) ? (
                 <button
                   type="button"
                   onClick={() => confirmReceived(request)}
@@ -2096,9 +2985,7 @@ function OutletReceiving({
                 </button>
               ) : (
                 <p className="text-sm text-white/38">
-                  {request.status === "approved"
-                    ? "Central team is preparing this request."
-                    : "Completed"}
+                  {statusMessage(request)}
                 </p>
               )}
             </div>
@@ -2154,7 +3041,7 @@ function OutletStock({
                         : "text-[#e5bd72]"
                     }`}
                   >
-                    {item.outletStock} {item.unit}
+                    {readableQuantity(item.outletStock, item.unit)}
                   </p>
                   <p className="mt-1 text-xs text-white/30">
                     Alert at {item.reorderLevel}

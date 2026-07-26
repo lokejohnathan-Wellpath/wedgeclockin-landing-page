@@ -1,13 +1,33 @@
 export type SupplyRole = "central" | "outlet";
 
+export type CoreUnit = "kg" | "g" | "L" | "ml" | "pcs";
+export type InventoryType =
+  | "raw"
+  | "semi-processed"
+  | "finished"
+  | "packaging"
+  | "direct-supply";
+export type FulfilmentRoute =
+  | "central-stock"
+  | "direct-supplier"
+  | "central-production";
+
 export type RequestStatus =
   | "submitted"
   | "approved"
   | "rejected"
+  | "awaiting-supplier"
+  | "supplier-dispatched"
+  | "in-production"
+  | "ready-for-dispatch"
   | "dispatched"
   | "received";
 
-export type PurchaseOrderStatus = "ordered" | "received" | "cancelled";
+export type PurchaseOrderStatus =
+  | "ordered"
+  | "supplier-dispatched"
+  | "received"
+  | "cancelled";
 
 export type SupplyConfig = {
   businessName: string;
@@ -27,6 +47,12 @@ export type SupplyItem = {
   outletStock: number;
   reorderLevel: number;
   expiryDate: string;
+  inventoryType?: InventoryType;
+  purchaseUnit?: string;
+  purchasePackSize?: number;
+  safetyStock?: number;
+  supplierLeadTimeDays?: number;
+  minimumOrderQuantity?: number;
 };
 
 export type SupplyRequest = {
@@ -36,6 +62,12 @@ export type SupplyRequest = {
   outletName: string;
   quantity: number;
   unit: string;
+  requestedQuantity?: number;
+  requestedUnit?: CoreUnit;
+  fulfilmentRoute?: FulfilmentRoute;
+  allocatedQuantity?: number;
+  linkedPurchaseOrderId?: string;
+  linkedProductionBatchId?: string;
   neededBy: string;
   note: string;
   status: RequestStatus;
@@ -53,6 +85,11 @@ export type PurchaseOrder = {
   expectedDate: string;
   status: PurchaseOrderStatus;
   createdAt: string;
+  destination?: "central" | "outlet";
+  outletName?: string;
+  linkedRequestId?: string;
+  purchaseUnit?: string;
+  stockQuantity?: number;
 };
 
 export type RecipeIngredient = {
@@ -60,6 +97,8 @@ export type RecipeIngredient = {
   itemName: string;
   quantity: number;
   unit: string;
+  enteredQuantity?: number;
+  enteredUnit?: CoreUnit;
 };
 
 export type SupplyRecipe = {
@@ -80,6 +119,21 @@ export type ProductionBatch = {
   scheduledDate: string;
   status: "planned" | "completed" | "cancelled";
   createdAt: string;
+  linkedRequestId?: string;
+  producedQuantity?: number;
+};
+
+export type ProductionAllocation = {
+  id: string;
+  batchId: string;
+  requestId: string;
+  itemId: string;
+  itemName: string;
+  outletName: string;
+  quantity: number;
+  unit: string;
+  status: "allocated" | "dispatched" | "received";
+  createdAt: string;
 };
 
 export type SupplyActivity = {
@@ -88,8 +142,23 @@ export type SupplyActivity = {
   createdAt: string;
 };
 
+export type IntelligenceState = {
+  dismissedSuggestionIds: string[];
+  approvedSuggestionCount: number;
+  lastReviewedAt: string;
+};
+
+export type ManualPlanningEvent = {
+  id: string;
+  date: string;
+  title: string;
+  note: string;
+  category: "event" | "promotion" | "supplier-closure" | "stock-count";
+  createdAt: string;
+};
+
 export type SupplyState = {
-  version: 1;
+  version: 2;
   config: SupplyConfig;
   items: SupplyItem[];
   requests: SupplyRequest[];
@@ -97,4 +166,7 @@ export type SupplyState = {
   recipes: SupplyRecipe[];
   productionBatches: ProductionBatch[];
   activities: SupplyActivity[];
+  intelligence: IntelligenceState;
+  planningEvents: ManualPlanningEvent[];
+  productionAllocations: ProductionAllocation[];
 };
