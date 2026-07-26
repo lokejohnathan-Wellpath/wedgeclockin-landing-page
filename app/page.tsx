@@ -12,6 +12,7 @@ const apkUrl = "https://github.com/lokejohnathan-Wellpath/WedgeCLOCKin/releases/
 const products = [
   { name: "WedgeCLOCKin", eyebrow: "WORKFORCE", text: "Face and GPS attendance, leave, payroll-ready records and secure employee operations.", href: "/employee-clockin", action: "Explore ClockIn" },
   { name: "Wedge-I", eyebrow: "EXECUTIVE AI", text: "Turn operating numbers into forecasts, priorities and clearer management decisions.", href: "/wedge-i", action: "Open Wedge-I" },
+  { name: "WedgeBooks", eyebrow: "AI BOOKKEEPING", text: "Read real receipts and invoices, isolate every line and export clean bookkeeping records.", href: "/wedge-i/books", action: "Open WedgeBooks" },
   { name: "WedgeWeb", eyebrow: "WEBSITE ENGINE", text: "Create a professional customer website through a guided conversation and publish when ready.", href: "/wedgeweb", action: "Create Free Preview" },
   { name: "Wedge-SmartPOS", eyebrow: "CUSTOMER OPERATIONS", text: "Connect clients, appointments, services and daily counter operations for pet grooming and salon/spa businesses.", href: "/wedge-smartpos", action: "Discover SmartPOS" },
   { name: "Wedge-Supply ERP", eyebrow: "SUPPLY OPERATIONS", text: "Connect outlet requests, centralized purchasing, kitchen production, warehouse stock and branch deliveries.", href: "/wedge-supply", action: "Open Supply ERP" },
@@ -51,7 +52,7 @@ export default function Home() {
       <section id="platform" className="bg-[#f3efe7] px-6 py-24 text-[#20282c]">
         <div className="mx-auto max-w-7xl">
           <div className="mx-auto max-w-2xl text-center"><p className="text-xs font-bold tracking-[.28em] text-[#5e8983]">ONE WEDGE WORKS ECOSYSTEM</p><h2 className="mt-5 font-serif text-4xl leading-tight sm:text-5xl">Built for the way small businesses <em className="font-normal text-[#5e8983]">really</em> work.</h2><p className="mt-5 leading-7 text-[#526065]">Begin with the tool you need today. Add the others as your business grows.</p></div>
-          <div className="mt-16 grid gap-0 border-y border-[#20282c]/10 md:grid-cols-2 xl:grid-cols-5">
+          <div className="mt-16 grid gap-0 border-y border-[#20282c]/10 md:grid-cols-2 xl:grid-cols-3">
             {products.map((product, index) => <article key={product.name} className={`px-7 py-10 ${index ? "border-t border-[#20282c]/10 md:border-l" : ""} ${index === 2 ? "md:border-l-0 xl:border-l" : ""}`}><div className="flex h-12 w-12 items-center justify-center rounded-full border border-[#d2aa62]/45 text-[#5e8983]">{index === 0 ? "◎" : index === 1 ? "✦" : index === 2 ? "◇" : "▣"}</div><p className="mt-7 text-[10px] font-bold tracking-[.22em] text-[#b08745]">{product.eyebrow}</p><h3 className="mt-3 font-serif text-3xl">{product.name}</h3><p className="mt-4 min-h-[84px] text-sm leading-7 text-[#59666a]">{product.text}</p><a href={product.href} className="mt-6 inline-flex border-b border-[#5e8983]/40 pb-1 text-sm font-bold text-[#497973]">{product.action} →</a></article>)}
           </div>
         </div>

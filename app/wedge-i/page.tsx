@@ -4,6 +4,7 @@ import { ExecutiveCharts } from "./components/ExecutiveCharts";
 import { ExecutiveMemoryTimeline } from "./components/ExecutiveMemoryTimeline";
 import { SpectrePatternPanel } from "./components/SpectrePatternPanel";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 
 import {
   hasExecutiveMemorySession,
@@ -357,12 +358,12 @@ export default function WedgeIPage() {
       <section className="relative mx-auto max-w-[1500px] px-5 py-8 sm:px-8 lg:px-10">
         <header className="flex flex-col gap-5 border-b border-white/10 pb-7 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <a
+            <Link
               href="/"
               className="text-sm font-medium text-[#c8a467] transition hover:text-[#ead3a8]"
             >
               ← Back to WedgeCLOCKin
-            </a>
+            </Link>
 
             <div className="mt-5 flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-full border border-[#c8a467]/40 bg-[#c8a467]/10 font-bold text-[#d9b979]">
@@ -380,8 +381,16 @@ export default function WedgeIPage() {
             </div>
           </div>
 
-          <div className="rounded-full border border-white/10 bg-white/[0.03] px-5 py-2 text-xs tracking-[0.16em] text-white/45">
-            PRIVATE EXECUTIVE DESK
+          <div className="flex flex-col items-end gap-3">
+            <nav className="flex rounded-full border border-white/10 bg-white/[0.03] p-1 text-xs font-semibold">
+              <span className="rounded-full bg-[#c8a467] px-4 py-2 text-[#111416]">Wedge‑I</span>
+              <Link href="/wedge-i/books" className="rounded-full px-4 py-2 text-white/55 transition hover:bg-white/[0.06] hover:text-white">
+                WedgeBooks
+              </Link>
+            </nav>
+            <div className="rounded-full border border-white/10 bg-white/[0.03] px-5 py-2 text-xs tracking-[0.16em] text-white/45">
+              PRIVATE EXECUTIVE DESK
+            </div>
           </div>
         </header>
 
