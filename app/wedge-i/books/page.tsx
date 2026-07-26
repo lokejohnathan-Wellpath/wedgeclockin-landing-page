@@ -380,7 +380,12 @@ export default function Home() {
 
   if (!setup) {
     return (
-      <main className="wedgebooks setup-screen">
+      <main
+        className="wedgebooks setup-screen"
+        style={{
+          backgroundImage: `linear-gradient(115deg, rgba(7, 32, 24, .94), rgba(13, 67, 48, .82)), url(${receiptIsolationImage})`,
+        }}
+      >
         <section className="setup-card">
           <div className="setup-brand">
             <div className="brand-mark">W</div><span>WEDGE‑WORKS</span>
