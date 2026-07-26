@@ -124,6 +124,9 @@ function migrateSupplyState(value: unknown): SupplyState {
       ?.id ||
     outlets[0]?.id ||
     "";
+  const productionOutputIds = new Set(
+    candidate.recipes.map((recipe) => recipe.outputItemId),
+  );
   return {
     ...candidate,
     version: 3,
@@ -142,7 +145,9 @@ function migrateSupplyState(value: unknown): SupplyState {
       ),
       supplierLeadTimeDays: Math.max(0, Number(item.supplierLeadTimeDays ?? 2)),
       minimumOrderQuantity: Math.max(0, Number(item.minimumOrderQuantity ?? 0)),
-      inventoryType: item.inventoryType ?? "raw",
+      inventoryType: productionOutputIds.has(item.id)
+        ? "semi-processed"
+        : (item.inventoryType ?? "raw"),
       purchaseUnit: item.purchaseUnit ?? item.unit,
       purchasePackSize: Math.max(0.000001, Number(item.purchasePackSize ?? 1)),
       unitCost: Math.max(0, Number(item.unitCost ?? 0)),

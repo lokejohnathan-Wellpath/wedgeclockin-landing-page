@@ -130,9 +130,14 @@ export function CentralCommand({
       sum + item.centralStock * Math.max(0, Number(item.unitCost || 0)),
     0,
   );
+  const productionOutputIds = new Set(
+    state.recipes.map((recipe) => recipe.outputItemId),
+  );
   const ownProductionValue = state.items
-    .filter((item) =>
-      ["semi-processed", "finished"].includes(item.inventoryType || "raw"),
+    .filter(
+      (item) =>
+        productionOutputIds.has(item.id) ||
+        ["semi-processed", "finished"].includes(item.inventoryType || "raw"),
     )
     .reduce(
       (sum, item) =>
@@ -177,9 +182,9 @@ export function CentralCommand({
           tone="bg-[#d6ad62]"
         />
         <Kpi
-          label="Own production and WIP"
+          label="Own production / WIP"
           value={`${state.config.currency} ${ownProductionValue.toFixed(2)}`}
-          note="Finished and semi-processed stock still held at Central"
+          note="All internally processed stock still held at Central"
           tone="bg-[#4b7e74]"
         />
       </section>

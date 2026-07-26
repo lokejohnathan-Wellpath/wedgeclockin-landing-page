@@ -1368,6 +1368,11 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
     commit(
       (current) => ({
         ...current,
+        items: current.items.map((item) =>
+          item.id === recipe.outputItemId
+            ? { ...item, inventoryType: "semi-processed" as const }
+            : item,
+        ),
         recipes: [...current.recipes, recipe],
         activities: [
           activity(`${recipe.name} production recipe created.`),
@@ -1512,6 +1517,7 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
             const newStock = item.centralStock + producedQuantity;
             return {
               ...item,
+              inventoryType: "semi-processed" as const,
               centralStock: newStock,
               unitCost:
                 newStock > 0
@@ -1798,6 +1804,7 @@ export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
           {role === "central" && view === "inventory" && (
             <CentralInventory
               items={state.items}
+              recipes={state.recipes}
               currency={state.config.currency}
               itemForm={itemForm}
               setItemForm={setItemForm}
@@ -2215,6 +2222,7 @@ function CentralRequests({
 
 function CentralInventory({
   items,
+  recipes,
   currency,
   itemForm,
   setItemForm,
@@ -2224,6 +2232,7 @@ function CentralInventory({
   addStock,
 }: {
   items: SupplyItem[];
+  recipes: SupplyRecipe[];
   currency: string;
   itemForm: ItemFormState;
   setItemForm: React.Dispatch<React.SetStateAction<typeof itemForm>>;
@@ -2232,15 +2241,23 @@ function CentralInventory({
   setStockForm: React.Dispatch<React.SetStateAction<typeof stockForm>>;
   addStock: (event: React.FormEvent) => void;
 }) {
-  const [inventoryFilter, setInventoryFilter] = useState<"all" | InventoryType>(
-    "all",
+  const [inventoryFilter, setInventoryFilter] = useState<
+    "all" | InventoryType | "own-production"
+  >("all");
+  const productionOutputIds = new Set(
+    recipes.map((recipe) => recipe.outputItemId),
   );
+  const isOwnProduction = (item: SupplyItem) =>
+    productionOutputIds.has(item.id) ||
+    ["semi-processed", "finished"].includes(item.inventoryType || "raw");
   const filteredItems =
     inventoryFilter === "all"
       ? items
-      : items.filter(
-          (item) => (item.inventoryType || "raw") === inventoryFilter,
-        );
+      : inventoryFilter === "own-production"
+        ? items.filter(isOwnProduction)
+        : items.filter(
+            (item) => (item.inventoryType || "raw") === inventoryFilter,
+          );
   const valueOf = (item: SupplyItem) =>
     item.centralStock * Number(item.unitCost || 0);
   const totalOutletStock = (item: SupplyItem) => {
@@ -2254,9 +2271,7 @@ function CentralInventory({
   };
   const totalValue = items.reduce((sum, item) => sum + valueOf(item), 0);
   const productionValue = items
-    .filter((item) =>
-      ["semi-processed", "finished"].includes(item.inventoryType || "raw"),
-    )
+    .filter(isOwnProduction)
     .reduce((sum, item) => sum + valueOf(item), 0);
   return (
     <div>
@@ -2281,8 +2296,7 @@ function CentralInventory({
           [
             ["all", "All inventory"],
             ["raw", "Raw materials"],
-            ["semi-processed", "WIP / semi-processed"],
-            ["finished", "Own production"],
+            ["own-production", "Own production / WIP"],
             ["packaging", "Packaging"],
             ["direct-supply", "Direct supply"],
           ] as const
@@ -2426,8 +2440,7 @@ function CentralInventory({
                   }
                 >
                   <option value="raw">Raw ingredient / stock</option>
-                  <option value="semi-processed">Semi-processed / WIP</option>
-                  <option value="finished">Finished product</option>
+                  <option value="semi-processed">Own production / WIP</option>
                   <option value="packaging">Packaging</option>
                   <option value="direct-supply">Usually direct supplied</option>
                 </select>
@@ -3103,8 +3116,8 @@ function Production({
             </div>
           ) : (
             <p className="mt-5 rounded-xl bg-black/20 p-4 text-sm text-white/45">
-              Add at least one ingredient and one finished item in Inventory
-              first.
+              Add at least one ingredient and one production output item in
+              Inventory first.
             </p>
           )}
         </form>
