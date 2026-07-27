@@ -165,6 +165,7 @@ function ElevationDrawing({
   roofStyle,
   eaveDepthFt,
   porchDepthFt,
+  cars,
 }: {
   facade: FacadeId;
   storeys: number;
@@ -172,46 +173,157 @@ function ElevationDrawing({
   roofStyle: RoofStyle;
   eaveDepthFt: number;
   porchDepthFt: number;
+  cars: number;
 }) {
-  const kampung = facade === "kampung-contemporary";
-  const urban = facade === "urban-malaysian";
-  const homestay = facade === "homestay-tropical";
   const side = view === "left" || view === "right";
   const rear = view === "rear";
-  const roof = roofStyle === "flat"
-    ? <><rect x="100" y="120" width="520" height="55" fill="#d7d1c4" stroke="#183b35" strokeWidth="4" /><path d="M110 137 H600" stroke="#3e83a2" strokeWidth="3" strokeDasharray="8 6" /><text x="355" y="155" textAnchor="middle" className="plan-note-label">CONCEALED FALL + OVERFLOW</text></>
-    : roofStyle === "hip"
-      ? <path d="M82 180 L185 82 H535 L642 180 Z" fill="#735849" stroke="#183b35" strokeWidth="4" />
-      : <path d="M72 182 L350 66 L650 182 Z" fill="#735849" stroke="#183b35" strokeWidth="4" />;
+  const front = view === "front";
+  const wallTop = storeys === 2 ? 190 : 285;
+  const upperFloor = 310;
+  const ground = 430;
+  const left = side ? 105 : 130;
+  const right = side ? 795 : 770;
+  const palette = {
+    "tropical-modern": { wall: "#eee8dc", accent: "#907052", screen: "#9d7047", roof: "#4c4038", glass: "#78a8a3" },
+    "kampung-contemporary": { wall: "#f0e6d5", accent: "#6f4b35", screen: "#7b5032", roof: "#49372e", glass: "#79a29d" },
+    "urban-malaysian": { wall: "#e9e7e1", accent: "#4e5a57", screen: "#876e54", roof: "#444b49", glass: "#719b99" },
+    "homestay-tropical": { wall: "#f2e6d2", accent: "#a05f3f", screen: "#855536", roof: "#6c4335", glass: "#7ca69f" },
+  }[facade];
+  const frontageM = Math.max(10.8, cars * 2.7 + 5.8);
+  const depthM = porchDepthFt * .3048 + 9.2;
+  const overallM = side ? depthM : frontageM;
+  const window = (x: number, y: number, width: number, height: number, key: string) => (
+    <g key={key}>
+      <rect x={x} y={y} width={width} height={height} fill={palette.glass} stroke="#20312e" strokeWidth="2.4" />
+      <line x1={x + width / 2} y1={y} x2={x + width / 2} y2={y + height} stroke="#dce8e4" strokeWidth="1.2" />
+      <line x1={x - 8} y1={y - 8} x2={x + width + 8} y2={y - 8} stroke="#263a36" strokeWidth="4" />
+      <line x1={x - 8} y1={y - 4} x2={x + width + 8} y2={y - 4} stroke="#d4a957" strokeWidth="2" />
+    </g>
+  );
+  const level = (y: number, label: string) => (
+    <g key={label}>
+      <path d={`M70 ${y} h34`} stroke="#7e8c87" strokeWidth="1" />
+      <path d={`M82 ${y - 4} l8 4 -8 4 z`} fill="#263a36" />
+      <text x="66" y={y + 3} textAnchor="end" className="elevation-level">{label}</text>
+    </g>
+  );
 
   return (
-    <svg viewBox="0 0 720 390" role="img" aria-label={`${view} ${facadeNames[facade]} elevation concept`}>
-      <rect width="720" height="390" fill="#eef3ee" />
-      <rect y="330" width="720" height="60" fill="#c8d7c6" />
-      {roofStyle === "flat" ? roof : kampung ? (
-        <path d="M95 175 L355 58 L625 175 Z" fill="#6f4f38" stroke="#183b35" strokeWidth="4" />
-      ) : urban ? (
+    <svg viewBox="0 0 900 520" role="img" aria-label={`${view} ${facadeNames[facade]} elevation concept`}>
+      <defs>
+        <pattern id={`hatch-${view}`} width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <line x1="0" y1="0" x2="0" y2="8" stroke="#b89c75" strokeWidth=".8" />
+        </pattern>
+      </defs>
+      <rect width="900" height="520" fill="#fbfaf6" />
+      <path d="M0 430 H900" stroke="#243733" strokeWidth="3.2" />
+      <path d="M0 438 C130 426 225 445 340 434 S570 444 900 431 V520 H0 Z" fill="#e6ebe3" />
+
+      {roofStyle === "flat" ? (
+        <g>
+          <rect x={left - 18} y={wallTop - 36} width={right - left + 36} height="42" fill={palette.roof} stroke="#20312e" strokeWidth="3" />
+          <path d={`M${left - 8} ${wallTop - 20} H${right - 8}`} stroke="#7fb4c2" strokeWidth="2" strokeDasharray="8 6" />
+          <path d={`M${right - 20} ${wallTop - 28} v25 h14`} fill="none" stroke="#276b7a" strokeWidth="3" />
+          <text x={right - 4} y={wallTop - 43} textAnchor="end" className="elevation-note">CONCEALED FALL · OVERFLOW</text>
+        </g>
+      ) : roofStyle === "hip" ? (
+        <g>
+          <path d={`M${left - 34} ${wallTop} L${left + 118} ${wallTop - 118} H${right - 118} L${right + 34} ${wallTop} Z`} fill={palette.roof} stroke="#20312e" strokeWidth="3.5" />
+          <path d={`M${left + 118} ${wallTop - 118} L${(left + right) / 2} ${wallTop - 142} L${right - 118} ${wallTop - 118}`} fill="none" stroke="#d7a85a" strokeWidth="2" />
+          <path d={`M${left - 38} ${wallTop + 2} H${right + 38}`} stroke="#263a36" strokeWidth="7" />
+          <path d={`M${left - 36} ${wallTop + 4} H${right + 36}`} stroke="#d5a550" strokeWidth="2" />
+          <text x={(left + right) / 2} y={wallTop - 128} textAnchor="middle" className="elevation-note">VENTILATED HIP ROOF · ~30° · {eaveDepthFt} FT EAVE</text>
+        </g>
+      ) : (
+        <g>
+          <path d={side
+            ? `M${left - 34} ${wallTop} L${left + 150} ${wallTop - 118} H${right - 100} L${right + 34} ${wallTop} Z`
+            : `M${left - 34} ${wallTop} L${(left + right) / 2} ${wallTop - 150} L${right + 34} ${wallTop} Z`}
+            fill={palette.roof} stroke="#20312e" strokeWidth="3.5" />
+          {!side && <circle cx={(left + right) / 2} cy={wallTop - 75} r="18" fill="#6f9892" stroke="#20312e" strokeWidth="3" />}
+          <path d={`M${left - 38} ${wallTop + 2} H${right + 38}`} stroke="#263a36" strokeWidth="7" />
+          <text x={(left + right) / 2} y={wallTop - 118} textAnchor="middle" className="elevation-note">VENTILATED PITCHED ROOF · {eaveDepthFt} FT EAVE</text>
+        </g>
+      )}
+
+      <rect x={left} y={wallTop} width={right - left} height={ground - wallTop} fill={palette.wall} stroke="#20312e" strokeWidth="3.2" />
+      <rect x={left} y={upperFloor - 8} width={right - left} height="16" fill={palette.accent} opacity=".9" />
+      {storeys === 2 && <path d={`M${left} ${upperFloor} H${right}`} stroke="#20312e" strokeWidth="2.3" />}
+
+      {front && (
         <>
-          <path d="M95 172 L620 172 L590 115 L155 115 Z" fill="#735849" stroke="#183b35" strokeWidth="4" />
-          <path d="M118 180 L602 180" fill="none" stroke="#d5b274" strokeWidth="8" />
+          {storeys === 2 && <>
+            {window(left + 42, 225, 112, 54, "front-upper-1")}
+            {window(right - 162, 225, 112, 54, "front-upper-2")}
+            <rect x={(left + right) / 2 - 78} y="208" width="156" height="102" fill={palette.accent} opacity=".18" stroke="#20312e" strokeWidth="2" />
+            <g stroke={palette.screen} strokeWidth="7">{[-52,-31,-10,11,32,53].map((offset) => <line key={offset} x1={(left + right) / 2 + offset} y1="215" x2={(left + right) / 2 + offset} y2="302" />)}</g>
+          </>}
+          <rect x={left + 20} y="326" width={Math.min(400, cars * 122 + 28)} height="104" fill="#dfe5df" stroke="#20312e" strokeWidth="2.5" />
+          <path d={`M${left + 6} 322 H${left + Math.min(426, cars * 122 + 54)}`} stroke="#263a36" strokeWidth="12" />
+          {Array.from({ length: cars + 1 }, (_, index) => {
+            const x = left + 20 + index * (Math.min(400, cars * 122 + 28) / cars);
+            return <rect key={x} x={x - 4} y="322" width="8" height="108" fill="#3a4b47" />;
+          })}
+          {Array.from({ length: cars }, (_, index) => {
+            const bay = Math.min(400, cars * 122 + 28) / cars;
+            const x = left + 20 + index * bay + bay / 2;
+            return <g key={x} stroke="#7c8985" strokeWidth="2" fill="none"><path d={`M${x - 39} 402 q8 -28 27 -28 h29 q20 2 29 28`} /><path d={`M${x - 45} 402 H${x + 52}`} /><circle cx={x - 27} cy="405" r="8" /><circle cx={x + 33} cy="405" r="8" /></g>;
+          })}
+          <rect x={right - 146} y="336" width="88" height="94" fill={palette.screen} stroke="#20312e" strokeWidth="2.6" />
+          <rect x={right - 132} y="350" width="60" height="80" fill="#75543e" stroke="#20312e" strokeWidth="2" />
+          <circle cx={right - 84} cy="390" r="3" fill="#d7ac58" />
+          <text x={left + 30} y="316" className="elevation-note">{cars}-CAR SHADED PORCH · {porchDepthFt} FT CLEAR DEPTH</text>
         </>
-      ) : roof}
-      <rect x="115" y={storeys === 2 ? 165 : 205} width="490" height={storeys === 2 ? 165 : 125} fill="#f6efe2" stroke="#183b35" strokeWidth="4" />
-      {storeys === 2 && <>
-        <rect x="150" y="190" width={side ? 135 : 100} height="62" fill="#8eb7ad" stroke="#183b35" strokeWidth="3" />
-        <rect x={side ? 435 : 470} y="190" width={side ? 135 : 100} height="62" fill="#8eb7ad" stroke="#183b35" strokeWidth="3" />
-        {!side && <rect x="290" y="190" width="140" height="62" fill="#dcc697" stroke="#183b35" strokeWidth="3" />}
-      </>}
-      <rect x="150" y="270" width={rear ? 110 : 150} height="60" fill="#78978f" stroke="#183b35" strokeWidth="3" />
-      <rect x={rear ? 305 : 455} y="265" width={rear ? 155 : 90} height="65" fill="#88684d" stroke="#183b35" strokeWidth="3" />
-      {rear && <rect x="495" y="278" width="70" height="52" fill="#88a9a1" stroke="#183b35" strokeWidth="3" />}
-      <path d="M115 265 H605" stroke="#d2aa62" strokeWidth="12" />
-      {kampung && <g stroke="#916c40" strokeWidth="5">{[330,350,370,390,410].map((x) => <line key={x} x1={x} y1="267" x2={x} y2="328" />)}</g>}
-      {urban && <g fill="#8daaa3">{[315,335,355,375,395,415].map((x) => <rect key={x} x={x} y="268" width="10" height="60" />)}</g>}
-      {homestay && <><rect x="310" y="267" width="112" height="63" fill="#9f7a54" stroke="#183b35" strokeWidth="3" /><circle cx="365" cy="295" r="11" fill="#d2aa62" /></>}
-      <path d="M105 330 H615" stroke="#183b35" strokeWidth="5" />
-      <text x="360" y="351" textAnchor="middle" fill="#48635d" fontSize="10" fontWeight="800">{view === "front" ? `${porchDepthFt} FT CLEAR PORCH DEPTH` : view === "rear" ? "WET KITCHEN + SERVICE YARD" : `${eaveDepthFt} FT EAVE / SIDE SHADE`}</text>
-      <text x="360" y="372" textAnchor="middle" fill="#48635d" fontSize="12" fontWeight="800" letterSpacing="2">{view.toUpperCase()} ELEVATION · {facadeNames[facade].toUpperCase()}</text>
+      )}
+
+      {side && (
+        <>
+          {storeys === 2 && <>
+            {window(left + 60, 225, 118, 52, "side-upper-1")}
+            {window(left + 285, 225, 104, 52, "side-upper-2")}
+            {window(right - 176, 225, 112, 52, "side-upper-3")}
+          </>}
+          {window(left + 65, 350, 126, 58, "side-ground-1")}
+          {window(left + 320, 350, 98, 58, "side-ground-2")}
+          <rect x={right - 172} y="341" width="88" height="89" fill={palette.screen} opacity=".9" stroke="#20312e" strokeWidth="2.5" />
+          <path d={`M${left + 32} 328 H${right - 34}`} stroke="#263a36" strokeWidth="5" />
+          <g stroke={palette.screen} strokeWidth="5">{[0,18,36,54].map((offset) => <line key={offset} x1={right - 158 + offset} y1="349" x2={right - 158 + offset} y2="421" />)}</g>
+          <text x={(left + right) / 2} y="321" textAnchor="middle" className="elevation-note">SHADED SIDE OPENINGS · CROSS VENTILATION</text>
+        </>
+      )}
+
+      {rear && (
+        <>
+          {storeys === 2 && <>
+            {window(left + 55, 225, 110, 52, "rear-upper-1")}
+            {window((left + right) / 2 - 55, 225, 110, 52, "rear-upper-2")}
+            {window(right - 165, 225, 110, 52, "rear-upper-3")}
+          </>}
+          {window(left + 55, 350, 118, 58, "rear-ground-1")}
+          <rect x={(left + right) / 2 - 48} y="343" width="96" height="87" fill="#75543e" stroke="#20312e" strokeWidth="2.5" />
+          {window(right - 175, 355, 112, 53, "rear-ground-2")}
+          <path d={`M${left + 25} 326 H${right - 25}`} stroke="#263a36" strokeWidth="6" />
+          <rect x={left + 28} y="416" width={right - left - 56} height="14" fill={`url(#hatch-${view})`} />
+          <text x={(left + right) / 2} y="322" textAnchor="middle" className="elevation-note">WET KITCHEN · LAUNDRY · COVERED SERVICE YARD</text>
+        </>
+      )}
+
+      <g fill="none" stroke="#2e4540" strokeWidth="3">
+        <path d={`M${left + 8} ${wallTop + 3} v178 q0 16 14 16`} />
+        <path d={`M${right - 8} ${wallTop + 3} v178 q0 16 -14 16`} />
+      </g>
+      <text x={left + 18} y={wallTop + 18} className="elevation-note">RWP</text>
+      <text x={right - 18} y={wallTop + 18} textAnchor="end" className="elevation-note">RWP</text>
+      {level(ground, "FFL ±0.00")}
+      {storeys === 2 && level(upperFloor, "1F +3.15")}
+      {level(wallTop, storeys === 2 ? "EAVE +6.30" : "EAVE +3.25")}
+
+      <g stroke="#77837f" strokeWidth="1" fill="none">
+        <path d={`M${left} 470 v15 M${right} 470 v15 M${left} 479 H${right}`} />
+        <path d={`M${left} 475 l8 4 -8 4 M${right} 475 l-8 4 8 4`} />
+      </g>
+      <text x={(left + right) / 2} y="474" textAnchor="middle" className="elevation-dimension">APPROX. {overallM.toFixed(1)} m CONCEPT {side ? "DEPTH" : "WIDTH"} · VERIFY FROM PLAN</text>
+      <text x="450" y="505" textAnchor="middle" className="elevation-title">{view.toUpperCase()} ELEVATION · {facadeNames[facade].toUpperCase()}</text>
     </svg>
   );
 }
@@ -276,7 +388,7 @@ export default function ConceptDrawings(props: DrawingProps) {
           {(["front", "left", "right", "rear"] as const).map((view) => (
             <article className="wb-drawing-sheet wb-facade-sheet" key={view}>
               <header><div><small>{view.toUpperCase()} VIEW</small><h3>{view[0].toUpperCase() + view.slice(1)} Elevation</h3></div><b>REVISION LINKED</b></header>
-              <ElevationDrawing facade={props.facade} storeys={props.storeys} view={view} roofStyle={props.roofStyle} eaveDepthFt={props.eaveDepthFt} porchDepthFt={props.porchDepthFt} />
+              <ElevationDrawing facade={props.facade} storeys={props.storeys} view={view} roofStyle={props.roofStyle} eaveDepthFt={props.eaveDepthFt} porchDepthFt={props.porchDepthFt} cars={props.cars} />
               <div className="wb-watermark">CONCEPT ONLY</div>
             </article>
           ))}
