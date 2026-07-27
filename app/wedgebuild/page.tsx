@@ -2,6 +2,12 @@
 
 import { ChangeEvent, useMemo, useState } from "react";
 import Link from "next/link";
+import ConceptDrawings, { type FacadeId } from "./ConceptDrawings";
+import LotBoundaryMapper, { type LotPoint } from "./LotBoundaryMapper";
+import { carPorchStandard, estimateInternalProgram, MALAYSIA_SPACE_STANDARDS } from "./malaysiaStandards";
+import { indicativeRiverReserve } from "./riverRules";
+import { detectBoundaryFromImage } from "./boundaryDetector";
+import DesignChat, { type DesignChanges, type RoofStyle } from "./DesignChat";
 import "./wedgebuild.css";
 
 type Stage = "land" | "preview" | "pack" | "handoff";
@@ -45,7 +51,7 @@ function UploadBox({
       <span className="wb-upload-icon">{file ? "✓" : "＋"}</span>
       <span>
         <strong>{file ? file.name : title}</strong>
-        <small>{file ? `${Math.max(1, Math.round(file.size / 1024))} KB · ready for document check` : hint}</small>
+        <small>{file ? `${Math.max(1, Math.round(file.size / 1024))} KB · attached, awaiting confirmation` : hint}</small>
       </span>
       <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={onChange} />
     </label>
@@ -56,14 +62,26 @@ export default function WedgeBuildPage() {
   const [stage, setStage] = useState<Stage>("land");
   const [titleFile, setTitleFile] = useState<UploadState | null>(null);
   const [surveyFile, setSurveyFile] = useState<UploadState | null>(null);
+  const [surveyUrl, setSurveyUrl] = useState<string | null>(null);
+  const [lotPoints, setLotPoints] = useState<LotPoint[]>([]);
+  const [boundaryConfirmed, setBoundaryConfirmed] = useState(false);
+  const [boundaryDetection, setBoundaryDetection] = useState<"idle" | "detecting" | "coloured" | "bold" | "manual">("idle");
+  const [siteCondition, setSiteCondition] = useState<"standard" | "river">("standard");
+  const [riverWidthM, setRiverWidthM] = useState(5);
+  const [riverEdgeIndex, setRiverEdgeIndex] = useState(1);
   const [lotWidth, setLotWidth] = useState(55);
   const [lotDepth, setLotDepth] = useState(90);
   const [frontSetback, setFrontSetback] = useState(16);
   const [rearSetback, setRearSetback] = useState(10);
   const [leftSetback, setLeftSetback] = useState(10);
   const [rightSetback, setRightSetback] = useState(10);
-  const [houseType, setHouseType] = useState("Double-storey family home");
+  const [houseType, setHouseType] = useState("Urban double-storey Malaysian home");
+  const [facade, setFacade] = useState<FacadeId>("tropical-modern");
+  const [roofStyle, setRoofStyle] = useState<RoofStyle>("hip");
+  const [eaveDepthFt, setEaveDepthFt] = useState(3.5);
+  const [porchDepthFt, setPorchDepthFt] = useState(18);
   const [bedrooms, setBedrooms] = useState(5);
+  const [cars, setCars] = useState(2);
   const [brief, setBrief] = useState(roomIdeas[0]);
   const [generated, setGenerated] = useState(false);
   const [ownerAccepted, setOwnerAccepted] = useState(false);
@@ -75,10 +93,35 @@ export default function WedgeBuildPage() {
   const calculations = useMemo(() => {
     const envelopeWidth = Math.max(0, lotWidth - leftSetback - rightSetback);
     const envelopeDepth = Math.max(0, lotDepth - frontSetback - rearSetback);
-    const footprint = envelopeWidth * envelopeDepth * 0.7;
+    const polygonArea = lotPoints.length >= 3
+      ? Math.abs(lotPoints.reduce((sum, point, index) => {
+          const next = lotPoints[(index + 1) % lotPoints.length];
+          return sum + point.x * next.y - next.x * point.y;
+        }, 0) / 2)
+      : 0;
+    const pointWidth = lotPoints.length
+      ? Math.max(...lotPoints.map((point) => point.x)) - Math.min(...lotPoints.map((point) => point.x))
+      : 0;
+    const pointDepth = lotPoints.length
+      ? Math.max(...lotPoints.map((point) => point.y)) - Math.min(...lotPoints.map((point) => point.y))
+      : 0;
+    const lotShapeFactor = boundaryConfirmed && polygonArea && pointWidth && pointDepth
+      ? Math.max(.55, Math.min(1, polygonArea / (pointWidth * pointDepth)))
+      : 1;
+    const riverReserveM = siteCondition === "river" ? indicativeRiverReserve(riverWidthM) : 0;
+    const riverConstraintFactor = siteCondition === "river"
+      ? Math.max(.45, 1 - (riverReserveM * 3.28084) / Math.max(lotWidth, lotDepth, 1))
+      : 1;
+    const footprint = envelopeWidth * envelopeDepth * 0.7 * lotShapeFactor * riverConstraintFactor;
     const storeys = houseType.toLowerCase().includes("double") ? 2 : 1;
     const builtUp = footprint * storeys;
-    const documentScore = (titleFile ? 1 : 0) + (surveyFile ? 1 : 0);
+    const program = estimateInternalProgram({
+      bedrooms,
+      storeys,
+      wantsAccessibleRoom: /elder|parent|warga|accessible/i.test(brief),
+      wantsSurau: /surau|prayer|solat/i.test(brief),
+    });
+    const porch = carPorchStandard(cars, porchDepthFt);
 
     return {
       envelopeWidth,
@@ -86,13 +129,18 @@ export default function WedgeBuildPage() {
       footprint,
       builtUp,
       storeys,
-      confidence: documentScore === 2 ? "Higher" : documentScore === 1 ? "Medium" : "Low",
-      quality:
-        documentScore === 2
-          ? "Both documents are attached. An architect must still verify their contents."
-          : documentScore === 1
-            ? "One supporting document is missing. Manual dimensions remain owner-provided."
-            : "No land document attached. Preview uses manual dimensions only.",
+      program,
+      porch,
+      fitRatio: builtUp / Math.max(1, program.totalArea),
+      riverReserveM,
+      lotShapeFactor,
+      riverConstraintFactor,
+      confidence: boundaryConfirmed ? "Owner-confirmed geometry" : surveyFile ? "Unconfirmed" : "Dimensions only",
+      quality: boundaryConfirmed
+        ? `${lotPoints.length}-point lot boundary confirmed by the owner from the uploaded plan. Architect verification is still required.`
+        : surveyFile
+          ? "The plan is attached, but WedgeBuild will not claim to understand its shape until you trace and confirm the boundary."
+          : "No visible land plan is attached. Any preview can only use manual width and depth.",
     };
   }, [
     frontSetback,
@@ -103,7 +151,14 @@ export default function WedgeBuildPage() {
     rearSetback,
     rightSetback,
     surveyFile,
-    titleFile,
+    boundaryConfirmed,
+    lotPoints,
+    bedrooms,
+    brief,
+    cars,
+    siteCondition,
+    riverWidthM,
+    porchDepthFt,
   ]);
 
   const activeIndex = stages.findIndex((item) => item.id === stage);
@@ -114,10 +169,53 @@ export default function WedgeBuildPage() {
     setter({ name: file.name, size: file.size, type: file.type });
   }
 
+  async function rememberSurvey(file: File | undefined) {
+    if (!file) {
+      setSurveyFile(null);
+      setSurveyUrl(null);
+      setLotPoints([]);
+      setBoundaryConfirmed(false);
+      setBoundaryDetection("idle");
+      return;
+    }
+    setSurveyFile({ name: file.name, size: file.size, type: file.type });
+    setLotPoints([]);
+    setBoundaryConfirmed(false);
+    if (file.type.startsWith("image/")) {
+      setSurveyUrl(URL.createObjectURL(file));
+      setBoundaryDetection("detecting");
+      const detection = await detectBoundaryFromImage(file).catch(() => null);
+      if (detection) {
+        setLotPoints(detection.points);
+        setBoundaryDetection(detection.mode);
+        setNotice(detection.mode === "coloured"
+          ? "A coloured or bold lot boundary was detected. Check every corner and confirm it before design."
+          : "A possible bold-line boundary was detected. This lower-confidence outline must be checked or retraced.");
+      } else {
+        setBoundaryDetection("manual");
+        setNotice("No reliable closed boundary was found automatically. Trace the bold lot boundary manually.");
+      }
+    } else {
+      setSurveyUrl(null);
+      setBoundaryDetection("manual");
+      setNotice("For boundary mapping, upload the survey as JPG or PNG. The PDF remains attached for the architect.");
+    }
+  }
+
   function generatePreview() {
+    if (siteCondition === "river" && !boundaryConfirmed) {
+      setNotice("A river-facing lot requires a visible survey polygon and confirmed river edge before WedgeBuild can test a house envelope.");
+      return;
+    }
+    if (surveyFile && surveyUrl && !boundaryConfirmed) {
+      setNotice("Confirm the lot boundary on the uploaded plan first. WedgeBuild will not replace it with a generic rectangle.");
+      return;
+    }
     setGenerated(true);
     setStage("preview");
-    setNotice("A new preliminary concept was generated from your current brief and dimensions.");
+    setNotice(boundaryConfirmed
+      ? "Concept regenerated from the owner-confirmed lot shape, dimensions and Malaysian house brief."
+      : "Dimensions-only concept generated. Add and confirm a visible survey plan for matching lot geometry.");
   }
 
   function refreshIdea() {
@@ -141,6 +239,17 @@ export default function WedgeBuildPage() {
     setArchitectStatus("sent");
     setStage("handoff");
     setNotice("Handoff request prepared. The architect may accept, decline or request clarification.");
+  }
+
+  function applyDesignRevision(changes: DesignChanges) {
+    if (changes.roofStyle) setRoofStyle(changes.roofStyle);
+    if (changes.eaveDepthFt) setEaveDepthFt(changes.eaveDepthFt);
+    if (changes.porchDepthFt) setPorchDepthFt(changes.porchDepthFt);
+    if (changes.cars) setCars(changes.cars);
+    if (changes.bedrooms) setBedrooms(changes.bedrooms);
+    if (changes.facade) setFacade(changes.facade);
+    setGenerated(true);
+    setNotice("The approved chat revision was applied to the connected concept drawings.");
   }
 
   return (
@@ -210,7 +319,7 @@ export default function WedgeBuildPage() {
           <div className="wb-file-summary">
             <div><span>Land title</span><b>{titleFile ? "Attached" : "Needed"}</b></div>
             <div><span>Survey / site plan</span><b>{surveyFile ? "Attached" : "Optional"}</b></div>
-            <div><span>Concept confidence</span><b>{calculations.confidence}</b></div>
+            <div><span>Lot geometry</span><b>{calculations.confidence}</b></div>
             <div><span>Sketch pack</span><b>{paid ? "Unlocked" : "Locked"}</b></div>
           </div>
           <p className="wb-side-disclaimer">
@@ -236,15 +345,33 @@ export default function WedgeBuildPage() {
                 />
                 <UploadBox
                   title="Upload survey / site plan"
-                  hint="Recommended for stronger confidence"
+                  hint="JPG or PNG enables boundary mapping"
                   file={surveyFile}
-                  onChange={(event) => rememberFile(event.target.files?.[0], setSurveyFile)}
+                  onChange={(event) => rememberSurvey(event.target.files?.[0])}
                 />
               </div>
 
               <div className="wb-document-check">
-                <span className={`wb-status-dot ${titleFile || surveyFile ? "ready" : ""}`} />
-                <div><strong>Document-quality check</strong><p>{calculations.quality}</p></div>
+                <span className={`wb-status-dot ${boundaryConfirmed ? "ready" : ""}`} />
+                <div><strong>Document understanding—not upload status</strong><p>{boundaryDetection === "detecting" ? "Checking the image for a bold or coloured closed boundary…" : calculations.quality}</p></div>
+              </div>
+
+              <LotBoundaryMapper
+                imageUrl={surveyUrl}
+                points={lotPoints}
+                confirmed={boundaryConfirmed}
+                onPointsChange={setLotPoints}
+                onConfirmedChange={setBoundaryConfirmed}
+              />
+
+              <div className="wb-site-condition">
+                <div className="wb-section-title"><span>01R</span><h3>Site condition</h3><p>River constraints must be identified before fitting the house.</p></div>
+                <div className="wb-fields two">
+                  <label>Land condition<select value={siteCondition} onChange={(event) => setSiteCondition(event.target.value as "standard" | "river")}><option value="standard">Normal inland lot</option><option value="river">Lot beside a river / watercourse</option></select></label>
+                  {siteCondition === "river" && <label>Existing water-channel width (m)<input type="number" min="0.1" step="0.1" value={riverWidthM} onChange={(event) => setRiverWidthM(Number(event.target.value))} /></label>}
+                  {siteCondition === "river" && boundaryConfirmed && <label>River-facing polygon edge<select value={riverEdgeIndex} onChange={(event) => setRiverEdgeIndex(Number(event.target.value))}>{lotPoints.map((_, index) => <option key={index} value={index}>Edge {index + 1}–{((index + 1) % lotPoints.length) + 1}</option>)}</select></label>}
+                </div>
+                {siteCondition === "river" && <div className="wb-river-rule"><span>PROVISIONAL JPS REFERENCE</span><strong>{calculations.riverReserveM} m river reserve</strong><p>Based on the entered channel-width band. This is not JPS, JAS or PBT approval; gazetted reserve, bank position, flood data and local conditions override it.</p></div>}
               </div>
 
               <div className="wb-form-section">
@@ -263,8 +390,25 @@ export default function WedgeBuildPage() {
               <div className="wb-form-section">
                 <div className="wb-section-title"><span>01B</span><h3>House brief</h3><p>Describe how the home should work for your family.</p></div>
                 <div className="wb-fields two">
-                  <label>House type<select value={houseType} onChange={(e) => setHouseType(e.target.value)}><option>Double-storey family home</option><option>Single-storey family home</option><option>Modern kampung home</option><option>Homestay residence</option></select></label>
+                  <label>Malaysian house type<select value={houseType} onChange={(e) => setHouseType(e.target.value)}><option>Urban double-storey Malaysian home</option><option>Single-storey Malaysian bungalow</option><option>Contemporary kampung home</option><option>Tropical homestay residence</option></select></label>
                   <label>Bedrooms<input type="number" min="1" max="12" value={bedrooms} onChange={(e) => setBedrooms(Number(e.target.value))} /></label>
+                  <label>Cars under porch<input type="number" min="1" max="4" value={cars} onChange={(e) => setCars(Number(e.target.value))} /></label>
+                  <label>Roof system<select value={roofStyle} onChange={(event) => setRoofStyle(event.target.value as RoofStyle)}><option value="hip">Hipped tropical roof</option><option value="pitched">Pitched / gable roof</option><option value="flat">Flat-roof expression with drainage falls</option></select></label>
+                  <label>Roof eave / overhang (ft)<input type="number" min="2.5" max="6" step=".5" value={eaveDepthFt} onChange={(event) => setEaveDepthFt(Number(event.target.value))} /></label>
+                  <label>Clear porch depth from gate (ft)<input type="number" min="16" max="28" value={porchDepthFt} onChange={(event) => setPorchDepthFt(Math.max(16, Number(event.target.value)))} /></label>
+                </div>
+                <div className="wb-facade-picker">
+                  <p>Choose a Malaysian facade direction</p>
+                  {([
+                    ["tropical-modern", "Tropical Modern", "Deep eaves · breeze blocks · shaded porch"],
+                    ["kampung-contemporary", "Contemporary Kampung", "Pitched roof · serambi · timber screens"],
+                    ["urban-malaysian", "Urban Malaysian", "Car porch · rain canopy · screened openings"],
+                    ["homestay-tropical", "Tropical Homestay", "Wide veranda · guest privacy · simple upkeep"],
+                  ] as [FacadeId, string, string][]).map(([id, name, description]) => (
+                    <button type="button" key={id} className={facade === id ? "selected" : ""} onClick={() => setFacade(id)}>
+                      <span>{name}</span><small>{description}</small>
+                    </button>
+                  ))}
                 </div>
                 <label className="wb-brief">Chat with Wedge AI<textarea value={brief} onChange={(e) => setBrief(e.target.value)} /></label>
                 <div className="wb-inline-actions">
@@ -282,42 +426,48 @@ export default function WedgeBuildPage() {
                 <span className="wb-free-badge">RM0 PREVIEW</span>
               </div>
 
-              <div className="wb-preview-layout">
-                <div className="wb-sheet">
-                  <div className="wb-sheet-head"><div><small>WEDGEBUILD / OWNER CONCEPT</small><h3>{houseType}</h3></div><b>REV 01</b></div>
-                  <svg viewBox="0 0 720 470" role="img" aria-label="Preliminary site envelope and ground floor concept">
-                    <defs><pattern id="smallGrid" width="18" height="18" patternUnits="userSpaceOnUse"><path d="M 18 0 L 0 0 0 18" fill="none" stroke="#d8cdbb" strokeWidth="1" /></pattern></defs>
-                    <rect width="720" height="470" fill="url(#smallGrid)" />
-                    <rect x="70" y="35" width="580" height="380" fill="#fbf7ee" stroke="#20322f" strokeWidth="4" />
-                    <rect x="172" y="94" width="376" height="255" fill="#e5d4ac" fillOpacity=".56" stroke="#ad8640" strokeWidth="3" strokeDasharray="8 7" />
-                    <rect x="213" y="128" width="294" height="181" fill="#f7f0df" stroke="#20322f" strokeWidth="4" />
-                    <line x1="360" y1="128" x2="360" y2="309" stroke="#20322f" strokeWidth="3" />
-                    <line x1="213" y1="218" x2="507" y2="218" stroke="#20322f" strokeWidth="3" />
-                    <line x1="430" y1="218" x2="430" y2="309" stroke="#20322f" strokeWidth="3" />
-                    <text x="284" y="180" textAnchor="middle" fill="#20322f" fontSize="18" fontWeight="700">LIVING</text>
-                    <text x="433" y="180" textAnchor="middle" fill="#20322f" fontSize="18" fontWeight="700">ROOM</text>
-                    <text x="285" y="268" textAnchor="middle" fill="#20322f" fontSize="18" fontWeight="700">KITCHEN</text>
-                    <text x="468" y="268" textAnchor="middle" fill="#20322f" fontSize="15" fontWeight="700">BATH / STORE</text>
-                    <rect x="244" y="309" width="230" height="40" fill="#8bb0a9" fillOpacity=".62" stroke="#456f68" strokeWidth="3" />
-                    <text x="359" y="335" textAnchor="middle" fill="#20322f" fontSize="15" fontWeight="700">PORCH / ARRIVAL</text>
-                    <line x1="70" y1="437" x2="650" y2="437" stroke="#ae6847" strokeWidth="5" />
-                    <text x="360" y="461" textAnchor="middle" fill="#9b5032" fontSize="15" fontWeight="800">ASSUMED ROAD / FACADE</text>
-                  </svg>
-                  <div className="wb-watermark">NOT FOR CONSTRUCTION</div>
-                  <p>Preliminary layout logic only · room positions remain editable · architect verification required</p>
-                </div>
-
+              <div className="wb-preview-layout wb-preview-layout-v2">
+                <ConceptDrawings
+                  points={lotPoints}
+                  boundaryConfirmed={boundaryConfirmed}
+                  lotWidth={lotWidth}
+                  lotDepth={lotDepth}
+                  envelopeWidth={calculations.envelopeWidth}
+                  envelopeDepth={calculations.envelopeDepth}
+                  storeys={calculations.storeys}
+                  bedrooms={bedrooms}
+                  cars={cars}
+                  facade={facade}
+                  brief={brief}
+                  riverConstraint={siteCondition === "river" && boundaryConfirmed ? { edgeIndex: riverEdgeIndex, reserveM: calculations.riverReserveM } : null}
+                  roofStyle={roofStyle}
+                  eaveDepthFt={eaveDepthFt}
+                  porchDepthFt={porchDepthFt}
+                />
                 <div className="wb-metrics">
                   <div><small>Buildable envelope</small><strong>{formatNumber(calculations.envelopeWidth)} × {formatNumber(calculations.envelopeDepth)} ft</strong><p>Derived from your lot dimensions minus entered setback assumptions.</p></div>
-                  <div><small>Ground footprint</small><strong>~{formatNumber(calculations.footprint)} sqft</strong><p>Planning estimate using 70% of the entered envelope.</p></div>
+                  <div><small>Lot-shape adjustment</small><strong>{Math.round(calculations.lotShapeFactor * 100)}%</strong><p>{boundaryConfirmed ? "Irregular or tapered geometry is carried into the planning estimate." : "No confirmed polygon; rectangular dimensions are being used."}</p></div>
+                  <div><small>Ground footprint</small><strong>~{formatNumber(calculations.footprint)} sqft</strong><p>Planning estimate adjusted by the confirmed lot-shape factor.</p></div>
                   <div><small>Potential built-up</small><strong>~{formatNumber(calculations.builtUp)} sqft</strong><p>{calculations.storeys} storey concept before professional design review.</p></div>
-                  <div><small>Document confidence</small><strong>{calculations.confidence}</strong><p>{calculations.quality}</p></div>
+                  {siteCondition === "river" && <div className="wb-metric-warning"><small>River constraint</small><strong>{calculations.riverReserveM} m provisional</strong><p>Applied inward from selected river edge for concept testing. Authority confirmation is mandatory.</p></div>}
+                  <div className={calculations.fitRatio < 1 ? "wb-metric-warning" : "wb-metric-pass"}><small>Space-fit check</small><strong>{calculations.fitRatio < 1 ? "Does not fit" : "Fits provisionally"}</strong><p>Requested internal programme needs about {formatNumber(calculations.program.totalArea)} sqft before the architect refines structure and walls.</p></div>
+                  <div><small>Geometry status</small><strong>{calculations.confidence}</strong><p>{calculations.quality}</p></div>
+                </div>
+              </div>
+
+              <div className="wb-malaysia-standards">
+                <div className="wb-standards-head"><div><span>WEDGEBUILD MALAYSIA DESIGN TARGETS</span><h3>Real dimensions before pretty drawings.</h3></div><p>Planning targets—not authority approval. The architect must verify the applicable state UBBL and PBT requirements.</p></div>
+                <div className="wb-standard-grid">
+                  {[MALAYSIA_SPACE_STANDARDS.bathroom, MALAYSIA_SPACE_STANDARDS.standardBedroom, MALAYSIA_SPACE_STANDARDS.staircase].map((standard) => (
+                    <article key={standard.label}><span>{standard.label}</span><strong>{standard.dimensions}</strong><b>{standard.areaSqft} sqft planning area</b><p>{standard.note}</p></article>
+                  ))}
+                  <article><span>{calculations.porch.cars}-car porch</span><strong>{calculations.porch.dimensions}</strong><b>~{formatNumber(calculations.porch.areaSqft)} sqft covered area</b><p>{calculations.porch.note} Columns and gates must not block door opening or manoeuvring.</p></article>
                 </div>
               </div>
 
               <div className="wb-room-schedule">
-                <div><span>GROUND FLOOR</span><p>Living · dining · kitchen · room · bath · store · porch</p></div>
-                <div><span>UPPER FLOOR</span><p>{calculations.storeys === 2 ? `${Math.max(1, bedrooms - 1)} rooms · family lounge · baths · balcony idea` : "Not included in selected house type"}</p></div>
+                <div><span>GROUND FLOOR · MALAYSIA</span><p>Shaded porch · living/dining · dry kitchen · wet kitchen/yard · ground room · bath/store</p></div>
+                <div><span>UPPER FLOOR</span><p>{calculations.storeys === 2 ? `${Math.max(1, bedrooms - 1)} rooms · family lounge · baths · shaded balcony` : "Not included in selected house type"}</p></div>
                 <div><span>OWNER BRIEF</span><p>{brief}</p></div>
               </div>
 
@@ -393,6 +543,16 @@ export default function WedgeBuildPage() {
           )}
         </div>
       </section>
+
+      <DesignChat
+        roofStyle={roofStyle}
+        eaveDepthFt={eaveDepthFt}
+        porchDepthFt={porchDepthFt}
+        cars={cars}
+        bedrooms={bedrooms}
+        facade={facade}
+        onApply={applyDesignRevision}
+      />
 
       <section className="wb-boundary">
         <p className="wb-kicker">THE PHASE 1 BOUNDARY</p>
