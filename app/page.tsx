@@ -5,7 +5,7 @@ import { accountingDeskImage } from "./wedge-i/books/images";
 export const metadata: Metadata = {
   title: "Wedge Works | Operate, Decide and Grow",
   description:
-    "WedgeCLOCKin, Wedge-I, WedgeWeb, Wedge-SmartPOS and Wedge-Supply ERP bring practical business operations into one growing platform.",
+    "WedgeCLOCKin, Wedge-I, WedgeBooks, WedgeBuild, WedgeWeb, Wedge-SmartPOS and Wedge-Supply ERP bring practical operations into one growing platform.",
 };
 
 const apkUrl = "https://github.com/lokejohnathan-Wellpath/WedgeCLOCKin/releases/download/v1.0.0-beta/Wedge-worksbeta1.01.apk";
@@ -14,6 +14,7 @@ const products = [
   { name: "WedgeCLOCKin", eyebrow: "WORKFORCE", text: "Face and GPS attendance, leave, payroll-ready records and secure employee operations.", href: "/employee-clockin", action: "Explore ClockIn" },
   { name: "Wedge-I", eyebrow: "EXECUTIVE AI", text: "Turn operating numbers into forecasts, priorities and clearer management decisions.", href: "/wedge-i", action: "Open Wedge-I" },
   { name: "WedgeBooks", eyebrow: "AI BOOKKEEPING", text: "Read real receipts and invoices, isolate every line and export clean bookkeeping records.", href: "/wedge-i/books", action: "Open WedgeBooks" },
+  { name: "WedgeBuild", eyebrow: "DOCUMENT-LED BUILDING", text: "Turn land documents and a house brief into a preliminary concept pack for architect review.", href: "/wedgebuild", action: "Build On My Land" },
   { name: "WedgeWeb", eyebrow: "WEBSITE ENGINE", text: "Create a professional customer website through a guided conversation and publish when ready.", href: "/wedgeweb", action: "Create Free Preview" },
   { name: "Wedge-SmartPOS", eyebrow: "CUSTOMER OPERATIONS", text: "Connect clients, appointments, services and daily counter operations for pet grooming and salon/spa businesses.", href: "/wedge-smartpos", action: "Discover SmartPOS" },
   { name: "Wedge-Supply ERP", eyebrow: "SUPPLY OPERATIONS", text: "Connect outlet requests, centralized purchasing, kitchen production, warehouse stock and branch deliveries.", href: "/wedge-supply", action: "Open Supply ERP" },
@@ -54,12 +55,36 @@ export default function Home() {
         <div className="mx-auto max-w-7xl">
           <div className="mx-auto max-w-2xl text-center"><p className="text-xs font-bold tracking-[.28em] text-[#5e8983]">ONE WEDGE WORKS ECOSYSTEM</p><h2 className="mt-5 font-serif text-4xl leading-tight sm:text-5xl">Built for the way small businesses <em className="font-normal text-[#5e8983]">really</em> work.</h2><p className="mt-5 leading-7 text-[#526065]">Begin with the tool you need today. Add the others as your business grows.</p></div>
           <div className="mt-16 grid gap-0 border-y border-[#20282c]/10 md:grid-cols-2 xl:grid-cols-3">
-            {products.map((product, index) => <article key={product.name} className={`px-7 py-10 ${index ? "border-t border-[#20282c]/10 md:border-l" : ""} ${index === 2 ? "md:border-l-0 xl:border-l" : ""}`}><div className="flex h-12 w-12 items-center justify-center rounded-full border border-[#d2aa62]/45 text-[#5e8983]">{index === 0 ? "◎" : index === 1 ? "✦" : index === 2 ? "◇" : "▣"}</div><p className="mt-7 text-[10px] font-bold tracking-[.22em] text-[#b08745]">{product.eyebrow}</p><h3 className="mt-3 font-serif text-3xl">{product.name}</h3><p className="mt-4 min-h-[84px] text-sm leading-7 text-[#59666a]">{product.text}</p><a href={product.href} className="mt-6 inline-flex border-b border-[#5e8983]/40 pb-1 text-sm font-bold text-[#497973]">{product.action} →</a></article>)}
+            {products.map((product, index) => <article key={product.name} className="border-[#20282c]/10 px-7 py-10 md:border-l md:first:border-l-0 xl:[&:nth-child(3n+1)]:border-l-0"><div className="flex h-12 w-12 items-center justify-center rounded-full border border-[#d2aa62]/45 text-[#5e8983]">{index === 0 ? "◎" : index === 1 ? "✦" : index === 2 ? "◇" : index === 3 ? "⌂" : "▣"}</div><p className="mt-7 text-[10px] font-bold tracking-[.22em] text-[#b08745]">{product.eyebrow}</p><h3 className="mt-3 font-serif text-3xl">{product.name}</h3><p className="mt-4 min-h-[84px] text-sm leading-7 text-[#59666a]">{product.text}</p><a href={product.href} className="mt-6 inline-flex border-b border-[#5e8983]/40 pb-1 text-sm font-bold text-[#497973]">{product.action} →</a></article>)}
           </div>
         </div>
       </section>
 
       <section id="industries">
+        <article className="grid min-h-[620px] bg-[#f3efe7] text-[#20282c] lg:grid-cols-2">
+          <div className="relative min-h-[520px] overflow-hidden bg-[#183b35]">
+            <div className="absolute inset-0 opacity-20 [background-image:linear-gradient(rgba(184,219,210,.4)_1px,transparent_1px),linear-gradient(90deg,rgba(184,219,210,.4)_1px,transparent_1px)] [background-size:30px_30px]" />
+            <div className="absolute inset-[12%] border-2 border-[#b8dbd2]/70">
+              <div className="absolute inset-[12%] border border-[#b8dbd2]/70">
+                <span className="absolute inset-y-0 left-1/2 border-l border-[#b8dbd2]/70" />
+                <span className="absolute inset-x-0 top-1/2 border-t border-[#b8dbd2]/70" />
+                <span className="absolute bottom-0 left-[15%] right-[15%] h-[18%] border border-[#d2aa62]/70 bg-[#d2aa62]/10" />
+              </div>
+            </div>
+            <div className="absolute left-8 top-8 text-[10px] font-bold tracking-[.22em] text-[#d2aa62]">PRELIMINARY OWNER CONCEPT</div>
+            <div className="absolute bottom-8 right-8 rotate-[-7deg] border-2 border-[#d2aa62]/70 px-4 py-2 text-center text-[10px] font-black tracking-[.15em] text-[#d2aa62]">FOR ARCHITECT<br />REVIEW ONLY</div>
+          </div>
+          <div className="flex items-center px-8 py-16 sm:px-14 lg:px-20">
+            <div className="max-w-lg">
+              <p className="text-xs font-bold tracking-[.24em] text-[#b08745]">WEDGEBUILD · BUILD ON MY LAND</p>
+              <h2 className="mt-6 font-serif text-4xl leading-[1.08] sm:text-5xl">We build with documents, not with promises.</h2>
+              <div className="mt-7 h-0.5 w-12 bg-[#d2aa62]" />
+              <p className="mt-7 text-base leading-8 text-[#59666a]">Upload land information, shape a preliminary house concept and unlock a clear document pack only when the preview helps. Wedge then hands the file to an architect for professional review.</p>
+              <div className="mt-7 flex flex-wrap gap-2 text-xs text-[#59666a]"><span className="rounded-full border border-[#20282c]/10 bg-white/50 px-3 py-2">Free preview</span><span className="rounded-full border border-[#20282c]/10 bg-white/50 px-3 py-2">RM99 pack</span><span className="rounded-full border border-[#20282c]/10 bg-white/50 px-3 py-2">Architect handoff</span></div>
+              <a href="/wedgebuild" className="mt-9 inline-flex rounded-md bg-[#20282c] px-6 py-3 font-bold text-[#f3efe7]">Build On My Land</a>
+            </div>
+          </div>
+        </article>
         <article className="relative min-h-[620px] overflow-hidden bg-[#0a1115] text-[#f3efe7]">
           <div className="absolute inset-0 grid grid-cols-2">
             <div className="relative overflow-hidden">
