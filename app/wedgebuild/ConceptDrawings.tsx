@@ -89,7 +89,25 @@ function insetSelectedEdge(points: LotPoint[], edgeIndex: number, distance: numb
   );
 }
 
-function PlanGrid({ upper, bedrooms, brief, storeys, cars, porchDepthFt }: { upper: boolean; bedrooms: number; brief: string; storeys: number; cars: number; porchDepthFt: number }) {
+function PlanGrid({
+  upper,
+  bedrooms,
+  brief,
+  storeys,
+  cars,
+  porchDepthFt,
+  buildingWidthFt,
+  buildingDepthFt,
+}: {
+  upper: boolean;
+  bedrooms: number;
+  brief: string;
+  storeys: number;
+  cars: number;
+  porchDepthFt: number;
+  buildingWidthFt: number;
+  buildingDepthFt: number;
+}) {
   const standards = MALAYSIA_SPACE_STANDARDS;
   const wantsSurau = /surau|prayer|solat/i.test(brief);
   const wantsElderly = /elder|parent|warga|accessible/i.test(brief);
@@ -127,33 +145,84 @@ function PlanGrid({ upper, bedrooms, brief, storeys, cars, porchDepthFt }: { upp
     room("BATH + STAIRS", standards.bathroom.areaSqft + standards.staircase.areaSqft, "5′ × 8′ + 1.0 m stair"),
   ];
   const rooms = upper ? upperRooms : groundRooms;
-  const columns = rooms.length > 6 ? 3 : 2;
-  const rows = Math.ceil(rooms.length / columns);
-  const roomWidth = 536 / columns;
-  const roomHeight = 286 / rows;
   const fills = ["#e1eee9", "#f4ead2", "#f7f0df", "#e8eee9", "#f0e3c8"];
+  const planWidth = Math.max(18, buildingWidthFt);
+  const planDepth = Math.max(25, buildingDepthFt);
+  const totalDepth = planDepth + (upper ? 0 : porchDepthFt);
+  const scale = Math.min(690 / planWidth, 465 / totalDepth);
+  const drawnWidth = planWidth * scale;
+  const drawnDepth = planDepth * scale;
+  const porchWidth = Math.min(planWidth, porch.widthM / .3048) * scale;
+  const porchDepth = upper ? 0 : porchDepthFt * scale;
+  const planX = (900 - drawnWidth) / 2;
+  const planY = 54;
+  const roomTotal = rooms.reduce((sum, room) => sum + room.area, 0);
+  const columns = rooms.reduce<typeof rooms[]>((groups, room) => {
+    const groupAreas = groups.map((group) => group.reduce((sum, item) => sum + item.area, 0));
+    const target = groupAreas[0] <= groupAreas[1] ? 0 : 1;
+    groups[target].push(room);
+    return groups;
+  }, [[], []]);
+  const roomLayouts = columns.flatMap((column, columnIndex) => {
+    const columnArea = column.reduce((sum, room) => sum + room.area, 0);
+    const columnWidth = drawnWidth * (columnArea / roomTotal);
+    const previousColumnArea = columns
+      .slice(0, columnIndex)
+      .flat()
+      .reduce((sum, room) => sum + room.area, 0);
+    const columnX = planX + drawnWidth * (previousColumnArea / roomTotal);
+    const layouts = column.map((room, roomIndex) => {
+      const height = drawnDepth * (room.area / columnArea);
+      const previousRoomArea = column
+        .slice(0, roomIndex)
+        .reduce((sum, item) => sum + item.area, 0);
+      const roomY = planY + drawnDepth * (previousRoomArea / columnArea);
+      return { ...room, x: columnX, y: roomY, width: columnWidth, height, key: `${columnIndex}-${roomIndex}-${room.name}` };
+    });
+    return layouts;
+  });
 
   return (
-    <svg viewBox="0 0 720 470" role="img" aria-label={upper ? "Upper floor preliminary concept" : "Ground floor preliminary Malaysian concept"}>
-      <rect width="720" height="470" fill="#f9f4e9" />
-      <rect x="92" y="70" width="536" height="286" fill="#fffdf8" stroke="#183b35" strokeWidth="4" />
-      {rooms.map((space, index) => {
-        const column = index % columns;
-        const row = Math.floor(index / columns);
-        const x = 92 + column * roomWidth;
-        const y = 70 + row * roomHeight;
+    <svg viewBox="0 0 900 620" role="img" aria-label={upper ? "Upper floor dimensioned preliminary concept" : "Ground floor dimensioned Malaysian concept"}>
+      <defs><pattern id={`plan-hatch-${upper ? "upper" : "ground"}`} width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="7" stroke="#b8a98e" strokeWidth=".8" /></pattern></defs>
+      <rect width="900" height="620" fill="#fbfaf6" />
+      <text x="36" y="28" className="elevation-note">N ↑ · PRELIMINARY SPACE-AREA LAYOUT · FRONT / ROAD AT BOTTOM</text>
+      {roomLayouts.map((space, index) => {
+        const compact = space.width < 145 || space.height < 82;
         return (
-          <g key={`${space.name}-${index}`}>
-            <rect x={x} y={y} width={roomWidth} height={roomHeight} fill={fills[index % fills.length]} stroke="#183b35" strokeWidth="2" />
-            <text x={x + roomWidth / 2} y={y + roomHeight / 2 - 3} textAnchor="middle" className="plan-room-label">{space.name}</text>
-            <text x={x + roomWidth / 2} y={y + roomHeight / 2 + 17} textAnchor="middle" className="plan-dimension-label">{space.dimensions} · {space.area} sqft</text>
+          <g key={space.key}>
+            <rect x={space.x} y={space.y} width={space.width} height={space.height} fill={fills[index % fills.length]} stroke="#183b35" strokeWidth="2.2" />
+            <text x={space.x + space.width / 2} y={space.y + space.height / 2 - 3} textAnchor="middle" className={compact ? "plan-room-label compact" : "plan-room-label"}>{space.name}</text>
+            <text x={space.x + space.width / 2} y={space.y + space.height / 2 + 16} textAnchor="middle" className="plan-dimension-label">{space.dimensions} · {space.area} sqft target</text>
+            {space.name.includes("STAIRS") && Array.from({ length: 9 }, (_, tread) => (
+              <line key={tread} x1={space.x + 8} y1={space.y + 10 + tread * Math.max(5, (space.height - 20) / 9)} x2={space.x + space.width - 8} y2={space.y + 10 + tread * Math.max(5, (space.height - 20) / 9)} stroke="#6f7e79" strokeWidth="1" />
+            ))}
           </g>
         );
       })}
-      <rect x="160" y="356" width="400" height="46" fill={upper ? "#d6c18b" : "#b8dbd2"} fillOpacity=".72" stroke={upper ? "#9b7a36" : "#477a70"} strokeWidth="2" />
-      <text x="360" y="385" textAnchor="middle" className="plan-room-label">{upper ? "SHADED BALCONY" : `${porch.cars}-CAR PORCH · ${porch.dimensions}`}</text>
-      <path d="M 628 155 Q 680 213 628 275" fill="none" stroke="#4a776e" strokeWidth="3" strokeDasharray="7 6" />
-      <text x="668" y="215" textAnchor="middle" className="plan-note-label" transform="rotate(90 668 215)">CROSS VENTILATION</text>
+      <rect x={planX} y={planY} width={drawnWidth} height={drawnDepth} fill="none" stroke="#102d27" strokeWidth="6" />
+      {upper ? (
+        <>
+          <rect x={planX + drawnWidth * .22} y={planY + drawnDepth} width={drawnWidth * .56} height="34" fill="#d6c18b" fillOpacity=".65" stroke="#816b3c" strokeWidth="2" />
+          <text x="450" y={planY + drawnDepth + 22} textAnchor="middle" className="plan-note-label">SHADED BALCONY</text>
+        </>
+      ) : (
+        <>
+          <rect x={(900 - porchWidth) / 2} y={planY + drawnDepth} width={porchWidth} height={porchDepth} fill="#b8dbd2" fillOpacity=".65" stroke="#477a70" strokeWidth="2.5" />
+          {Array.from({ length: cars - 1 }, (_, index) => <line key={index} x1={(900 - porchWidth) / 2 + (porchWidth / cars) * (index + 1)} y1={planY + drawnDepth} x2={(900 - porchWidth) / 2 + (porchWidth / cars) * (index + 1)} y2={planY + drawnDepth + porchDepth} stroke="#779e95" strokeWidth="1.5" strokeDasharray="6 5" />)}
+          <text x="450" y={planY + drawnDepth + porchDepth / 2 - 4} textAnchor="middle" className="plan-room-label">{porch.cars}-CAR PORCH</text>
+          <text x="450" y={planY + drawnDepth + porchDepth / 2 + 15} textAnchor="middle" className="plan-dimension-label">{porch.dimensions} · CLEAR DEPTH FROM GATE</text>
+        </>
+      )}
+      <g stroke="#71807b" strokeWidth="1" fill="none">
+        <path d={`M${planX} 42 v-12 M${planX + drawnWidth} 42 v-12 M${planX} 35 H${planX + drawnWidth}`} />
+        <path d={`M${planX} 31 l7 4 -7 4 M${planX + drawnWidth} 31 l-7 4 7 4`} />
+        <path d={`M${planX - 18} ${planY} h-13 M${planX - 18} ${planY + drawnDepth} h-13 M${planX - 25} ${planY} V${planY + drawnDepth}`} />
+        <path d={`M${planX - 29} ${planY} l4 7 4-7 M${planX - 29} ${planY + drawnDepth} l4-7 4 7`} />
+      </g>
+      <text x="450" y="30" textAnchor="middle" className="elevation-dimension">{planWidth.toFixed(1)} FT BUILDING WIDTH</text>
+      <text x={planX - 39} y={planY + drawnDepth / 2} textAnchor="middle" className="elevation-dimension" transform={`rotate(-90 ${planX - 39} ${planY + drawnDepth / 2})`}>{planDepth.toFixed(1)} FT BUILDING DEPTH</text>
+      {!upper && <text x="450" y="606" textAnchor="middle" className="elevation-title">ROAD / FRONT GATE · PORCH DEPTH {porchDepthFt} FT</text>}
     </svg>
   );
 }
@@ -166,6 +235,8 @@ function ElevationDrawing({
   eaveDepthFt,
   porchDepthFt,
   cars,
+  buildingWidthFt,
+  buildingDepthFt,
 }: {
   facade: FacadeId;
   storeys: number;
@@ -174,6 +245,8 @@ function ElevationDrawing({
   eaveDepthFt: number;
   porchDepthFt: number;
   cars: number;
+  buildingWidthFt: number;
+  buildingDepthFt: number;
 }) {
   const side = view === "left" || view === "right";
   const rear = view === "rear";
@@ -181,17 +254,18 @@ function ElevationDrawing({
   const wallTop = storeys === 2 ? 190 : 285;
   const upperFloor = 310;
   const ground = 430;
-  const left = side ? 105 : 130;
-  const right = side ? 795 : 770;
+  const maximumSpanFt = Math.max(buildingWidthFt, buildingDepthFt, 1);
+  const viewSpanFt = side ? buildingDepthFt : buildingWidthFt;
+  const drawnSpan = Math.max(360, 700 * (viewSpanFt / maximumSpanFt));
+  const left = (900 - drawnSpan) / 2;
+  const right = left + drawnSpan;
   const palette = {
     "tropical-modern": { wall: "#eee8dc", accent: "#907052", screen: "#9d7047", roof: "#4c4038", glass: "#78a8a3" },
     "kampung-contemporary": { wall: "#f0e6d5", accent: "#6f4b35", screen: "#7b5032", roof: "#49372e", glass: "#79a29d" },
     "urban-malaysian": { wall: "#e9e7e1", accent: "#4e5a57", screen: "#876e54", roof: "#444b49", glass: "#719b99" },
     "homestay-tropical": { wall: "#f2e6d2", accent: "#a05f3f", screen: "#855536", roof: "#6c4335", glass: "#7ca69f" },
   }[facade];
-  const frontageM = Math.max(10.8, cars * 2.7 + 5.8);
-  const depthM = porchDepthFt * .3048 + 9.2;
-  const overallM = side ? depthM : frontageM;
+  const overallM = viewSpanFt * .3048;
   const window = (x: number, y: number, width: number, height: number, key: string) => (
     <g key={key}>
       <rect x={x} y={y} width={width} height={height} fill={palette.glass} stroke="#20312e" strokeWidth="2.4" />
@@ -278,17 +352,35 @@ function ElevationDrawing({
 
       {side && (
         <>
-          {storeys === 2 && <>
-            {window(left + 60, 225, 118, 52, "side-upper-1")}
-            {window(left + 285, 225, 104, 52, "side-upper-2")}
-            {window(right - 176, 225, 112, 52, "side-upper-3")}
-          </>}
-          {window(left + 65, 350, 126, 58, "side-ground-1")}
-          {window(left + 320, 350, 98, 58, "side-ground-2")}
-          <rect x={right - 172} y="341" width="88" height="89" fill={palette.screen} opacity=".9" stroke="#20312e" strokeWidth="2.5" />
+          {view === "left" ? (
+            <>
+              {storeys === 2 && <>
+                {window(left + 60, 225, 118, 52, "left-upper-1")}
+                {window(left + 285, 225, 104, 52, "left-upper-2")}
+                {window(right - 176, 225, 112, 52, "left-upper-3")}
+              </>}
+              {window(left + 65, 350, 126, 58, "left-ground-1")}
+              {window(left + 320, 350, 98, 58, "left-ground-2")}
+              <rect x={right - 172} y="341" width="88" height="89" fill={palette.screen} opacity=".9" stroke="#20312e" strokeWidth="2.5" />
+              <g stroke={palette.screen} strokeWidth="5">{[0,18,36,54].map((offset) => <line key={offset} x1={right - 158 + offset} y1="349" x2={right - 158 + offset} y2="421" />)}</g>
+              <text x={(left + right) / 2} y="321" textAnchor="middle" className="elevation-note">LIVING / BEDROOM SIDE · SHADED OPENINGS</text>
+            </>
+          ) : (
+            <>
+              {storeys === 2 && <>
+                {window(left + 78, 228, 105, 49, "right-upper-1")}
+                <rect x={(left + right) / 2 - 28} y="215" width="56" height="86" fill={palette.glass} stroke="#20312e" strokeWidth="2.5" />
+                {[0,1,2,3].map((line) => <line key={line} x1={(left + right) / 2 - 22} y1={230 + line * 18} x2={(left + right) / 2 + 22} y2={230 + line * 18} stroke="#dce8e4" strokeWidth="1.4" />)}
+                {window(right - 170, 228, 102, 49, "right-upper-2")}
+              </>}
+              <rect x={left + 72} y="360" width="78" height="38" fill={palette.glass} stroke="#20312e" strokeWidth="2.3" />
+              <text x={left + 111} y="414" textAnchor="middle" className="elevation-note">HIGH-LEVEL BATH WINDOW</text>
+              {window(right - 210, 350, 122, 58, "right-ground-1")}
+              <path d={`M${(left + right) / 2 - 42} 316 H${(left + right) / 2 + 42}`} stroke={palette.accent} strokeWidth="8" />
+              <text x={(left + right) / 2} y="321" textAnchor="middle" className="elevation-note">STAIR DAYLIGHT SLOT · SERVICE SIDE</text>
+            </>
+          )}
           <path d={`M${left + 32} 328 H${right - 34}`} stroke="#263a36" strokeWidth="5" />
-          <g stroke={palette.screen} strokeWidth="5">{[0,18,36,54].map((offset) => <line key={offset} x1={right - 158 + offset} y1="349" x2={right - 158 + offset} y2="421" />)}</g>
-          <text x={(left + right) / 2} y="321" textAnchor="middle" className="elevation-note">SHADED SIDE OPENINGS · CROSS VENTILATION</text>
         </>
       )}
 
@@ -342,6 +434,8 @@ export default function ConceptDrawings(props: DrawingProps) {
   const setbackRatio = Math.max(.58, Math.min(.86, Math.min(props.envelopeWidth / Math.max(1, props.lotWidth), props.envelopeDepth / Math.max(1, props.lotDepth))));
   const envelope = shrink(constrainedLot, setbackRatio);
   const massing = shrink(envelope, .78);
+  const buildingWidthFt = Math.max(18, props.envelopeWidth * .9);
+  const buildingDepthFt = Math.max(25, props.envelopeDepth * .78);
 
   return (
     <div className="wb-drawing-set">
@@ -368,7 +462,7 @@ export default function ConceptDrawings(props: DrawingProps) {
 
       <section className="wb-drawing-sheet">
         <header><div><small>A02 · GROUND FLOOR</small><h3>Malaysian Tropical Ground Floor</h3></div><b>{props.bedrooms} BEDROOM BRIEF</b></header>
-        <PlanGrid upper={false} bedrooms={props.bedrooms} brief={props.brief} storeys={props.storeys} cars={props.cars} porchDepthFt={props.porchDepthFt} />
+        <PlanGrid upper={false} bedrooms={props.bedrooms} brief={props.brief} storeys={props.storeys} cars={props.cars} porchDepthFt={props.porchDepthFt} buildingWidthFt={buildingWidthFt} buildingDepthFt={buildingDepthFt} />
         <div className="wb-watermark">NOT FOR CONSTRUCTION</div>
         <p>Wet kitchen, shaded arrival, service yard and cross-ventilation are treated as core Malaysian planning needs.</p>
       </section>
@@ -376,7 +470,7 @@ export default function ConceptDrawings(props: DrawingProps) {
       {props.storeys === 2 && (
         <section className="wb-drawing-sheet">
           <header><div><small>A03 · UPPER FLOOR</small><h3>Family + Private Rooms</h3></div><b>{Math.max(1, props.bedrooms - 1)} ROOMS UP</b></header>
-          <PlanGrid upper bedrooms={props.bedrooms} brief={props.brief} storeys={props.storeys} cars={props.cars} porchDepthFt={props.porchDepthFt} />
+          <PlanGrid upper bedrooms={props.bedrooms} brief={props.brief} storeys={props.storeys} cars={props.cars} porchDepthFt={props.porchDepthFt} buildingWidthFt={buildingWidthFt} buildingDepthFt={buildingDepthFt} />
           <div className="wb-watermark">NOT FOR CONSTRUCTION</div>
           <p>Room allocation follows the selected bedroom count and keeps a Malaysian family area upstairs.</p>
         </section>
@@ -388,7 +482,7 @@ export default function ConceptDrawings(props: DrawingProps) {
           {(["front", "left", "right", "rear"] as const).map((view) => (
             <article className="wb-drawing-sheet wb-facade-sheet" key={view}>
               <header><div><small>{view.toUpperCase()} VIEW</small><h3>{view[0].toUpperCase() + view.slice(1)} Elevation</h3></div><b>REVISION LINKED</b></header>
-              <ElevationDrawing facade={props.facade} storeys={props.storeys} view={view} roofStyle={props.roofStyle} eaveDepthFt={props.eaveDepthFt} porchDepthFt={props.porchDepthFt} cars={props.cars} />
+              <ElevationDrawing facade={props.facade} storeys={props.storeys} view={view} roofStyle={props.roofStyle} eaveDepthFt={props.eaveDepthFt} porchDepthFt={props.porchDepthFt} cars={props.cars} buildingWidthFt={buildingWidthFt} buildingDepthFt={buildingDepthFt} />
               <div className="wb-watermark">CONCEPT ONLY</div>
             </article>
           ))}

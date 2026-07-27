@@ -56,9 +56,9 @@ export const MALAYSIA_SPACE_STANDARDS = {
   },
   staircase: {
     label: "Residential staircase",
-    areaSqft: 70,
-    dimensions: "≥ 1.0 m clear",
-    note: "Wedge target: tread ≥270 mm, riser ≤175 mm, landing ≥ stair width and headroom ≥2.1 m.",
+    areaSqft: 52,
+    dimensions: "≈ 3′6″ × 14′9″",
+    note: "Straight-run planning footprint at about 1.0 m clear. A U/L stair or separate landing may need additional circulation area.",
   },
 } satisfies Record<string, SpaceStandard>;
 

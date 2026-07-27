@@ -192,6 +192,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .wb-drawing-sheet > p { margin: 11px 0 0; color: #7a6e5d; font-size: 8px; line-height: 1.55; letter-spacing: .06em; text-align: center; text-transform: uppercase; }
 .wb-drawing-sheet .wb-watermark { font-size: clamp(14px,2vw,28px); }
 .plan-room-label { fill: #183b35; font-family: "DM Sans", sans-serif; font-size: 14px; font-weight: 800; letter-spacing: .5px; }
+.plan-room-label.compact { font-size: 10px; letter-spacing: .15px; }
 .plan-dimension-label { fill: #6b7773; font-family: "DM Sans", sans-serif; font-size: 9px; font-weight: 700; letter-spacing: .2px; }
 .plan-note-label { fill: #477a70; font-family: "DM Sans", sans-serif; font-size: 9px; font-weight: 800; letter-spacing: 1px; }
 .elevation-note { fill: #3f5b54; font-family: "DM Sans", sans-serif; font-size: 9px; font-weight: 800; letter-spacing: .8px; }
