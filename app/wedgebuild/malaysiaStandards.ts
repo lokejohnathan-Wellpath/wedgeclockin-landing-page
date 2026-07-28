@@ -60,6 +60,12 @@ export const MALAYSIA_SPACE_STANDARDS = {
     dimensions: "≈ 3′6″ × 14′9″",
     note: "Straight-run planning footprint at about 1.0 m clear. A U/L stair or separate landing may need additional circulation area.",
   },
+  circulation: {
+    label: "Walking aisle / corridor",
+    areaSqft: 0,
+    dimensions: "3′-0″ clear minimum",
+    note: "WedgeBuild will reject or correct any owner request below 3 ft. Furniture, columns, door swings and cabinets must not reduce this clear route.",
+  },
 } satisfies Record<string, SpaceStandard>;
 
 export function carPorchStandard(cars: number, depthFt = 18) {

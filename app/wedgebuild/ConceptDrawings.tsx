@@ -1,6 +1,7 @@
 import type { LotPoint } from "./LotBoundaryMapper";
 import { carPorchStandard, MALAYSIA_SPACE_STANDARDS } from "./malaysiaStandards";
 import type { RoofStyle } from "./DesignChat";
+import { PAID_DRAWING_GATE, type InferredArchitecture } from "./architectureSeedEngine";
 
 export type FacadeId = "tropical-modern" | "kampung-contemporary" | "urban-malaysian" | "homestay-tropical";
 
@@ -20,6 +21,9 @@ type DrawingProps = {
   roofStyle: RoofStyle;
   eaveDepthFt: number;
   porchDepthFt: number;
+  aisleWidthFt: number;
+  unlocked: boolean;
+  designIntelligence: InferredArchitecture | null;
 };
 
 const facadeNames: Record<FacadeId, string> = {
@@ -96,6 +100,7 @@ function PlanGrid({
   storeys,
   cars,
   porchDepthFt,
+  aisleWidthFt,
   buildingWidthFt,
   buildingDepthFt,
 }: {
@@ -105,6 +110,7 @@ function PlanGrid({
   storeys: number;
   cars: number;
   porchDepthFt: number;
+  aisleWidthFt: number;
   buildingWidthFt: number;
   buildingDepthFt: number;
 }) {
@@ -152,6 +158,9 @@ function PlanGrid({
   const scale = Math.min(690 / planWidth, 465 / totalDepth);
   const drawnWidth = planWidth * scale;
   const drawnDepth = planDepth * scale;
+  const clearAisleFt = Math.max(3, aisleWidthFt);
+  const aisleDrawn = Math.min(drawnWidth * .2, clearAisleFt * scale);
+  const usableWidth = drawnWidth - aisleDrawn;
   const porchWidth = Math.min(planWidth, porch.widthM / .3048) * scale;
   const porchDepth = upper ? 0 : porchDepthFt * scale;
   const planX = (900 - drawnWidth) / 2;
@@ -165,12 +174,12 @@ function PlanGrid({
   }, [[], []]);
   const roomLayouts = columns.flatMap((column, columnIndex) => {
     const columnArea = column.reduce((sum, room) => sum + room.area, 0);
-    const columnWidth = drawnWidth * (columnArea / roomTotal);
+    const columnWidth = usableWidth * (columnArea / roomTotal);
     const previousColumnArea = columns
       .slice(0, columnIndex)
       .flat()
       .reduce((sum, room) => sum + room.area, 0);
-    const columnX = planX + drawnWidth * (previousColumnArea / roomTotal);
+    const columnX = planX + usableWidth * (previousColumnArea / roomTotal) + columnIndex * aisleDrawn;
     const layouts = column.map((room, roomIndex) => {
       const height = drawnDepth * (room.area / columnArea);
       const previousRoomArea = column
@@ -187,6 +196,16 @@ function PlanGrid({
       <defs><pattern id={`plan-hatch-${upper ? "upper" : "ground"}`} width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="7" stroke="#b8a98e" strokeWidth=".8" /></pattern></defs>
       <rect width="900" height="620" fill="#fbfaf6" />
       <text x="36" y="28" className="elevation-note">N ↑ · PRELIMINARY SPACE-AREA LAYOUT · FRONT / ROAD AT BOTTOM</text>
+      <rect x={planX + usableWidth * (columns[0].reduce((sum, room) => sum + room.area, 0) / roomTotal)} y={planY} width={aisleDrawn} height={drawnDepth} fill="#f5f1e8" stroke="#b38135" strokeWidth="2" strokeDasharray="8 5" />
+      <text
+        x={planX + usableWidth * (columns[0].reduce((sum, room) => sum + room.area, 0) / roomTotal) + aisleDrawn / 2}
+        y={planY + drawnDepth / 2}
+        textAnchor="middle"
+        className="plan-note-label"
+        transform={`rotate(-90 ${planX + usableWidth * (columns[0].reduce((sum, room) => sum + room.area, 0) / roomTotal) + aisleDrawn / 2} ${planY + drawnDepth / 2})`}
+      >
+        {clearAisleFt.toFixed(2)} FT CLEAR WALKING AISLE · NO OBSTRUCTION
+      </text>
       {roomLayouts.map((space, index) => {
         const compact = space.width < 145 || space.height < 82;
         return (
@@ -194,6 +213,7 @@ function PlanGrid({
             <rect x={space.x} y={space.y} width={space.width} height={space.height} fill={fills[index % fills.length]} stroke="#183b35" strokeWidth="2.2" />
             <text x={space.x + space.width / 2} y={space.y + space.height / 2 - 3} textAnchor="middle" className={compact ? "plan-room-label compact" : "plan-room-label"}>{space.name}</text>
             <text x={space.x + space.width / 2} y={space.y + space.height / 2 + 16} textAnchor="middle" className="plan-dimension-label">{space.dimensions} · {space.area} sqft target</text>
+            <path d={`M${space.x + space.width - 34} ${space.y + space.height} v-28 a28 28 0 0 1 28 28`} fill="none" stroke="#7d8c87" strokeWidth="1.2" />
             {space.name.includes("STAIRS") && Array.from({ length: 9 }, (_, tread) => (
               <line key={tread} x1={space.x + 8} y1={space.y + 10 + tread * Math.max(5, (space.height - 20) / 9)} x2={space.x + space.width - 8} y2={space.y + 10 + tread * Math.max(5, (space.height - 20) / 9)} stroke="#6f7e79" strokeWidth="1" />
             ))}
@@ -224,6 +244,125 @@ function PlanGrid({
       <text x={planX - 39} y={planY + drawnDepth / 2} textAnchor="middle" className="elevation-dimension" transform={`rotate(-90 ${planX - 39} ${planY + drawnDepth / 2})`}>{planDepth.toFixed(1)} FT BUILDING DEPTH</text>
       {!upper && <text x="450" y="606" textAnchor="middle" className="elevation-title">ROAD / FRONT GATE · PORCH DEPTH {porchDepthFt} FT</text>}
     </svg>
+  );
+}
+
+function Concept3DView({
+  facade,
+  roofStyle,
+  storeys,
+  cars,
+  buildingWidthFt,
+  buildingDepthFt,
+}: {
+  facade: FacadeId;
+  roofStyle: RoofStyle;
+  storeys: number;
+  cars: number;
+  buildingWidthFt: number;
+  buildingDepthFt: number;
+}) {
+  const palette = {
+    "tropical-modern": { wall: "#eee7da", side: "#d7cbbb", accent: "#4a3d35", frame: "#9b6e46", glass: "#7ea5a2" },
+    "kampung-contemporary": { wall: "#efe2cd", side: "#d2bea4", accent: "#603f2e", frame: "#80583a", glass: "#7d9f9a" },
+    "urban-malaysian": { wall: "#e6e6e2", side: "#c9cfcc", accent: "#384643", frame: "#7b6652", glass: "#73999a" },
+    "homestay-tropical": { wall: "#f0e2cf", side: "#d5bfa5", accent: "#81503a", frame: "#96613e", glass: "#79a09a" },
+  }[facade];
+  const frontLeft = 195;
+  const frontRight = 900;
+  const ground = 560;
+  const wallTop = storeys === 2 ? 188 : 322;
+  const depthX = Math.min(190, Math.max(115, buildingDepthFt * 3.2));
+  const depthY = -96;
+  const upperLine = storeys === 2 ? 372 : ground;
+  const frontWidth = frontRight - frontLeft;
+  const windowCount = Math.max(2, Math.min(4, Math.round(buildingWidthFt / 18)));
+
+  return (
+    <svg viewBox="0 0 1200 700" role="img" aria-label={`Coordinated three-dimensional ${facadeNames[facade]} exterior concept`}>
+      <defs>
+        <linearGradient id="wb3dSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#dfe9e7" /><stop offset=".72" stopColor="#f3eee2" /></linearGradient>
+        <linearGradient id="wb3dGlass" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#afceca" /><stop offset=".45" stopColor={palette.glass} /><stop offset="1" stopColor="#496d6b" /></linearGradient>
+        <linearGradient id="wb3dGround" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stopColor="#8c9b7a" /><stop offset="1" stopColor="#bac09f" /></linearGradient>
+        <filter id="wb3dShadow" x="-20%" y="-20%" width="150%" height="160%"><feDropShadow dx="0" dy="18" stdDeviation="14" floodColor="#14231f" floodOpacity=".22" /></filter>
+      </defs>
+      <rect width="1200" height="700" fill="url(#wb3dSky)" />
+      <circle cx="1035" cy="110" r="54" fill="#fff5d8" opacity=".75" />
+      <path d="M0 545 C180 515 320 535 490 516 S870 542 1200 500 V700 H0 Z" fill="url(#wb3dGround)" />
+      <path d="M70 640 L420 542 H1040 L1160 625 Z" fill="#c9c5b9" opacity=".9" />
+      <g filter="url(#wb3dShadow)">
+        <polygon points={`${frontRight},${wallTop} ${frontRight + depthX},${wallTop + depthY} ${frontRight + depthX},${ground + depthY} ${frontRight},${ground}`} fill={palette.side} stroke="#263b36" strokeWidth="3" />
+        <rect x={frontLeft} y={wallTop} width={frontWidth} height={ground - wallTop} fill={palette.wall} stroke="#263b36" strokeWidth="3" />
+        {storeys === 2 && <rect x={frontLeft} y={upperLine - 10} width={frontWidth} height="20" fill={palette.accent} />}
+
+        {roofStyle === "flat" && <>
+          <polygon points={`${frontLeft - 20},${wallTop} ${frontRight + 26},${wallTop} ${frontRight + depthX + 26},${wallTop + depthY} ${frontLeft + depthX - 20},${wallTop + depthY}`} fill="#303b38" stroke="#1c2b27" strokeWidth="4" />
+          <rect x={frontLeft - 20} y={wallTop - 24} width={frontWidth + 46} height="25" fill={palette.accent} stroke="#1c2b27" strokeWidth="3" />
+        </>}
+        {roofStyle === "butterfly" && <>
+          <polygon points={`${frontLeft - 25},${wallTop - 76} ${(frontLeft + frontRight) / 2},${wallTop - 15} ${frontRight + 25},${wallTop - 76} ${frontRight + depthX + 10},${wallTop + depthY - 75} ${(frontLeft + frontRight) / 2 + depthX},${wallTop + depthY - 15} ${frontLeft + depthX - 10},${wallTop + depthY - 75}`} fill="#3d4945" stroke="#1c2b27" strokeWidth="4" />
+          <path d={`M${(frontLeft + frontRight) / 2} ${wallTop - 15} L${(frontLeft + frontRight) / 2 + depthX} ${wallTop + depthY - 15}`} stroke="#6fb5c4" strokeWidth="8" />
+        </>}
+        {roofStyle === "skillion" && <polygon points={`${frontLeft - 25},${wallTop - 100} ${frontRight + 25},${wallTop - 28} ${frontRight + depthX + 20},${wallTop + depthY - 28} ${frontLeft + depthX - 20},${wallTop + depthY - 100}`} fill="#3d4945" stroke="#1c2b27" strokeWidth="4" />}
+        {(roofStyle === "pitched" || roofStyle === "hip") && <>
+          <polygon points={`${frontLeft - 28},${wallTop} ${(frontLeft + frontRight) / 2},${wallTop - 140} ${frontRight + 28},${wallTop} ${frontRight + depthX + 10},${wallTop + depthY} ${(frontLeft + frontRight) / 2 + depthX},${wallTop + depthY - 140} ${frontLeft + depthX - 10},${wallTop + depthY}`} fill="#453d38" stroke="#1c2b27" strokeWidth="4" />
+          {roofStyle === "hip" && <path d={`M${frontLeft - 28} ${wallTop} L${(frontLeft + frontRight) / 2 + depthX} ${wallTop + depthY - 140} L${frontRight + 28} ${wallTop}`} fill="none" stroke="#b38a53" strokeWidth="3" />}
+        </>}
+
+        {Array.from({ length: windowCount }, (_, index) => {
+          const bay = frontWidth / windowCount;
+          const x = frontLeft + bay * index + bay * .17;
+          const width = bay * .64;
+          return (
+            <g key={`lower-${index}`}>
+              <rect x={x} y={upperLine + 36} width={width} height={ground - upperLine - 78} fill="url(#wb3dGlass)" stroke="#253a35" strokeWidth="5" />
+              <line x1={x + width / 2} y1={upperLine + 36} x2={x + width / 2} y2={ground - 42} stroke="#d9e7e3" strokeWidth="2" />
+            </g>
+          );
+        })}
+        {storeys === 2 && Array.from({ length: windowCount }, (_, index) => {
+          const bay = frontWidth / windowCount;
+          const x = frontLeft + bay * index + bay * .18;
+          const width = bay * .62;
+          return <rect key={`upper-${index}`} x={x} y={wallTop + 42} width={width} height={125} fill="url(#wb3dGlass)" stroke="#253a35" strokeWidth="5" />;
+        })}
+
+        <rect x={frontRight - 138} y={ground - 130} width="90" height="130" fill={palette.frame} stroke="#263b36" strokeWidth="4" />
+        <circle cx={frontRight - 64} cy={ground - 63} r="4" fill="#e1bd72" />
+        <rect x={frontLeft + 58} y={wallTop + 24} width="96" height={ground - wallTop - 24} fill={palette.accent} opacity=".9" />
+        <g stroke="#c9a86c" strokeWidth="8">
+          {[0, 1, 2, 3, 4].map((index) => <line key={index} x1={frontLeft + 72 + index * 17} y1={wallTop + 45} x2={frontLeft + 72 + index * 17} y2={ground - 22} />)}
+        </g>
+
+        <polygon points={`${frontRight - 310},${ground - 112} ${frontRight + depthX + 25},${ground + depthY - 112} ${frontRight + depthX + 25},${ground + depthY - 94} ${frontRight - 310},${ground - 94}`} fill="#35433f" />
+        {Array.from({ length: cars }, (_, index) => {
+          const x = frontRight - 265 + index * 104;
+          return <g key={`car-${index}`} transform={`translate(${x} ${ground - 58})`} fill="none" stroke="#596864" strokeWidth="3"><path d="M-38 8 q9-27 29-27 h27 q19 2 29 27" /><path d="M-47 8 H54" /><circle cx="-28" cy="12" r="9" /><circle cx="35" cy="12" r="9" /></g>;
+        })}
+      </g>
+      <g fill="#365c4d">
+        {[95, 145, 1010, 1060, 1110].map((x, index) => <g key={x}><circle cx={x} cy={535 - (index % 2) * 12} r={30 + (index % 3) * 7} /><rect x={x - 4} y="540" width="8" height="58" fill="#6f6047" /></g>)}
+      </g>
+      <text x="42" y="48" className="elevation-note">COORDINATED 3D EXTERIOR CONCEPT · SAME MASSING / ROOF / OPENING DATA AS DRAWING SET</text>
+      <text x="42" y="76" className="elevation-dimension">{buildingWidthFt.toFixed(1)} FT BUILDING WIDTH · {buildingDepthFt.toFixed(1)} FT BUILDING DEPTH · {storeys} STOREY</text>
+    </svg>
+  );
+}
+
+function ProfessionalTitleBlock({ sheet, title }: { sheet: string; title: string }) {
+  return (
+    <aside className="wb-title-block">
+      <div className="wb-title-brand"><span>W</span><strong>WEDGEBUILD</strong><small>JUNIOR ARCHITECT CONCEPT ENGINE</small></div>
+      <div className="wb-title-warning">WEDGE BUILD PRELIMINARY DRAWING<br />NOT FOR SUBMISSION · NOT FOR CONSTRUCTION<br />FOR ARCHITECT REVIEW ONLY</div>
+      <dl>
+        <div><dt>PROJECT</dt><dd>OWNER CONCEPT RESIDENCE</dd></div>
+        <div><dt>DRAWING</dt><dd>{title}</dd></div>
+        <div><dt>STATUS</dt><dd>PRELIMINARY · REV 01</dd></div>
+        <div><dt>SCALE</dt><dd>DIAGRAMMATIC / DIMENSION LINKED</dd></div>
+        <div><dt>CHECK</dt><dd>APPOINTED ARCHITECT TO VERIFY</dd></div>
+      </dl>
+      <div className="wb-title-number"><small>SHEET NO.</small><strong>{sheet}</strong></div>
+    </aside>
   );
 }
 
@@ -293,7 +432,21 @@ function ElevationDrawing({
       <path d="M0 430 H900" stroke="#243733" strokeWidth="3.2" />
       <path d="M0 438 C130 426 225 445 340 434 S570 444 900 431 V520 H0 Z" fill="#e6ebe3" />
 
-      {roofStyle === "flat" ? (
+      {roofStyle === "butterfly" ? (
+        <g>
+          <path d={`M${left - 34} ${wallTop - 104} L${(left + right) / 2} ${wallTop - 28} L${right + 34} ${wallTop - 104} L${right + 18} ${wallTop - 118} L${(left + right) / 2} ${wallTop - 48} L${left - 18} ${wallTop - 118} Z`} fill={palette.roof} stroke="#20312e" strokeWidth="3.5" />
+          <path d={`M${(left + right) / 2} ${wallTop - 48} V${wallTop - 12}`} stroke="#2f718e" strokeWidth="7" />
+          <path d={`M${(left + right) / 2 - 12} ${wallTop - 48} H${(left + right) / 2 + 12}`} stroke="#7fc2d3" strokeWidth="3" />
+          <text x={(left + right) / 2} y={wallTop - 130} textAnchor="middle" className="elevation-note">BUTTERFLY ROOF · CENTRAL BOX GUTTER · OUTLET + EMERGENCY OVERFLOW</text>
+        </g>
+      ) : roofStyle === "skillion" ? (
+        <g>
+          <path d={`M${left - 34} ${wallTop - 112} L${right + 34} ${wallTop - 32} L${right + 20} ${wallTop - 14} L${left - 20} ${wallTop - 91} Z`} fill={palette.roof} stroke="#20312e" strokeWidth="3.5" />
+          <path d={`M${left - 34} ${wallTop - 112} L${right + 34} ${wallTop - 32}`} stroke="#d7a85a" strokeWidth="2" />
+          <path d={`M${right + 18} ${wallTop - 34} v35 h-14`} fill="none" stroke="#276b7a" strokeWidth="3" />
+          <text x={(left + right) / 2} y={wallTop - 127} textAnchor="middle" className="elevation-note">MONO-PITCH / SKILLION · SINGLE DRAINAGE DIRECTION · VENTILATED HIGH EDGE</text>
+        </g>
+      ) : roofStyle === "flat" ? (
         <g>
           <rect x={left - 18} y={wallTop - 36} width={right - left + 36} height="42" fill={palette.roof} stroke="#20312e" strokeWidth="3" />
           <path d={`M${left - 8} ${wallTop - 20} H${right - 8}`} stroke="#7fb4c2" strokeWidth="2" strokeDasharray="8 6" />
@@ -420,11 +573,79 @@ function ElevationDrawing({
   );
 }
 
+function StairCoordinationDrawing() {
+  const treads = Array.from({ length: 9 }, (_, index) => index);
+  return (
+    <svg viewBox="0 0 1200 690" role="img" aria-label="Coordinated residential stair plan and section">
+      <defs>
+        <pattern id="stairConcrete" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <line x1="0" y1="0" x2="0" y2="8" stroke="#a8a8a8" strokeWidth="1" />
+        </pattern>
+      </defs>
+      <rect width="1200" height="690" fill="#fff" />
+      <text x="38" y="35" className="elevation-note">A08 · STAIR COORDINATION · ARCHITECT TO VERIFY STRUCTURE, FIRE SAFETY AND APPLICABLE UBBL</text>
+
+      <g transform="translate(55 88)">
+        <text x="0" y="-18" className="elevation-title">GROUND FLOOR STAIR PLAN · 1:50</text>
+        <rect x="0" y="0" width="390" height="260" fill="none" stroke="#111" strokeWidth="5" />
+        <rect x="32" y="28" width="135" height="202" fill="none" stroke="#222" strokeWidth="2" />
+        <rect x="223" y="28" width="135" height="202" fill="none" stroke="#222" strokeWidth="2" />
+        {treads.map((index) => <line key={`l-${index}`} x1="32" y1={28 + index * 22.4} x2="167" y2={28 + index * 22.4} stroke="#222" />)}
+        {treads.map((index) => <line key={`r-${index}`} x1="223" y1={28 + index * 22.4} x2="358" y2={28 + index * 22.4} stroke="#222" />)}
+        <rect x="167" y="28" width="56" height="202" fill="url(#stairConcrete)" stroke="#222" />
+        <path d="M100 205 V58 l-11 16 M100 58 l11 16" stroke="#111" strokeWidth="2.5" fill="none" />
+        <text x="112" y="124" className="elevation-note">UP</text>
+        <path d="M290 58 V205 l-11-16 M290 205 l11-16" stroke="#111" strokeWidth="2.5" fill="none" />
+        <text x="302" y="126" className="elevation-note">DOWN</text>
+        <path d="M0 282 V300 M390 282 V300 M0 293 H390" stroke="#555" fill="none" />
+        <text x="195" y="316" textAnchor="middle" className="elevation-dimension">4.40 m OVERALL PLANNING BAY</text>
+        <text x="195" y="345" textAnchor="middle" className="elevation-note">1.00 m CLEAR FLIGHT · FULL LANDING · GUARDING BOTH SIDES</text>
+      </g>
+
+      <g transform="translate(520 78)">
+        <text x="0" y="-8" className="elevation-title">STAIR SECTION · 1:50</text>
+        <path d="M25 505 H605 M25 505 V492 H115" stroke="#111" strokeWidth="4" fill="none" />
+        <path d="M115 492 l180-270 h98 l180-270" transform="translate(0 270)" stroke="#111" strokeWidth="5" fill="none" />
+        {treads.map((index) => {
+          const x = 115 + index * 20;
+          const y = 492 - index * 30;
+          return <path key={`s1-${index}`} d={`M${x} ${y} h20 v-30`} stroke="#111" strokeWidth="2" fill="none" />;
+        })}
+        {treads.map((index) => {
+          const x = 393 + index * 20;
+          const y = 222 - index * 30;
+          return <path key={`s2-${index}`} d={`M${x} ${y} h20 v-30`} stroke="#111" strokeWidth="2" fill="none" />;
+        })}
+        <path d="M90 474 L280 187 H388 L578 -98" stroke="#555" strokeWidth="3" fill="none" />
+        <g stroke="#555" strokeWidth="2">
+          {treads.map((index) => <line key={`bal1-${index}`} x1={120 + index * 20} y1={452 - index * 30} x2={120 + index * 20} y2={492 - index * 30} />)}
+          {treads.map((index) => <line key={`bal2-${index}`} x1={398 + index * 20} y1={182 - index * 30} x2={398 + index * 20} y2={222 - index * 30} />)}
+        </g>
+        <path d="M0 492 H650 M0 222 H650 M0 -48 H650" stroke="#777" strokeDasharray="9 7" />
+        <text x="655" y="496" className="elevation-level">GROUND FFL ±0.00</text>
+        <text x="655" y="226" className="elevation-level">FIRST FFL +3.15</text>
+        <text x="655" y="-44" className="elevation-level">UPPER LANDING / ROOF ACCESS</text>
+        <path d="M78 492 V222 M67 492 H89 M67 222 H89" stroke="#555" fill="none" />
+        <text x="58" y="360" textAnchor="middle" transform="rotate(-90 58 360)" className="elevation-dimension">3.15 m FLOOR TO FLOOR</text>
+        <text x="210" y="430" className="elevation-note">18 RISERS @ 175 mm MAX TARGET</text>
+        <text x="210" y="452" className="elevation-note">270 mm TREAD TARGET · EQUAL RISERS</text>
+        <text x="400" y="410" className="elevation-note">2.10 m MINIMUM HEADROOM CHECK ZONE</text>
+        <path d="M390 390 h120" stroke="#9b6b28" strokeWidth="2" strokeDasharray="6 5" />
+      </g>
+
+      <g transform="translate(55 605)">
+        <circle cx="18" cy="18" r="18" fill="#111" />
+        <text x="18" y="23" textAnchor="middle" fill="#fff" fontSize="14" fontWeight="800">D1</text>
+        <text x="50" y="9" className="elevation-note">STAIR DESIGN SEED CHECK</text>
+        <text x="50" y="29" className="elevation-dimension">PLAN ↔ SECTION ↔ LANDING ↔ HEADROOM ↔ GUARDING MUST AGREE</text>
+        <text x="50" y="52" className="elevation-note">CONCEPT DIMENSIONS ONLY · FINAL STAIR TO BE DESIGNED AND CERTIFIED BY THE APPOINTED PROFESSIONALS</text>
+      </g>
+    </svg>
+  );
+}
+
 export default function ConceptDrawings(props: DrawingProps) {
   const lot = normalize(props.points);
-  const riverEdge = props.riverConstraint
-    ? [lot[props.riverConstraint.edgeIndex], lot[(props.riverConstraint.edgeIndex + 1) % lot.length]]
-    : null;
   const riverInset = props.riverConstraint
     ? Math.min(105, (props.riverConstraint.reserveM / Math.max(props.lotWidth, props.lotDepth, 1)) * 530)
     : 0;
@@ -433,62 +654,97 @@ export default function ConceptDrawings(props: DrawingProps) {
     : lot;
   const setbackRatio = Math.max(.58, Math.min(.86, Math.min(props.envelopeWidth / Math.max(1, props.lotWidth), props.envelopeDepth / Math.max(1, props.lotDepth))));
   const envelope = shrink(constrainedLot, setbackRatio);
-  const massing = shrink(envelope, .78);
   const buildingWidthFt = Math.max(18, props.envelopeWidth * .9);
   const buildingDepthFt = Math.max(25, props.envelopeDepth * .78);
 
   return (
     <div className="wb-drawing-set">
-      <section className="wb-drawing-sheet">
-        <header><div><small>A01 · SITE RESPONSE</small><h3>Confirmed Lot + Preliminary Envelope</h3></div><b>{props.boundaryConfirmed ? "TRACED FROM UPLOAD" : "DIMENSIONS ONLY"}</b></header>
-        <svg viewBox="0 0 720 470" role="img" aria-label="Site response using confirmed lot geometry">
-          <defs><pattern id="siteGrid" width="18" height="18" patternUnits="userSpaceOnUse"><path d="M 18 0 L 0 0 0 18" fill="none" stroke="#ded5c5" strokeWidth="1" /></pattern></defs>
-          <rect width="720" height="470" fill="url(#siteGrid)" />
-          <polygon points={pointString(lot)} fill="#fffdf8" stroke="#183b35" strokeWidth="4" />
-          {riverEdge && <>
-            <line x1={riverEdge[0].x} y1={riverEdge[0].y} x2={riverEdge[1].x} y2={riverEdge[1].y} stroke="#3e83a2" strokeWidth="16" strokeOpacity=".35" />
-            <line x1={riverEdge[0].x} y1={riverEdge[0].y} x2={riverEdge[1].x} y2={riverEdge[1].y} stroke="#2f718e" strokeWidth="5" />
-            <text x={(riverEdge[0].x + riverEdge[1].x) / 2} y={(riverEdge[0].y + riverEdge[1].y) / 2 - 15} textAnchor="middle" fill="#285f77" fontSize="12" fontWeight="800">RIVER EDGE · {props.riverConstraint?.reserveM} m INDICATIVE RESERVE</text>
-          </>}
-          <polygon points={pointString(envelope)} fill="#d2aa62" fillOpacity=".18" stroke="#b98a3c" strokeWidth="3" strokeDasharray="9 7" />
-          <polygon points={pointString(massing)} fill="#b8dbd2" fillOpacity=".55" stroke="#3e756b" strokeWidth="3" />
-          <text x="360" y="230" textAnchor="middle" fill="#183b35" fontSize="17" fontWeight="800">HOUSE MASSING FOLLOWS LOT</text>
-          <line x1={lot[0].x} y1={lot[0].y} x2={lot[1].x} y2={lot[1].y} stroke="#a75c3d" strokeWidth="7" />
-          <text x={(lot[0].x + lot[1].x) / 2} y={(lot[0].y + lot[1].y) / 2 + 22} textAnchor="middle" fill="#934b31" fontSize="12" fontWeight="800">ROAD / ACCESS EDGE</text>
-        </svg>
-        <div className="wb-watermark">ARCHITECT REVIEW ONLY</div>
-        <p>Boundary is owner-traced from the uploaded plan; river and building setbacks remain assumptions until JPS, PBT and professional verification.</p>
+      <section className="wb-3d-sheet">
+        <header><div><small>V01 · COORDINATED EXTERIOR</small><h3>Three-Dimensional Design Visual</h3></div><b>{props.designIntelligence?.title ?? facadeNames[props.facade]}</b></header>
+        <Concept3DView facade={props.facade} roofStyle={props.roofStyle} storeys={props.storeys} cars={props.cars} buildingWidthFt={buildingWidthFt} buildingDepthFt={buildingDepthFt} />
+        <div className="wb-watermark">{props.unlocked ? "PRELIMINARY 3D CONCEPT" : "FREE CONCEPT PREVIEW"}</div>
+        <p>The 3D view uses the same storey count, massing, roof, façade family, porch and opening rhythm as the connected plan and elevation set.</p>
       </section>
 
-      <section className="wb-drawing-sheet">
-        <header><div><small>A02 · GROUND FLOOR</small><h3>Malaysian Tropical Ground Floor</h3></div><b>{props.bedrooms} BEDROOM BRIEF</b></header>
-        <PlanGrid upper={false} bedrooms={props.bedrooms} brief={props.brief} storeys={props.storeys} cars={props.cars} porchDepthFt={props.porchDepthFt} buildingWidthFt={buildingWidthFt} buildingDepthFt={buildingDepthFt} />
-        <div className="wb-watermark">NOT FOR CONSTRUCTION</div>
-        <p>Wet kitchen, shaded arrival, service yard and cross-ventilation are treated as core Malaysian planning needs.</p>
-      </section>
-
-      {props.storeys === 2 && (
-        <section className="wb-drawing-sheet">
-          <header><div><small>A03 · UPPER FLOOR</small><h3>Family + Private Rooms</h3></div><b>{Math.max(1, props.bedrooms - 1)} ROOMS UP</b></header>
-          <PlanGrid upper bedrooms={props.bedrooms} brief={props.brief} storeys={props.storeys} cars={props.cars} porchDepthFt={props.porchDepthFt} buildingWidthFt={buildingWidthFt} buildingDepthFt={buildingDepthFt} />
-          <div className="wb-watermark">NOT FOR CONSTRUCTION</div>
-          <p>Room allocation follows the selected bedroom count and keeps a Malaysian family area upstairs.</p>
-        </section>
-      )}
-
-      <section className="wb-elevation-section">
-        <header><div><small>A04–A07 · COORDINATED ELEVATIONS</small><h3>{facadeNames[props.facade]}</h3></div><b>{props.roofStyle.toUpperCase()} ROOF · {props.eaveDepthFt} FT EAVE</b></header>
-        <div className="wb-elevation-set">
-          {(["front", "left", "right", "rear"] as const).map((view) => (
-            <article className="wb-drawing-sheet wb-facade-sheet" key={view}>
-              <header><div><small>{view.toUpperCase()} VIEW</small><h3>{view[0].toUpperCase() + view.slice(1)} Elevation</h3></div><b>REVISION LINKED</b></header>
-              <ElevationDrawing facade={props.facade} storeys={props.storeys} view={view} roofStyle={props.roofStyle} eaveDepthFt={props.eaveDepthFt} porchDepthFt={props.porchDepthFt} cars={props.cars} buildingWidthFt={buildingWidthFt} buildingDepthFt={buildingDepthFt} />
-              <div className="wb-watermark">CONCEPT ONLY</div>
+      <section className="wb-professional-sheet wb-plan-sheet">
+        <div className="wb-professional-body">
+          <header className="wb-professional-head">
+            <div><small>A01–A03 · LOCKED STANDARD FORMAT</small><h3>Site-Coordinated Floor Plans</h3></div>
+            <div className="wb-north-arrow"><span>↑</span><b>N</b></div>
+          </header>
+          <div className="wb-plan-board">
+            <article className="wb-plan-panel">
+              <div className="wb-panel-caption"><b>1 · GROUND FLOOR PLAN</b><span>ROAD / ACCESS AT BOTTOM · {props.boundaryConfirmed ? "OWNER-CONFIRMED BOUNDARY" : "DIMENSIONS-ONLY BOUNDARY"}</span></div>
+              <PlanGrid upper={false} bedrooms={props.bedrooms} brief={props.brief} storeys={props.storeys} cars={props.cars} porchDepthFt={props.porchDepthFt} aisleWidthFt={props.aisleWidthFt} buildingWidthFt={buildingWidthFt} buildingDepthFt={buildingDepthFt} />
+              <svg className="wb-setback-overlay" viewBox="0 0 900 620" aria-hidden="true">
+                <polygon points={pointString(lot.map((point) => ({ x: point.x + 90, y: point.y + 80 })))} fill="none" stroke="#283936" strokeWidth="3" strokeDasharray="12 8" />
+                <polygon points={pointString(envelope.map((point) => ({ x: point.x + 90, y: point.y + 80 })))} fill="none" stroke="#b07930" strokeWidth="2" strokeDasharray="7 5" />
+              </svg>
+              <div className="wb-setback-strip"><span>FRONT {props.lotDepth - props.envelopeDepth > 0 ? "SETBACK SHOWN" : "VERIFY"}</span><span>LEFT / RIGHT SETBACK LINES</span><span>REAR SETBACK LINE</span><span>{props.aisleWidthFt.toFixed(2)} FT CLEAR AISLE</span></div>
             </article>
-          ))}
+            <article className="wb-plan-panel">
+              <div className="wb-panel-caption"><b>2 · {props.storeys === 2 ? "FIRST FLOOR PLAN" : "ROOF / SERVICE PLAN"}</b><span>SAME SITE ORIENTATION · SAME SETBACK DATUM</span></div>
+              <PlanGrid upper bedrooms={props.bedrooms} brief={props.brief} storeys={props.storeys} cars={props.cars} porchDepthFt={props.porchDepthFt} aisleWidthFt={props.aisleWidthFt} buildingWidthFt={buildingWidthFt} buildingDepthFt={buildingDepthFt} />
+              <svg className="wb-setback-overlay" viewBox="0 0 900 620" aria-hidden="true">
+                <polygon points={pointString(lot.map((point) => ({ x: point.x + 90, y: point.y + 80 })))} fill="none" stroke="#283936" strokeWidth="3" strokeDasharray="12 8" />
+                <polygon points={pointString(envelope.map((point) => ({ x: point.x + 90, y: point.y + 80 })))} fill="none" stroke="#b07930" strokeWidth="2" strokeDasharray="7 5" />
+              </svg>
+              <div className="wb-setback-strip"><span>LOT {props.lotWidth.toFixed(1)} × {props.lotDepth.toFixed(1)} FT</span><span>BUILDABLE {props.envelopeWidth.toFixed(1)} × {props.envelopeDepth.toFixed(1)} FT</span><span>SETBACKS TO ARCHITECT / PBT VERIFY</span></div>
+            </article>
+          </div>
+          <div className="wb-professional-notes">
+            <b>GENERAL NOTES</b>
+            <p>Site boundary remains visible regardless of lot shape. Building and setback geometry must stay inside the owner-confirmed boundary. Minimum walking aisle is locked at 3 ft clear. All dimensions, easements, reserves and statutory setbacks require appointed-architect verification.</p>
+          </div>
         </div>
-        <p>Openings, roof, eaves and porch are revised as one connected concept—not four unrelated images.</p>
+        <ProfessionalTitleBlock sheet="A101" title="SITE + FLOOR PLANS" />
+        <div className="wb-watermark">FOR ARCHITECT REVIEW ONLY</div>
       </section>
+
+      {!props.unlocked ? (
+        <section className="wb-elevation-section">
+          <header><div><small>FREE DESIGN INTENT PREVIEW</small><h3>{props.designIntelligence?.title ?? facadeNames[props.facade]}</h3></div><b>{props.roofStyle.toUpperCase()} ROOF · INFERRED BY WEDGEBUILD</b></header>
+          <article className="wb-drawing-sheet wb-facade-sheet wb-free-elevation">
+            <header><div><small>FRONT VIEW</small><h3>Front Elevation Preview</h3></div><b>FULL TECHNICAL SET LOCKED</b></header>
+            <ElevationDrawing facade={props.facade} storeys={props.storeys} view="front" roofStyle={props.roofStyle} eaveDepthFt={props.eaveDepthFt} porchDepthFt={props.porchDepthFt} cars={props.cars} buildingWidthFt={buildingWidthFt} buildingDepthFt={buildingDepthFt} />
+            <div className="wb-watermark">FREE CONCEPT PREVIEW</div>
+          </article>
+          <p>Be satisfied with the design direction first. RM99 unlocks the coordinated four-elevation sheet, stair sheet and architect handoff documents.</p>
+        </section>
+      ) : (
+        <>
+          <section className="wb-professional-sheet wb-paid-elevation-board">
+            <div className="wb-professional-body">
+              <header>
+                <div><small>WEDGEBUILD · LOCKED ELEVATION FORMAT</small><h3>Coordinated Exterior Elevations</h3><p>{props.designIntelligence?.title ?? facadeNames[props.facade]}</p></div>
+                <div><b>PRELIMINARY CONCEPT</b><span>REV 01 · OWNER ACCEPTED</span></div>
+              </header>
+              <div className="wb-four-elevations">
+                {(["front", "left", "rear", "right"] as const).map((view, index) => (
+                  <article key={view}>
+                    <ElevationDrawing facade={props.facade} storeys={props.storeys} view={view} roofStyle={props.roofStyle} eaveDepthFt={props.eaveDepthFt} porchDepthFt={props.porchDepthFt} cars={props.cars} buildingWidthFt={buildingWidthFt} buildingDepthFt={buildingDepthFt} />
+                    <b>{String(index + 1).padStart(2, "0")} · {view.toUpperCase()} ELEVATION</b>
+                  </article>
+                ))}
+              </div>
+              <footer>
+                <div><b>LEVELS</b><span>GROUND · FIRST · EAVE · ROOF</span></div><div><b>DIMENSIONS</b><span>WIDTH / DEPTH LINKED TO PLAN</span></div><div><b>CALLOUTS</b><span>ROOF · WINDOWS · MATERIAL · RAINWATER</span></div>
+              </footer>
+            </div>
+            <ProfessionalTitleBlock sheet="A401" title="EXTERIOR ELEVATIONS" />
+            <div className="wb-watermark">FOR ARCHITECT REVIEW ONLY</div>
+          </section>
+
+          <section className="wb-stair-sheet">
+            <StairCoordinationDrawing />
+          </section>
+
+          <section className="wb-paid-gate">
+            <div><span>RM99 DRAWING QUALITY GATE</span><h3>What every paid concept must contain.</h3></div>
+            <ul>{PAID_DRAWING_GATE.map((item) => <li key={item}>{item}</li>)}</ul>
+          </section>
+        </>
+      )}
     </div>
   );
 }

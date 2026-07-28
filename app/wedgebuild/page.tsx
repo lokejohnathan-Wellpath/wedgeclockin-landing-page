@@ -8,6 +8,7 @@ import { carPorchStandard, estimateInternalProgram, MALAYSIA_SPACE_STANDARDS } f
 import { indicativeRiverReserve } from "./riverRules";
 import { detectBoundaryFromImage } from "./boundaryDetector";
 import DesignChat, { type DesignChanges, type RoofStyle } from "./DesignChat";
+import { inferArchitecture, rememberAcceptedConcept, type InferredArchitecture } from "./architectureSeedEngine";
 import "./wedgebuild.css";
 
 type Stage = "land" | "preview" | "pack" | "handoff";
@@ -75,20 +76,24 @@ export default function WedgeBuildPage() {
   const [rearSetback, setRearSetback] = useState(10);
   const [leftSetback, setLeftSetback] = useState(10);
   const [rightSetback, setRightSetback] = useState(10);
-  const [houseType, setHouseType] = useState("Urban double-storey Malaysian home");
+  const [storeys, setStoreys] = useState(2);
   const [facade, setFacade] = useState<FacadeId>("tropical-modern");
+  const [designIntelligence, setDesignIntelligence] = useState<InferredArchitecture | null>(null);
   const [roofStyle, setRoofStyle] = useState<RoofStyle>("hip");
   const [eaveDepthFt, setEaveDepthFt] = useState(3.5);
   const [porchDepthFt, setPorchDepthFt] = useState(18);
+  const [requestedAisleWidthFt, setRequestedAisleWidthFt] = useState(3);
   const [bedrooms, setBedrooms] = useState(5);
   const [cars, setCars] = useState(2);
   const [brief, setBrief] = useState(roomIdeas[0]);
   const [generated, setGenerated] = useState(false);
+  const [conceptSatisfied, setConceptSatisfied] = useState(false);
   const [ownerAccepted, setOwnerAccepted] = useState(false);
   const [disclaimerAccepted, setDisclaimerAccepted] = useState(false);
   const [paid, setPaid] = useState(false);
   const [architectStatus, setArchitectStatus] = useState<"draft" | "sent">("draft");
   const [notice, setNotice] = useState("");
+  const effectiveAisleWidthFt = Math.max(3, requestedAisleWidthFt || 0);
 
   const calculations = useMemo(() => {
     const envelopeWidth = Math.max(0, lotWidth - leftSetback - rightSetback);
@@ -113,7 +118,6 @@ export default function WedgeBuildPage() {
       ? Math.max(.45, 1 - (riverReserveM * 3.28084) / Math.max(lotWidth, lotDepth, 1))
       : 1;
     const footprint = envelopeWidth * envelopeDepth * 0.7 * lotShapeFactor * riverConstraintFactor;
-    const storeys = houseType.toLowerCase().includes("double") ? 2 : 1;
     const builtUp = footprint * storeys;
     const program = estimateInternalProgram({
       bedrooms,
@@ -144,7 +148,7 @@ export default function WedgeBuildPage() {
     };
   }, [
     frontSetback,
-    houseType,
+    storeys,
     leftSetback,
     lotDepth,
     lotWidth,
@@ -211,11 +215,27 @@ export default function WedgeBuildPage() {
       setNotice("Confirm the lot boundary on the uploaded plan first. WedgeBuild will not replace it with a generic rectangle.");
       return;
     }
+    const circulationCorrection = requestedAisleWidthFt < 3
+      ? `${requestedAisleWidthFt} ft is below the locked circulation standard. WedgeBuild corrected it to a 3 ft clear walking aisle. `
+      : "";
+    const inference = inferArchitecture({
+      brief,
+      lotWidth,
+      lotDepth,
+      storeys,
+      cars,
+      besideRiver: siteCondition === "river",
+    });
+    setFacade(inference.facade);
+    setRoofStyle(inference.roofStyle);
+    setEaveDepthFt(inference.eaveDepthFt);
+    setDesignIntelligence(inference);
+    setConceptSatisfied(false);
     setGenerated(true);
     setStage("preview");
-    setNotice(boundaryConfirmed
+    setNotice(circulationCorrection + (boundaryConfirmed
       ? "Concept regenerated from the owner-confirmed lot shape, dimensions and Malaysian house brief."
-      : "Dimensions-only concept generated. Add and confirm a visible survey plan for matching lot geometry.");
+      : "Dimensions-only concept generated. Add and confirm a visible survey plan for matching lot geometry."));
   }
 
   function refreshIdea() {
@@ -226,6 +246,11 @@ export default function WedgeBuildPage() {
   }
 
   function unlockPack() {
+    if (!conceptSatisfied || !designIntelligence) {
+      setNotice("Confirm that you are satisfied with the free concept before unlocking the RM99 drawing pack.");
+      return;
+    }
+    rememberAcceptedConcept(designIntelligence.facade, brief);
     setPaid(true);
     setStage("pack");
     setNotice("Prototype payment recorded. The Wedge Build Pack is now shown as unlocked.");
@@ -245,9 +270,11 @@ export default function WedgeBuildPage() {
     if (changes.roofStyle) setRoofStyle(changes.roofStyle);
     if (changes.eaveDepthFt) setEaveDepthFt(changes.eaveDepthFt);
     if (changes.porchDepthFt) setPorchDepthFt(changes.porchDepthFt);
+    if (changes.aisleWidthFt) setRequestedAisleWidthFt(Math.max(3, changes.aisleWidthFt));
     if (changes.cars) setCars(changes.cars);
     if (changes.bedrooms) setBedrooms(changes.bedrooms);
     if (changes.facade) setFacade(changes.facade);
+    setConceptSatisfied(false);
     setGenerated(true);
     setNotice("The approved chat revision was applied to the connected concept drawings.");
   }
@@ -390,27 +417,21 @@ export default function WedgeBuildPage() {
               <div className="wb-form-section">
                 <div className="wb-section-title"><span>01B</span><h3>House brief</h3><p>Describe how the home should work for your family.</p></div>
                 <div className="wb-fields two">
-                  <label>Malaysian house type<select value={houseType} onChange={(e) => setHouseType(e.target.value)}><option>Urban double-storey Malaysian home</option><option>Single-storey Malaysian bungalow</option><option>Contemporary kampung home</option><option>Tropical homestay residence</option></select></label>
+                  <label>Number of storeys<select value={storeys} onChange={(e) => setStoreys(Number(e.target.value))}><option value={1}>Single storey</option><option value={2}>Double storey</option></select></label>
                   <label>Bedrooms<input type="number" min="1" max="12" value={bedrooms} onChange={(e) => setBedrooms(Number(e.target.value))} /></label>
                   <label>Cars under porch<input type="number" min="1" max="4" value={cars} onChange={(e) => setCars(Number(e.target.value))} /></label>
-                  <label>Roof system<select value={roofStyle} onChange={(event) => setRoofStyle(event.target.value as RoofStyle)}><option value="hip">Hipped tropical roof</option><option value="pitched">Pitched / gable roof</option><option value="flat">Flat-roof expression with drainage falls</option></select></label>
-                  <label>Roof eave / overhang (ft)<input type="number" min="2.5" max="6" step=".5" value={eaveDepthFt} onChange={(event) => setEaveDepthFt(Number(event.target.value))} /></label>
                   <label>Clear porch depth from gate (ft)<input type="number" min="16" max="28" value={porchDepthFt} onChange={(event) => setPorchDepthFt(Math.max(16, Number(event.target.value)))} /></label>
+                  <label>Requested clear walking aisle (ft)<input type="number" min="1" max="6" step="0.25" value={requestedAisleWidthFt} onChange={(event) => setRequestedAisleWidthFt(Number(event.target.value))} /></label>
                 </div>
-                <div className="wb-facade-picker">
-                  <p>Choose a Malaysian facade direction</p>
-                  {([
-                    ["tropical-modern", "Tropical Modern", "Deep eaves · breeze blocks · shaded porch"],
-                    ["kampung-contemporary", "Contemporary Kampung", "Pitched roof · serambi · timber screens"],
-                    ["urban-malaysian", "Urban Malaysian", "Car porch · rain canopy · screened openings"],
-                    ["homestay-tropical", "Tropical Homestay", "Wide veranda · guest privacy · simple upkeep"],
-                  ] as [FacadeId, string, string][]).map(([id, name, description]) => (
-                    <button type="button" key={id} className={facade === id ? "selected" : ""} onClick={() => setFacade(id)}>
-                      <span>{name}</span><small>{description}</small>
-                    </button>
-                  ))}
+                {requestedAisleWidthFt < 3
+                  ? <div className="wb-circulation-warning"><span>NON-NEGOTIABLE CORRECTION</span><strong>3 ft clear minimum will be used.</strong><p>Your requested {requestedAisleWidthFt} ft aisle is too narrow. WedgeBuild will not reduce the walking route below 3 ft clear.</p></div>
+                  : <div className="wb-circulation-pass"><span>CIRCULATION GATE</span><strong>{effectiveAisleWidthFt} ft clear route protected.</strong><p>Door swings, furniture, cabinets and structural elements may not obstruct this width.</p></div>}
+                <div className="wb-inference-note">
+                  <span>NO STYLE BUTTONS</span>
+                  <strong>WedgeBuild infers the architecture.</strong>
+                  <p>Describe the life, feeling, privacy, materials and spaces you want. The engine selects and combines suitable design DNA from the Malaysian architecture seed library.</p>
                 </div>
-                <label className="wb-brief">Chat with Wedge AI<textarea value={brief} onChange={(e) => setBrief(e.target.value)} /></label>
+                <label className="wb-brief">Describe the home naturally<textarea value={brief} onChange={(e) => setBrief(e.target.value)} /></label>
                 <div className="wb-inline-actions">
                   <button className="wb-primary" onClick={generatePreview}>Generate free preview</button>
                   <button className="wb-secondary" onClick={refreshIdea}>Try another brief</button>
@@ -443,6 +464,9 @@ export default function WedgeBuildPage() {
                   roofStyle={roofStyle}
                   eaveDepthFt={eaveDepthFt}
                   porchDepthFt={porchDepthFt}
+                  aisleWidthFt={effectiveAisleWidthFt}
+                  unlocked={false}
+                  designIntelligence={designIntelligence}
                 />
                 <div className="wb-metrics">
                   <div><small>Buildable envelope</small><strong>{formatNumber(calculations.envelopeWidth)} × {formatNumber(calculations.envelopeDepth)} ft</strong><p>Derived from your lot dimensions minus entered setback assumptions.</p></div>
@@ -455,10 +479,17 @@ export default function WedgeBuildPage() {
                 </div>
               </div>
 
+              {designIntelligence && <div className="wb-intelligence-card">
+                <div><span>WEDGE-INFERRED DESIGN LANGUAGE</span><h3>{designIntelligence.title}</h3></div>
+                <strong>{designIntelligence.confidence}% design confidence</strong>
+                <ul>{designIntelligence.rationale.map((item) => <li key={item}>{item}</li>)}</ul>
+                <p>Seed blend: {designIntelligence.seedIds.join(" · ")}. No source house is copied.</p>
+              </div>}
+
               <div className="wb-malaysia-standards">
                 <div className="wb-standards-head"><div><span>WEDGEBUILD MALAYSIA DESIGN TARGETS</span><h3>Real dimensions before pretty drawings.</h3></div><p>Planning targets—not authority approval. The architect must verify the applicable state UBBL and PBT requirements.</p></div>
                 <div className="wb-standard-grid">
-                  {[MALAYSIA_SPACE_STANDARDS.bathroom, MALAYSIA_SPACE_STANDARDS.standardBedroom, MALAYSIA_SPACE_STANDARDS.staircase].map((standard) => (
+                  {[MALAYSIA_SPACE_STANDARDS.circulation, MALAYSIA_SPACE_STANDARDS.bathroom, MALAYSIA_SPACE_STANDARDS.standardBedroom, MALAYSIA_SPACE_STANDARDS.staircase].map((standard) => (
                     <article key={standard.label}><span>{standard.label}</span><strong>{standard.dimensions}</strong><b>{standard.areaSqft} sqft planning area</b><p>{standard.note}</p></article>
                   ))}
                   <article><span>{calculations.porch.cars}-car porch</span><strong>{calculations.porch.dimensions}</strong><b>~{formatNumber(calculations.porch.areaSqft)} sqft covered area</b><p>{calculations.porch.note} Columns and gates must not block door opening or manoeuvring.</p></article>
@@ -474,7 +505,8 @@ export default function WedgeBuildPage() {
               <div className="wb-preview-actions">
                 <div><strong>Not satisfied?</strong><p>Change the brief, regenerate or leave. Preview remains free.</p></div>
                 <button className="wb-secondary" onClick={() => setStage("land")}>Edit & regenerate</button>
-                <button className="wb-primary" onClick={unlockPack}>Unlock Wedge Build Pack · RM99</button>
+                <label className="wb-satisfied"><input type="checkbox" checked={conceptSatisfied} onChange={(event) => setConceptSatisfied(event.target.checked)} /><span><b>I’m satisfied with this concept</b>Only then can the RM99 drawing pack be unlocked.</span></label>
+                <button className="wb-primary" disabled={!conceptSatisfied} onClick={unlockPack}>Unlock coordinated drawing pack · RM99</button>
               </div>
             </div>
           )}
@@ -495,6 +527,26 @@ export default function WedgeBuildPage() {
                   ["06", "Handoff files", "Architect-review PDF and preliminary DXF transfer record."],
                 ].map(([number, title, text]) => <article key={number}><span>{number}</span><h3>{title}</h3><p>{text}</p><b>FOR ARCHITECT REVIEW ONLY</b></article>)}
               </div>
+              {designIntelligence && <ConceptDrawings
+                points={lotPoints}
+                boundaryConfirmed={boundaryConfirmed}
+                lotWidth={lotWidth}
+                lotDepth={lotDepth}
+                envelopeWidth={calculations.envelopeWidth}
+                envelopeDepth={calculations.envelopeDepth}
+                storeys={calculations.storeys}
+                bedrooms={bedrooms}
+                cars={cars}
+                facade={facade}
+                brief={brief}
+                riverConstraint={siteCondition === "river" && boundaryConfirmed ? { edgeIndex: riverEdgeIndex, reserveM: calculations.riverReserveM } : null}
+                roofStyle={roofStyle}
+                eaveDepthFt={eaveDepthFt}
+                porchDepthFt={porchDepthFt}
+                aisleWidthFt={effectiveAisleWidthFt}
+                unlocked
+                designIntelligence={designIntelligence}
+              />}
               <div className="wb-declarations">
                 <h3>Required before architect handoff</h3>
                 <label><input type="checkbox" checked={ownerAccepted} onChange={(e) => setOwnerAccepted(e.target.checked)} /><span><b>Owner / representative declaration</b>I confirm I am the landowner or authorised representative and the information supplied is accurate to the best of my knowledge.</span></label>
@@ -548,6 +600,7 @@ export default function WedgeBuildPage() {
         roofStyle={roofStyle}
         eaveDepthFt={eaveDepthFt}
         porchDepthFt={porchDepthFt}
+        aisleWidthFt={effectiveAisleWidthFt}
         cars={cars}
         bedrooms={bedrooms}
         facade={facade}

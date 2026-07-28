@@ -3,12 +3,13 @@
 import { useState } from "react";
 import type { FacadeId } from "./ConceptDrawings";
 
-export type RoofStyle = "pitched" | "flat" | "hip";
+export type RoofStyle = "pitched" | "flat" | "hip" | "butterfly" | "skillion";
 
 export type DesignChanges = {
   roofStyle?: RoofStyle;
   eaveDepthFt?: number;
   porchDepthFt?: number;
+  aisleWidthFt?: number;
   cars?: number;
   bedrooms?: number;
   facade?: FacadeId;
@@ -20,6 +21,7 @@ type Props = {
   roofStyle: RoofStyle;
   eaveDepthFt: number;
   porchDepthFt: number;
+  aisleWidthFt: number;
   cars: number;
   bedrooms: number;
   facade: FacadeId;
@@ -41,7 +43,13 @@ function analyse(text: string): { answer: string; changes: DesignChanges } {
   const changes: DesignChanges = {};
   const findings: string[] = [];
 
-  if (/flat roof|bumbung rata/.test(lower)) {
+  if (/butterfly roof|bumbung rama|central valley roof/.test(lower)) {
+    changes.roofStyle = "butterfly";
+    findings.push("Use two roof planes falling to a central valley with a sized box gutter, accessible outlets and emergency overflow.");
+  } else if (/skillion|mono.?pitch|single.?slope|shed roof/.test(lower)) {
+    changes.roofStyle = "skillion";
+    findings.push("Use a mono-pitch roof with one deliberate drainage direction, protected openings and a ventilated high edge.");
+  } else if (/flat roof|bumbung rata/.test(lower)) {
     changes.roofStyle = "flat";
     findings.push("Use a flat-roof expression with concealed falls, rainwater outlets and emergency overflow—not a level slab.");
   } else if (/hip roof|bumbung limas/.test(lower)) {
@@ -80,11 +88,9 @@ function analyse(text: string): { answer: string; changes: DesignChanges } {
     findings.push(`Recalculate both floors for ${changes.bedrooms} bedrooms without reducing the room-size targets.`);
   }
 
-  if (/kampung/.test(lower)) changes.facade = "kampung-contemporary";
-  else if (/homestay/.test(lower)) changes.facade = "homestay-tropical";
-  else if (/urban|bandar/.test(lower)) changes.facade = "urban-malaysian";
-  else if (/tropical|tropika/.test(lower)) changes.facade = "tropical-modern";
-  if (changes.facade) findings.push("Update the front, left, right and rear elevation language together.");
+  if (/kampung|homestay|urban|bandar|tropical|tropika|modern|minimal|heritage|warisan/.test(lower)) {
+    findings.push("I will interpret that as design intent, not as a style button. Regenerate the concept so WedgeBuild can re-score the complete brief, land and climate response together.");
+  }
 
   if (/toilet|bathroom|bilik air|tandas/.test(lower)) {
     findings.push("Keep every bathroom/toilet at or above 40 sqft, ventilated, and avoid a direct opening toward the kitchen or dining area.");
@@ -92,13 +98,20 @@ function analyse(text: string): { answer: string; changes: DesignChanges } {
   if (/stair|tangga/.test(lower)) {
     findings.push("Protect the 1.0 m clear stair, 270 mm tread, maximum 175 mm riser, landing and 2.1 m headroom targets.");
   }
+  if (/aisle|walkway|corridor|passage|laluan|lorong/.test(lower)) {
+    const requested = numberNear(lower, ["aisle", "walkway", "corridor", "passage", "laluan", "lorong"]);
+    changes.aisleWidthFt = Math.max(3, Math.min(6, requested ?? 3));
+    findings.push(requested && requested < 3
+      ? `${requested} ft is below the locked WedgeBuild circulation standard. The proposal is corrected to 3 ft clear; furniture, cabinets, columns and door swings may not intrude into it.`
+      : `Protect a ${changes.aisleWidthFt} ft clear walking aisle through the connected plan.`);
+  }
   if (/river|sungai/.test(lower)) {
     findings.push("The room change must remain outside the selected river-reserve band and requires JPS/PBT confirmation.");
   }
 
   if (!findings.length) {
     return {
-      answer: "Tell me the exact element to revise—roof, eave, porch, bedrooms, toilet, staircase or facade. I will check the affected plans and elevations before proposing a revision.",
+      answer: "Tell me how the home should feel or work, or name the element to revise—roof, eave, porch, bedrooms, toilet or staircase. I will check the affected plans and elevations before proposing a revision.",
       changes,
     };
   }
@@ -144,7 +157,7 @@ export default function DesignChat(props: Props) {
       {open && (
         <div className="wb-chat-body">
           <div className="wb-chat-context">
-            <span>{props.roofStyle} roof</span><span>{props.eaveDepthFt} ft eave</span><span>{props.porchDepthFt} ft porch</span><span>{props.cars} cars</span>
+            <span>{props.roofStyle} roof</span><span>{props.eaveDepthFt} ft eave</span><span>{props.porchDepthFt} ft porch</span><span>{props.aisleWidthFt} ft aisle</span><span>{props.cars} cars</span>
           </div>
           <div className="wb-chat-messages">
             {messages.map((message, index) => <p key={index} className={message.role}>{message.text}</p>)}
