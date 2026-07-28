@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 // @ts-expect-error Node 24 runs this regression file directly with type stripping.
-import { merchantNotVisible, parseBookDocument } from "./brain.ts";
+import {
+  merchantNotVisible,
+  parseBookDocument,
+  reconcileDocumentCategories,
+} from "./brain.ts";
 
 test("retail sales receipt keeps merchant and ignores payment lines", () => {
   const document = parseBookDocument({
@@ -94,4 +98,49 @@ TOTAL AMOUNT 245.60
 
   assert.equal(document.total, 245.6);
   assert.ok(document.items.every((item) => item.category === "TNB / Electricity"));
+});
+
+test("category breakdown cannot exceed the authoritative receipt total", () => {
+  const lines = reconcileDocumentCategories({
+    id: "legacy-shell",
+    merchant: "Jurong West",
+    date: "2026-07-28",
+    documentNo: "AUTO-774",
+    documentType: "purchase",
+    items: [
+      {
+        id: "bad-phone",
+        description: "Shel",
+        quantity: 1,
+        unit: "unit",
+        unitPrice: 625883.6,
+        amount: 625883.6,
+        category: "Repairs & Maintenance",
+        confidence: 100,
+        source: "learned",
+      },
+      {
+        id: "fuel",
+        description: "Fuel Save95",
+        quantity: 1,
+        unit: "litre",
+        unitPrice: 31.92,
+        amount: 31.92,
+        category: "Transport & Delivery",
+        confidence: 78,
+        source: "business-context",
+      },
+    ],
+    tax: 0,
+    total: 31.92,
+    status: "Needs review",
+    createdAt: "2026-07-28T00:00:00.000Z",
+  });
+
+  assert.equal(lines.reduce((sum, line) => sum + line.amount, 0), 31.92);
+  assert.equal(
+    lines.filter((line) => line.category === "Repairs & Maintenance")
+      .reduce((sum, line) => sum + line.amount, 0),
+    0,
+  );
 });

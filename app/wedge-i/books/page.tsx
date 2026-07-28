@@ -17,6 +17,7 @@ import {
   merchantNotVisible,
   normalise,
   parseBookDocument,
+  reconcileDocumentCategories,
 } from "./brain";
 
 type Screen = "dashboard" | "folders" | "documents" | "brain" | "exports";
@@ -221,12 +222,10 @@ function removeLegacyParking(document: BookDocument) {
 
 function monthlySummary(documents: BookDocument[]) {
   const purchases = documents.filter((document) => document.documentType === "purchase");
+  const reconciledLines = purchases.flatMap(reconcileDocumentCategories);
   const itemTotals = (categories: BookCategory[]) =>
-    purchases.reduce(
-      (sum, document) =>
-        sum + document.items
-          .filter((item) => categories.includes(item.category))
-          .reduce((itemSum, item) => itemSum + item.amount, 0),
+    reconciledLines.reduce(
+      (sum, line) => sum + (categories.includes(line.category) ? line.amount : 0),
       0,
     );
 
@@ -408,11 +407,14 @@ export default function Home() {
   const needsReview = documents.filter((doc) => doc.status === "Needs review").length;
   const categoryTotals = useMemo(() => {
     const totals: Partial<Record<BookCategory, number>> = {};
-    documents.forEach((doc) =>
-      doc.items.forEach((item) => {
-        totals[item.category] = (totals[item.category] ?? 0) + item.amount;
-      }),
-    );
+    documents.forEach((doc) => {
+      const lines = doc.documentType === "purchase"
+        ? reconcileDocumentCategories(doc)
+        : doc.items.map((item) => ({ category: item.category, amount: item.amount }));
+      lines.forEach((line) => {
+        totals[line.category] = (totals[line.category] ?? 0) + line.amount;
+      });
+    });
     return totals;
   }, [documents]);
   const availableYears = useMemo(() => {

@@ -271,6 +271,52 @@ export function normalise(value: string) {
     .trim();
 }
 
+const nonPurchaseLineForTotals = new RegExp(
+  [
+    "^(total|sub total|subtotal|grand total|net rm|net amount|amount paid)",
+    "^(online transfer|bank transfer|duitnow|payment|cash|credit|debit|change)",
+    "^(tax|sst|gst|discount|rounding)",
+    "\\b(tax invoice|invoice no|receipt no|phone|telephone|tel|fax|address)\\b",
+    "\\b(jalan|street|avenue|ave|jurong)\\b",
+    "\\boff\\b",
+  ].join("|"),
+  "i",
+);
+
+export function reconcileDocumentCategories(document: BookDocument) {
+  const documentTotal = Number.isFinite(document.total) ? Math.max(0, document.total) : 0;
+  if (document.documentType !== "purchase" || documentTotal <= 0) return [];
+
+  const maximumPlausibleLine = Math.max(documentTotal * 1.25, documentTotal + 5);
+  const candidates = document.items.filter((item) => {
+    const description = normalise(item.description);
+    return (
+      item.amount > 0 &&
+      item.amount <= maximumPlausibleLine &&
+      description.length >= 2 &&
+      !nonPurchaseLineForTotals.test(description)
+    );
+  });
+
+  if (!candidates.length) {
+    return [{ category: "Other Expense" as BookCategory, amount: documentTotal }];
+  }
+
+  const candidateTotal = candidates.reduce((sum, item) => sum + item.amount, 0);
+  if (candidateTotal <= 0) {
+    return [{ category: "Other Expense" as BookCategory, amount: documentTotal }];
+  }
+
+  let allocated = 0;
+  return candidates.map((item, index) => {
+    const amount = index === candidates.length - 1
+      ? Math.max(0, Math.round((documentTotal - allocated) * 100) / 100)
+      : Math.round((item.amount / candidateTotal) * documentTotal * 100) / 100;
+    allocated += amount;
+    return { category: item.category, amount };
+  });
+}
+
 function parseNumber(value?: string) {
   if (!value) return 0;
   return Number(value.replace(/[,\s]/g, "")) || 0;
