@@ -43,6 +43,7 @@ export type BookItem = {
   amount: number;
   category: BookCategory;
   confidence: number;
+  descriptionConfirmed?: boolean;
   source: "business-context" | "rule" | "learned" | "review";
 };
 
@@ -223,6 +224,7 @@ const categoryConcepts: Array<{ category: BookCategory; terms: string[] }> = [
     category: "Food Items",
     terms: [
       "chicken", "ayam", "beef", "daging", "fish", "ikan", "prawn", "udang",
+      "pork", "pork loin", "babi", "daging babi", "猪肉",
       "vegetable", "sayur", "tomato", "rice", "beras", "flour", "tepung",
       "egg", "telur", "milk", "susu", "cooking oil", "minyak masak", "sugar", "gula",
       "food item", "ingredient", "食品", "食材", "鸡肉", "鱼", "蔬菜", "米",
@@ -269,7 +271,7 @@ function parseNumber(value?: string) {
   return Number(value.replace(/[,\s]/g, "")) || 0;
 }
 
-function decideCategory(
+export function classifyBookDescription(
   description: string,
   businessType: BusinessType,
   documentType: DocumentType,
@@ -312,7 +314,7 @@ function findDate(lines: string[]) {
 }
 
 function findMerchant(lines: string[], ocrConfidence?: number) {
-  if (typeof ocrConfidence === "number" && ocrConfidence < 40) {
+  if (typeof ocrConfidence === "number" && ocrConfidence < 65) {
     return merchantNotVisible;
   }
 
@@ -334,8 +336,10 @@ function findMerchant(lines: string[], ocrConfidence?: number) {
       const symbols = clean.replace(/[\p{L}\p{N}\s&.'()-]/gu, "").length;
       const uppercaseLetters = clean.match(/\p{Lu}/gu)?.length ?? 0;
       const wordCount = clean.split(/\s+/).length;
+      const shortWords = clean.split(/\s+/).filter((word) => word.replace(/[^\p{L}]/gu, "").length <= 2).length;
       let score = Math.max(0, 4 - index);
 
+      if (wordCount >= 7 && shortWords / wordCount > 0.35) return null;
       if (/sdn\s*bhd|enterprise|trading|supplies|market|mart|store|shop|restaurant|cafe|salon|spa|services/i.test(clean)) score += 5;
       if (letters >= 4 && uppercaseLetters / letters > 0.72) score += 3;
       if (wordCount >= 2 && wordCount <= 7) score += 2;
@@ -446,7 +450,7 @@ export function parseBookDocument(args: {
 
   const extracted = extractItemLines(lines);
   const items = extracted.map((candidate, index) => {
-    const decision = decideCategory(
+    const decision = classifyBookDescription(
       candidate.description,
       args.businessType,
       args.documentType,
@@ -461,6 +465,8 @@ export function parseBookDocument(args: {
       unitPrice: candidate.amount / quantity,
       amount: candidate.amount,
       ...decision,
+      confidence: Math.min(decision.confidence, Math.round(args.ocrConfidence ?? 100)),
+      descriptionConfirmed: (args.ocrConfidence ?? 100) >= 65,
     };
   });
 
@@ -481,6 +487,7 @@ export function parseBookDocument(args: {
               amount: total,
               category: "Needs Review" as BookCategory,
               confidence: 25,
+              descriptionConfirmed: false,
               source: "review" as const,
             },
           ]

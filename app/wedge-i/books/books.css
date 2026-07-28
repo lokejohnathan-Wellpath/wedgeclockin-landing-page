@@ -316,6 +316,14 @@
   width: 100%; padding: 5px 8px; border: 0; border-top: 1px solid #edf1ef;
   background: var(--mint-2); color: var(--green-dark); font-size: 7px; font-weight: 750;
 }
+.wedgebooks .move-receipt {
+  display: block; padding: 7px 8px 8px; border-top: 1px solid #edf1ef;
+  color: var(--muted); font-size: 7px; font-weight: 750;
+}
+.wedgebooks .move-receipt select {
+  display: block; width: 100%; margin-top: 4px; padding: 6px 7px; border: 1px solid #cfe0d9;
+  border-radius: 6px; background: white; color: var(--green-dark); font-size: 8px; outline: none;
+}
 .wedgebooks .empty-lane {
   min-height: 78px; display: grid; place-items: center; border: 1px dashed #d4e1dc;
   border-radius: 8px; color: #9aa9a3; font-size: 8px;
@@ -364,6 +372,7 @@
 }
 .wedgebooks .merchant-warning strong { font-size: 10px; }
 .wedgebooks .merchant-warning span { color: #90623f; font-size: 9px; text-align: right; }
+.wedgebooks .item-warning { background: #fffaf2; }
 .wedgebooks .ocr-score { display: flex; justify-content: space-between; padding: 8px 11px; margin-bottom: 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); font-size: 9px; }
 .wedgebooks .ocr-score strong { color: var(--green-dark); }
 .wedgebooks .items-table-wrap { overflow-x: auto; }
@@ -374,6 +383,19 @@
 .wedgebooks td strong { font-size: 10px; }
 .wedgebooks td span { color: var(--muted); font-size: 8px; margin-top: 3px; }
 .wedgebooks td select { min-width: 160px; border: 1px solid var(--line); border-radius: 7px; padding: 7px; background: white; color: var(--ink); font-size: 9px; outline: none; }
+.wedgebooks .line-description { display: flex; align-items: center; gap: 6px; min-width: 190px; }
+.wedgebooks .line-description input {
+  min-width: 0; width: 100%; padding: 7px 8px; border: 1px solid transparent;
+  border-radius: 7px; background: transparent; color: var(--ink); font-size: 10px; font-weight: 700; outline: none;
+}
+.wedgebooks .line-description input:hover, .wedgebooks .line-description input:focus { border-color: var(--line); background: white; }
+.wedgebooks .line-description.needs-text input {
+  border-color: #d99a6d; background: #fffaf6; box-shadow: 0 0 0 3px rgba(185,96,36,.07);
+}
+.wedgebooks .line-description button {
+  flex: 0 0 auto; padding: 6px 7px; border: 0; border-radius: 6px;
+  background: var(--orange); color: white; font-size: 7px; font-weight: 800;
+}
 .wedgebooks .confidence { display: inline-block; width: 45px; padding: 5px; border-radius: 14px; text-align: center; font-weight: 750; }
 .wedgebooks .confidence.high { background: var(--mint); color: var(--green-dark); }
 .wedgebooks .confidence.low { background: #fff1e6; color: var(--orange); }

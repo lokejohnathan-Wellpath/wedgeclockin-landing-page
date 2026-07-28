@@ -10,6 +10,7 @@ import {
   BookDocument,
   businessProfiles,
   BusinessType,
+  classifyBookDescription,
   DocumentType,
   inferDocumentType,
   LearningMap,
@@ -80,6 +81,26 @@ function downloadBlob(contents: BlobPart, name: string, type: string) {
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function prepareImageForOcr(file: File) {
+  try {
+    const image = await createImageBitmap(file);
+    const scale = Math.max(1, Math.min(2.2, 3200 / image.width));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(image.width * scale);
+    canvas.height = Math.round(image.height * scale);
+    const context = canvas.getContext("2d");
+    if (!context) return file;
+    context.filter = "grayscale(1) contrast(1.75) brightness(1.08)";
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    image.close();
+    return await new Promise<Blob>((resolve) =>
+      canvas.toBlob((blob) => resolve(blob ?? file), "image/png", 1),
+    );
+  } catch {
+    return file;
+  }
 }
 
 function parkingLabel(document: BookDocument, customColumns: string[]) {
@@ -340,6 +361,12 @@ export default function Home() {
   const merchantNeedsUpdate =
     !!draft.items.length &&
     (!draft.merchant.trim() || draft.merchant.trim() === merchantNotVisible);
+  const itemsNeedUpdate = draft.items.some(
+    (item) =>
+      item.descriptionConfirmed === false ||
+      (item.descriptionConfirmed === undefined && item.confidence < 65) ||
+      normalise(item.description).length < 3,
+  );
 
   function saveSetup() {
     if (!setupDraft.name.trim()) return;
@@ -388,24 +415,39 @@ export default function Home() {
 
       if (!source && file?.type.startsWith("image/")) {
         const { createWorker } = await import("tesseract.js");
-        const worker = await createWorker(["eng", "msa", "chi_sim"], 1, {
-          logger: (status) => {
-            if (typeof status.progress === "number") {
-              setOcrProgress(Math.round(status.progress * 100));
-            }
-            if (status.status) {
-              setOcrStage(
-                status.status === "recognizing text"
-                  ? "Reading characters"
-                  : status.status.replace(/(^\w|\s\w)/g, (letter) => letter.toUpperCase()),
-              );
-            }
-          },
-        });
-        const result = await worker.recognize(file);
-        source = result.data.text.trim();
-        confidence = result.data.confidence;
-        await worker.terminate();
+        const preparedImage = await prepareImageForOcr(file);
+        const recognise = async (languages: string[], start: number, span: number) => {
+          const worker = await createWorker(languages, 1, {
+            logger: (status) => {
+              if (typeof status.progress === "number") {
+                setOcrProgress(Math.round(start + status.progress * span));
+              }
+              if (status.status) {
+                setOcrStage(
+                  status.status === "recognizing text"
+                    ? "Reading characters"
+                    : status.status.replace(/(^\w|\s\w)/g, (letter) => letter.toUpperCase()),
+                );
+              }
+            },
+          });
+          try {
+            return await worker.recognize(preparedImage);
+          } finally {
+            await worker.terminate();
+          }
+        };
+
+        let bestResult = await recognise(["eng", "msa"], 0, 68);
+        if (bestResult.data.confidence < 72) {
+          setOcrStage("Checking Chinese / Mandarin text");
+          const multilingualResult = await recognise(["eng", "msa", "chi_sim"], 68, 32);
+          if (multilingualResult.data.confidence > bestResult.data.confidence) {
+            bestResult = multilingualResult;
+          }
+        }
+        source = bestResult.data.text.trim();
+        confidence = bestResult.data.confidence;
       }
 
       if (!source) {
@@ -462,9 +504,57 @@ export default function Home() {
       return {
         ...current,
         items,
-        status: items.every((item) => item.confidence >= 70 && item.category !== "Needs Review")
+        status: items.every(
+          (item) =>
+            item.confidence >= 70 &&
+            item.category !== "Needs Review" &&
+            item.descriptionConfirmed !== false,
+        )
           ? "Ready"
           : "Needs review",
+      };
+    });
+  }
+
+  function updateItemDescription(itemId: string, description: string) {
+    setDraft((current) => ({
+      ...current,
+      items: current.items.map((item) =>
+        item.id === itemId
+          ? { ...item, description, confidence: 35, descriptionConfirmed: false, source: "review" as const }
+          : item,
+      ),
+      status: "Needs review",
+    }));
+  }
+
+  function confirmItemDescription(itemId: string) {
+    if (!setup) return;
+    setDraft((current) => {
+      const items = current.items.map((item) => {
+        if (item.id !== itemId || normalise(item.description).length < 3) return item;
+        const decision = classifyBookDescription(
+          item.description,
+          setup.type,
+          current.documentType,
+          learning,
+        );
+        return { ...item, ...decision, descriptionConfirmed: true };
+      });
+      return {
+        ...current,
+        items,
+        status:
+          current.merchant.trim() &&
+          current.merchant !== merchantNotVisible &&
+          items.every(
+            (item) =>
+              item.confidence >= 65 &&
+              item.category !== "Needs Review" &&
+              item.descriptionConfirmed !== false,
+          )
+            ? "Ready"
+            : "Needs review",
       };
     });
   }
@@ -472,7 +562,11 @@ export default function Home() {
   function saveDocument() {
     if (!draft.items.length) return;
     if (merchantNeedsUpdate) {
-      setMessage("Merchant not visible. Please enter the merchant name before saving.");
+      setMessage("Supplier / merchant is not clear. Please enter the correct name before saving.");
+      return;
+    }
+    if (itemsNeedUpdate) {
+      setMessage("Some item descriptions are not clear. Please correct and confirm them before saving.");
       return;
     }
     const additions: LearningMap = {};
@@ -899,6 +993,13 @@ export default function Home() {
           const directColumns = directPurchaseColumns(setup.type, summary);
           const commonColumns = commonExpenseColumns(setup.type, summary);
           const parkingColumns = [...directColumns, ...commonColumns];
+          const moveOptions = [
+            ...parkingColumns.map((column) => ({ value: column.target, label: column.label })),
+            ...customColumns.map((column, index) => ({
+              value: `custom:${index}`,
+              label: column || `Custom ${index + 1}`,
+            })),
+          ];
           const monthKey = keyForMonth(selectedYear, openMonth);
           const customValues = customMonthlyAmounts[monthKey] ?? Array(6).fill(0);
           return (
@@ -962,7 +1063,7 @@ export default function Home() {
                     <p className="eyebrow">DRAG & PARK RECEIPTS</p>
                     <h3>Move a receipt to the correct spending category</h3>
                   </div>
-                  <span className="parking-help">Drag the ⋮⋮ receipt card into another column</span>
+                  <span className="parking-help">Use “Move to category” on a receipt, or drag the whole card.</span>
                 </div>
                 <div className="parking-board">
                   {parkingColumns.map((column) => {
@@ -1009,6 +1110,22 @@ export default function Home() {
                               {document.parkingCategory && (
                                 <button className="restore-ai" onClick={() => restoreAiParking(document.id)}>Use AI</button>
                               )}
+                              <label className="move-receipt">
+                                Move to category
+                                <select
+                                  value={document.parkingCategory ?? ""}
+                                  onChange={(event) =>
+                                    event.target.value
+                                      ? parkDocument(document.id, event.target.value)
+                                      : restoreAiParking(document.id)
+                                  }
+                                >
+                                  <option value="">AI category</option>
+                                  {moveOptions.map((option) => (
+                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                  ))}
+                                </select>
+                              </label>
                             </article>
                           ))}
                           {!parkedDocuments.length && <div className="empty-lane">Drop receipt here</div>}
@@ -1055,6 +1172,22 @@ export default function Home() {
                                 <b>{money(document.total)}</b>
                               </button>
                               <button className="restore-ai" onClick={() => restoreAiParking(document.id)}>Use AI</button>
+                              <label className="move-receipt">
+                                Move to category
+                                <select
+                                  value={document.parkingCategory ?? ""}
+                                  onChange={(event) =>
+                                    event.target.value
+                                      ? parkDocument(document.id, event.target.value)
+                                      : restoreAiParking(document.id)
+                                  }
+                                >
+                                  <option value="">AI category</option>
+                                  {moveOptions.map((option) => (
+                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                  ))}
+                                </select>
+                              </label>
                             </article>
                           ))}
                           {!parkedDocuments.length && <div className="empty-lane">Drop receipt here</div>}
@@ -1179,7 +1312,7 @@ export default function Home() {
                 <>
                   <div className={`document-meta ${merchantNeedsUpdate ? "merchant-review" : ""}`}>
                     <label>
-                      Merchant
+                      {documentType === "purchase" ? "Supplier / merchant" : "Merchant / customer"}
                       <input
                         aria-invalid={merchantNeedsUpdate}
                         value={draft.merchant}
@@ -1195,7 +1328,12 @@ export default function Home() {
                             merchant,
                             status:
                               merchant.trim() &&
-                              draft.items.every((item) => item.confidence >= 70 && item.category !== "Needs Review") &&
+                              draft.items.every(
+                                (item) =>
+                                  item.confidence >= 70 &&
+                                  item.category !== "Needs Review" &&
+                                  item.descriptionConfirmed !== false,
+                              ) &&
                               (draft.ocrConfidence ?? 100) >= 45
                                 ? "Ready"
                                 : "Needs review",
@@ -1209,8 +1347,14 @@ export default function Home() {
                   </div>
                   {merchantNeedsUpdate && (
                     <div className="merchant-warning" role="alert">
-                      <strong>Merchant not visible</strong>
-                      <span>Please enter or update the merchant name above before saving.</span>
+                      <strong>Supplier name is not clear</strong>
+                      <span>Please type the correct supplier or merchant name above before saving.</span>
+                    </div>
+                  )}
+                  {itemsNeedUpdate && (
+                    <div className="merchant-warning item-warning" role="alert">
+                      <strong>Item wording is not clear</strong>
+                      <span>Edit each unclear line—for example “Pork Loin T100”—then press Confirm text.</span>
                     </div>
                   )}
                   {typeof draft.ocrConfidence === "number" && (
@@ -1225,7 +1369,25 @@ export default function Home() {
                       <tbody>
                         {draft.items.map((item) => (
                           <tr key={item.id}>
-                            <td><strong>{item.description}</strong><span>{item.quantity} {item.unit}</span></td>
+                            <td>
+                              <div className={`line-description ${
+                                item.descriptionConfirmed === false ||
+                                (item.descriptionConfirmed === undefined && item.confidence < 65)
+                                  ? "needs-text"
+                                  : ""
+                              }`}>
+                                <input
+                                  aria-label="Item description"
+                                  value={item.description}
+                                  onChange={(event) => updateItemDescription(item.id, event.target.value)}
+                                />
+                                {(item.descriptionConfirmed === false ||
+                                  (item.descriptionConfirmed === undefined && item.confidence < 65)) && (
+                                  <button onClick={() => confirmItemDescription(item.id)}>Confirm text</button>
+                                )}
+                              </div>
+                              <span>{item.quantity} {item.unit}</span>
+                            </td>
                             <td>{money(item.amount)}</td>
                             <td>
                               <select value={item.category} onChange={(event) => updateItemCategory(item.id, event.target.value as BookCategory)}>
@@ -1242,10 +1404,12 @@ export default function Home() {
                   <div className="save-row">
                     <span>
                       {merchantNeedsUpdate
-                        ? "Merchant name is required before this document can be saved."
-                        : "Correct a category once; the brain remembers it."}
+                        ? "Supplier or merchant name is required before saving."
+                        : itemsNeedUpdate
+                          ? "Correct and confirm every unclear item description before saving."
+                          : "Correct a category once; the brain remembers it."}
                     </span>
-                    <button className="primary" disabled={merchantNeedsUpdate} onClick={saveDocument}>Confirm & save</button>
+                    <button className="primary" disabled={merchantNeedsUpdate || itemsNeedUpdate} onClick={saveDocument}>Confirm & save</button>
                   </div>
                 </>
               )}
