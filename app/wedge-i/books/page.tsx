@@ -10,8 +10,11 @@ import {
   businessProfiles,
   BusinessType,
   classifyBookDescription,
+  documentFingerprint,
   DocumentType,
+  duplicateDocumentIds,
   inferDocumentType,
+  isNonPurchaseMetadata,
   LearningMap,
   merchantNotVisible,
   normalise,
@@ -225,6 +228,20 @@ function monthlySummary(documents: BookDocument[]) {
   };
 }
 
+function monthlyCategoryBreakdown(documents: BookDocument[]): FolderColumn[] {
+  const totals = new Map<string, number>();
+  documents
+    .filter((document) => document.documentType === "purchase")
+    .flatMap(reconcileDocumentCategories)
+    .forEach((line) => {
+      totals.set(line.category, (totals.get(line.category) ?? 0) + line.amount);
+    });
+  return [...totals.entries()]
+    .filter(([, value]) => value >= 0.005)
+    .sort(([, left], [, right]) => right - left)
+    .map(([label, value]) => ({ label, value }));
+}
+
 function directPurchaseColumns(
   businessType: BusinessType,
   summary: ReturnType<typeof monthlySummary>,
@@ -261,36 +278,6 @@ function directPurchaseColumns(
   }
 }
 
-function commonExpenseColumns(
-  businessType: BusinessType,
-  summary: ReturnType<typeof monthlySummary>,
-): FolderColumn[] {
-  const columns: FolderColumn[] = [
-    { label: "Medical / Healthcare", value: summary.medical },
-    { label: "TNB / Electricity", value: summary.tnb },
-    { label: "Water", value: summary.water },
-    { label: "Gas", value: summary.gas },
-    { label: "Internet / Telephone", value: summary.utilities },
-    { label: "Rental", value: summary.rental },
-    {
-      label: businessType === "factory" ? "Machinery Repairs" : "Repairs & Maintenance",
-      value: summary.repairs,
-    },
-    { label: "Office Upkeep", value: summary.office },
-    { label: "Transport & Delivery", value: summary.transport },
-    { label: "Equipment / Assets", value: summary.equipment },
-    { label: "Professional Fees", value: summary.professional },
-    { label: "Other Expenses", value: summary.other },
-  ];
-  if (businessType !== "restaurant") {
-    columns.splice(4, 0, {
-      label: "Packaging",
-      value: summary.packaging,
-    });
-  }
-  return columns;
-}
-
 export default function Home() {
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [setup, setSetup] = useState<BusinessSetup | null>(null);
@@ -315,6 +302,7 @@ export default function Home() {
   const [customColumns, setCustomColumns] = useState<string[]>(defaultCustomColumns);
   const [customCategoryDrafts, setCustomCategoryDrafts] = useState<string[]>(defaultCustomColumns);
   const [savedCategoryIndex, setSavedCategoryIndex] = useState<number | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [searchInput, setSearchInput] = useState("");
   const [activeSearch, setActiveSearch] = useState("");
   const [hydrated, setHydrated] = useState(false);
@@ -404,6 +392,7 @@ export default function Home() {
       return tokens.every((token) => searchable.includes(token));
     });
   }, [activeSearch, documents]);
+  const duplicateIds = useMemo(() => duplicateDocumentIds(documents), [documents]);
   const merchantNeedsUpdate =
     !!draft.items.length &&
     (!draft.merchant.trim() || draft.merchant.trim() === merchantNotVisible);
@@ -639,6 +628,14 @@ export default function Home() {
     }));
   }
 
+  function removeDraftItem(itemId: string) {
+    setDraft((current) => ({
+      ...current,
+      items: current.items.filter((item) => item.id !== itemId),
+      status: "Needs review",
+    }));
+  }
+
   function confirmItemDescription(itemId: string) {
     if (!setup) return;
     setDraft((current) => {
@@ -680,9 +677,29 @@ export default function Home() {
       setMessage("Some item descriptions are not clear. Please correct and confirm them before saving.");
       return;
     }
+    const fingerprint = documentFingerprint(draft);
+    const existingDuplicate = documents.find(
+      (document) =>
+        document.id !== draft.id &&
+        fingerprint &&
+        documentFingerprint(document) === fingerprint,
+    );
+    if (existingDuplicate) {
+      setMessage(
+        `Possible duplicate blocked. ${existingDuplicate.merchant} · ` +
+        `${existingDuplicate.documentNo || "No document number"} · ` +
+        `${money(existingDuplicate.total)} is already saved.`,
+      );
+      return;
+    }
     const additions: LearningMap = {};
     draft.items.forEach((item) => {
-      if (item.source === "learned") additions[normalise(item.description)] = item.category;
+      if (
+        item.source === "learned" &&
+        !isNonPurchaseMetadata(item.description)
+      ) {
+        additions[normalise(item.description)] = item.category;
+      }
     });
     const savedItemTotal = draft.items.reduce((sum, item) => sum + item.amount, 0);
     const savedTotalsAgree =
@@ -812,6 +829,45 @@ export default function Home() {
     setSavedCategoryIndex(index);
   }
 
+  function removeCustomCategory(index: number) {
+    const category = customColumns[index]?.trim();
+    if (!category) return;
+    const inUse = documents.some((document) =>
+      document.items.some((item) => categoryKey(item.category) === categoryKey(category)),
+    );
+    if (inUse) {
+      setMessage(
+        `${category} is used by a saved receipt. Edit that receipt and move its lines before removing this category.`,
+      );
+      return;
+    }
+    setCustomColumns((current) =>
+      current.map((column, columnIndex) => (columnIndex === index ? "" : column)),
+    );
+    setCustomCategoryDrafts((current) =>
+      current.map((column, columnIndex) => (columnIndex === index ? "" : column)),
+    );
+    setSavedCategoryIndex(null);
+    setMessage(`${category} removed.`);
+  }
+
+  function deleteSourceDocument(document: BookDocument) {
+    setDocuments((current) => current.filter((item) => item.id !== document.id));
+    setPendingDeleteId(null);
+    setMessage(
+      `Deleted ${document.merchant} · ${document.documentNo || "No document number"} · ${money(document.total)}.`,
+    );
+  }
+
+  function forgetLearningRule(term: string) {
+    setLearning((current) => {
+      const next = { ...current };
+      delete next[term];
+      return next;
+    });
+    setMessage(`Forgot learned rule for “${term}”.`);
+  }
+
   function editSourceDocument(document: BookDocument) {
     setDraft(document);
     setDocumentType(document.documentType);
@@ -826,8 +882,7 @@ export default function Home() {
     const monthDocuments = documentsForMonth(documents, selectedYear, month);
     const summary = monthlySummary(monthDocuments);
     const rows = documentRows(monthDocuments);
-    const directColumns = directPurchaseColumns(setup?.type ?? "other", summary);
-    const commonColumns = commonExpenseColumns(setup?.type ?? "other", summary);
+    const categoryBreakdown = monthlyCategoryBreakdown(monthDocuments);
     const escapeXml = (value: unknown) =>
       String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const cell = (value: string | number, style = "") =>
@@ -835,8 +890,7 @@ export default function Home() {
 
     const summaryRows: Array<[string, number]> = [
       ["Total Spending (RM)", summary.spending],
-      ...directColumns.map(({ label, value }) => [`${label} (RM)`, value] as [string, number]),
-      ...commonColumns.map(({ label, value }) => [`${label} (RM)`, value] as [string, number]),
+      ...categoryBreakdown.map(({ label, value }) => [`${label} (RM)`, value] as [string, number]),
     ];
     const summaryXml = [
       `<Row>${cell(`${monthNames[month]} ${selectedYear} — Auditor Cover`, "Title")}</Row>`,
@@ -1171,9 +1225,8 @@ export default function Home() {
         {screen === "folders" && openMonth !== null && (() => {
           const monthDocuments = documentsForMonth(documents, selectedYear, openMonth);
           const summary = monthlySummary(monthDocuments);
-          const directColumns = directPurchaseColumns(setup.type, summary);
-          const commonColumns = commonExpenseColumns(setup.type, summary);
-          const summaryColumns = [...directColumns, ...commonColumns];
+          const summaryColumns = monthlyCategoryBreakdown(monthDocuments);
+          const breakdownTotal = summaryColumns.reduce((sum, column) => sum + column.value, 0);
           return (
             <section className="folder-detail">
               <div className="folder-detail-actions">
@@ -1194,10 +1247,21 @@ export default function Home() {
                   </div>
                 </div>
                 <div className="standard-columns">
-                  {summaryColumns.map(({ label, value }) => (
-                    <article key={label}><span>{label}</span><strong>{money(value)}</strong></article>
-                  ))}
+                  {summaryColumns.length ? (
+                    summaryColumns.map(({ label, value }) => (
+                      <article key={label}><span>{label}</span><strong>{money(value)}</strong></article>
+                    ))
+                  ) : (
+                    <p className="no-expenditure">No purchase expenditure saved for this month.</p>
+                  )}
                 </div>
+                {!!summaryColumns.length && (
+                  <div className="breakdown-check">
+                    <span>Category breakdown</span>
+                    <strong>{money(breakdownTotal)}</strong>
+                    <small>Matches total expenditure</small>
+                  </div>
+                )}
                 <div className="custom-columns-heading">
                   <div><p className="eyebrow">MORE CATEGORIES</p><h3>Please input if required</h3></div>
                   <small>Add a name here, then select it while reviewing a receipt.</small>
@@ -1215,11 +1279,20 @@ export default function Home() {
                       <button
                         className="category-enter"
                         type="button"
-                        disabled={!column.trim()}
+                        disabled={!column.trim() || customColumns[index] === column.trim()}
                         onClick={() => saveCustomCategory(index)}
                       >
                         Enter
                       </button>
+                      {!!customColumns[index] && (
+                        <button
+                          className="category-remove"
+                          type="button"
+                          onClick={() => removeCustomCategory(index)}
+                        >
+                          Remove
+                        </button>
+                      )}
                       {savedCategoryIndex === index && (
                         <small>New category input successfully</small>
                       )}
@@ -1242,14 +1315,40 @@ export default function Home() {
                 ) : (
                   <div className="document-list">
                     {monthDocuments.map((document) => (
-                      <button key={document.id} onClick={() => editSourceDocument(document)}>
-                        <div className="document-logo">{document.merchant.charAt(0)}</div>
-                        <div><strong>{document.merchant}</strong><span>{document.date} · {document.items.length} lines</span></div>
-                        <em className={document.documentType}>{document.documentType}</em>
-                        <b>{money(document.total)}</b>
-                        <i className={document.status === "Ready" ? "ready" : "review"}>{document.status}</i>
-                        <span className="source-edit">Edit</span>
-                      </button>
+                      <article className="source-document-row" key={document.id}>
+                        <button className="source-document-main" onClick={() => editSourceDocument(document)}>
+                          <div className="document-logo">{document.merchant.charAt(0)}</div>
+                          <div>
+                            <strong>{document.merchant}</strong>
+                            <span>
+                              {document.date} · {document.items.length} lines
+                              {duplicateIds.has(document.id) ? " · Possible duplicate" : ""}
+                            </span>
+                          </div>
+                          <em className={document.documentType}>{document.documentType}</em>
+                          <b>{money(document.total)}</b>
+                          <i className={
+                            duplicateIds.has(document.id)
+                              ? "review"
+                              : document.status === "Ready"
+                                ? "ready"
+                                : "review"
+                          }>
+                            {duplicateIds.has(document.id) ? "Duplicate?" : document.status}
+                          </i>
+                        </button>
+                        <button className="source-edit" onClick={() => editSourceDocument(document)}>Edit</button>
+                        {pendingDeleteId === document.id ? (
+                          <div className="source-delete-confirm">
+                            <button onClick={() => deleteSourceDocument(document)}>Delete?</button>
+                            <button onClick={() => setPendingDeleteId(null)}>Cancel</button>
+                          </div>
+                        ) : (
+                          <button className="source-delete" onClick={() => setPendingDeleteId(document.id)}>
+                            Delete
+                          </button>
+                        )}
+                      </article>
                     ))}
                   </div>
                 )}
@@ -1392,7 +1491,7 @@ export default function Home() {
                   )}
                   <div className="items-table-wrap">
                     <table>
-                      <thead><tr><th>Line read</th><th>Amount</th><th>Bookkeeping isolation</th><th>Confidence</th></tr></thead>
+                      <thead><tr><th>Line read</th><th>Amount</th><th>Bookkeeping isolation</th><th>Confidence</th><th>Action</th></tr></thead>
                       <tbody>
                         {draft.items.map((item) => (
                           <tr key={item.id}>
@@ -1438,6 +1537,15 @@ export default function Home() {
                               </select>
                             </td>
                             <td><span className={`confidence ${item.confidence >= 70 ? "high" : "low"}`}>{item.confidence}%</span></td>
+                            <td>
+                              <button
+                                className="remove-line"
+                                type="button"
+                                onClick={() => removeDraftItem(item.id)}
+                              >
+                                Remove
+                              </button>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -1480,7 +1588,9 @@ export default function Home() {
                           ? "Correct and confirm every unclear item description before saving."
                           : "Correct a category once; the brain remembers it."}
                     </span>
-                    <button className="primary" disabled={merchantNeedsUpdate || itemsNeedUpdate} onClick={saveDocument}>Confirm & save</button>
+                    <button className="primary" disabled={merchantNeedsUpdate || itemsNeedUpdate} onClick={saveDocument}>
+                      Insert to journal
+                    </button>
                   </div>
                 </>
               )}
@@ -1502,7 +1612,11 @@ export default function Home() {
             <div className="memory-table">
               <div className="memory-heading"><span>Description learned</span><span>Bookkeeping category</span></div>
               {Object.entries(learning).map(([term, category]) => (
-                <div key={term}><span>{term}</span><strong>{category}</strong></div>
+                <div key={term}>
+                  <span>{term}</span>
+                  <strong>{category}</strong>
+                  <button type="button" onClick={() => forgetLearningRule(term)}>Forget</button>
+                </div>
               ))}
               {!Object.keys(learning).length && <div className="empty compact-empty"><p>No corrections yet. The brain starts with business context and overhead concepts.</p></div>}
             </div>

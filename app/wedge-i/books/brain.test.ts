@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 // @ts-expect-error Node 24 runs this regression file directly with type stripping.
 import {
+  documentFingerprint,
+  duplicateDocumentIds,
+  isNonPurchaseMetadata,
   merchantNotVisible,
   parseBookDocument,
   reconcileDocumentCategories,
@@ -143,4 +146,34 @@ test("category breakdown cannot exceed the authoritative receipt total", () => {
       .reduce((sum, line) => sum + line.amount, 0),
     0,
   );
+});
+
+test("duplicate fingerprint uses supplier, date, reference and authoritative total", () => {
+  const original = {
+    id: "first",
+    merchant: "HUP SOON IPOH FOODS SDN. BHD.",
+    date: "2026-07-24",
+    documentNo: "PPI22607240136",
+    documentType: "purchase" as const,
+    items: [],
+    tax: 0,
+    total: 250,
+    status: "Ready" as const,
+    createdAt: "2026-07-24T00:00:00.000Z",
+  };
+  const duplicate = {
+    ...original,
+    id: "second",
+    merchant: "Hup Soon Ipoh Foods Sdn Bhd",
+    documentNo: "PPI 22607240136",
+  };
+
+  assert.equal(documentFingerprint(original), documentFingerprint(duplicate));
+  assert.deepEqual([...duplicateDocumentIds([original, duplicate])].sort(), ["first", "second"]);
+});
+
+test("payment and receipt metadata cannot become learned bookkeeping lines", () => {
+  assert.equal(isNonPurchaseMetadata("Online Transfer"), true);
+  assert.equal(isNonPurchaseMetadata("NET RM:"), true);
+  assert.equal(isNonPurchaseMetadata("Pork Loin T100"), false);
 });

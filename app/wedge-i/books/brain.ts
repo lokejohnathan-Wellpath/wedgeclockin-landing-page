@@ -283,6 +283,45 @@ const nonPurchaseLineForTotals = new RegExp(
   "i",
 );
 
+export function isNonPurchaseMetadata(description: string) {
+  return nonPurchaseLineForTotals.test(normalise(description));
+}
+
+function documentIdentityPart(value: string) {
+  return normalise(value).replace(/[^a-z0-9\u3400-\u9fff]+/g, "");
+}
+
+export function documentFingerprint(document: BookDocument) {
+  const merchant = documentIdentityPart(document.merchant);
+  const reference = documentIdentityPart(document.documentNo);
+  const total = Math.round(Math.max(0, document.total) * 100);
+  if (!merchant || !document.date || !total) return "";
+  return [
+    document.documentType,
+    merchant,
+    document.date,
+    reference || "no-reference",
+    total,
+  ].join("|");
+}
+
+export function duplicateDocumentIds(documents: BookDocument[]) {
+  const firstByFingerprint = new Map<string, string>();
+  const duplicates = new Set<string>();
+  documents.forEach((document) => {
+    const fingerprint = documentFingerprint(document);
+    if (!fingerprint) return;
+    const firstId = firstByFingerprint.get(fingerprint);
+    if (firstId) {
+      duplicates.add(firstId);
+      duplicates.add(document.id);
+    } else {
+      firstByFingerprint.set(fingerprint, document.id);
+    }
+  });
+  return duplicates;
+}
+
 export function reconcileDocumentCategories(document: BookDocument) {
   const documentTotal = Number.isFinite(document.total) ? Math.max(0, document.total) : 0;
   if (document.documentType !== "purchase" || documentTotal <= 0) return [];
@@ -294,7 +333,7 @@ export function reconcileDocumentCategories(document: BookDocument) {
       item.amount > 0 &&
       item.amount <= maximumPlausibleLine &&
       description.length >= 2 &&
-      !nonPurchaseLineForTotals.test(description)
+      !isNonPurchaseMetadata(description)
     );
   });
 
