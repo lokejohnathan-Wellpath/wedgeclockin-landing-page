@@ -171,7 +171,7 @@ function keyForMonth(year: number, month: number) {
 }
 
 function categoryKey(value: string) {
-  return normalise(value).replace(/^repairs and maintenance$/, "repair and maintenance");
+  return normalise(value).replace(/^repairs? maintenance$/, "repair maintenance");
 }
 
 function isBuiltInCategoryName(value: string) {
@@ -313,6 +313,8 @@ export default function Home() {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [openMonth, setOpenMonth] = useState<number | null>(null);
   const [customColumns, setCustomColumns] = useState<string[]>(defaultCustomColumns);
+  const [customCategoryDrafts, setCustomCategoryDrafts] = useState<string[]>(defaultCustomColumns);
+  const [savedCategoryIndex, setSavedCategoryIndex] = useState<number | null>(null);
   const [searchInput, setSearchInput] = useState("");
   const [activeSearch, setActiveSearch] = useState("");
   const [hydrated, setHydrated] = useState(false);
@@ -338,12 +340,14 @@ export default function Home() {
       if (savedLearning) setLearning(JSON.parse(savedLearning));
       if (savedCustomColumns) {
         const values = JSON.parse(savedCustomColumns) as string[];
-        setCustomColumns(defaultCustomColumns.map((fallback, index) => {
+        const savedCategories = defaultCustomColumns.map((fallback, index) => {
           const value = values[index]?.trim() ?? "";
           return /^custom\s+\d+$/i.test(value) || isBuiltInCategoryName(value)
             ? ""
             : (value || fallback);
-        }));
+        });
+        setCustomColumns(savedCategories);
+        setCustomCategoryDrafts(savedCategories);
       }
       localStorage.removeItem("wedgebooks.customMonthlyAmounts");
       setHydrated(true);
@@ -773,10 +777,39 @@ export default function Home() {
     downloadBlob(workbook, "wedgebooks-bookkeeping.xls", "application/vnd.ms-excel");
   }
 
-  function updateCustomColumn(index: number, value: string) {
-    setCustomColumns((current) =>
+  function updateCustomCategoryDraft(index: number, value: string) {
+    setSavedCategoryIndex(null);
+    setCustomCategoryDrafts((current) =>
       current.map((column, columnIndex) => (columnIndex === index ? value : column)),
     );
+  }
+
+  function saveCustomCategory(index: number) {
+    const category = customCategoryDrafts[index].trim();
+    if (!category) return;
+    if (isBuiltInCategoryName(category)) {
+      setMessage(`${category} is already available in the bookkeeping categories.`);
+      setSavedCategoryIndex(null);
+      return;
+    }
+    const duplicate = customColumns.some(
+      (existing, columnIndex) =>
+        columnIndex !== index &&
+        existing.trim() &&
+        categoryKey(existing) === categoryKey(category),
+    );
+    if (duplicate) {
+      setMessage(`${category} has already been added.`);
+      setSavedCategoryIndex(null);
+      return;
+    }
+    setCustomColumns((current) =>
+      current.map((column, columnIndex) => (columnIndex === index ? category : column)),
+    );
+    setCustomCategoryDrafts((current) =>
+      current.map((column, columnIndex) => (columnIndex === index ? category : column)),
+    );
+    setSavedCategoryIndex(index);
   }
 
   function editSourceDocument(document: BookDocument) {
@@ -1170,16 +1203,27 @@ export default function Home() {
                   <small>Add a name here, then select it while reviewing a receipt.</small>
                 </div>
                 <div className="custom-columns">
-                  {customColumns.map((column, index) => (
-                    <label className="unnamed" key={index}>
+                  {customCategoryDrafts.map((column, index) => (
+                    <div className="custom-category-entry" key={index}>
                       <input
                         aria-label={`Custom column ${index + 1} name`}
                         className="custom-column-name"
                         value={column}
-                        onChange={(event) => updateCustomColumn(index, event.target.value)}
+                        onChange={(event) => updateCustomCategoryDraft(index, event.target.value)}
                         placeholder="Enter category name"
                       />
-                    </label>
+                      <button
+                        className="category-enter"
+                        type="button"
+                        disabled={!column.trim()}
+                        onClick={() => saveCustomCategory(index)}
+                      >
+                        Enter
+                      </button>
+                      {savedCategoryIndex === index && (
+                        <small>New category input successfully</small>
+                      )}
+                    </div>
                   ))}
                 </div>
               </article>
