@@ -281,54 +281,14 @@
 }
 .wedgebooks .folder-documents { box-shadow: none; }
 .wedgebooks .compact-folder-empty { min-height: 190px; }
-.wedgebooks .parking-panel { overflow: hidden; box-shadow: none; }
-.wedgebooks .parking-help { color: var(--muted); font-size: 8px; text-align: right; }
-.wedgebooks .parking-board {
-  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(210px, 230px); gap: 10px;
-  overflow-x: auto; padding: 2px 2px 15px; scroll-snap-type: x proximity;
+.wedgebooks .folder-documents .document-list button {
+  grid-template-columns: 38px minmax(0,1fr) 72px 110px 90px 58px;
 }
-.wedgebooks .parking-lane {
-  min-height: 190px; overflow: hidden; border: 1px solid var(--line); border-radius: 12px;
-  background: #f8fbf9; scroll-snap-align: start; transition: border-color .18s ease, background .18s ease;
+.wedgebooks .source-edit {
+  display: inline-grid !important; place-items: center; min-height: 30px; margin: 0 !important;
+  border: 1px solid #a9d3c2; border-radius: 8px; background: var(--mint-2);
+  color: var(--green-dark) !important; font-size: 9px !important; font-weight: 800;
 }
-.wedgebooks .parking-lane.drag-active { border-style: dashed; border-color: #8dc4ae; background: var(--mint-2); }
-.wedgebooks .parking-lane.drag-active:hover { border-color: var(--green); background: #e4f7ef; }
-.wedgebooks .parking-lane.custom-lane { background: #fbfaf5; border-color: #e8e0c8; }
-.wedgebooks .parking-lane > header {
-  min-height: 57px; display: flex; align-items: flex-start; justify-content: space-between; gap: 9px;
-  padding: 13px; border-bottom: 1px solid var(--line); background: white;
-}
-.wedgebooks .parking-lane > header span { color: var(--muted); font-size: 8px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; line-height: 1.35; }
-.wedgebooks .parking-lane > header strong { flex: 0 0 auto; color: var(--green-dark); font-size: 10px; }
-.wedgebooks .parking-stack { display: grid; gap: 7px; padding: 9px; }
-.wedgebooks .receipt-card { overflow: hidden; border: 1px solid #dbe5e1; border-radius: 9px; background: white; box-shadow: 0 4px 13px rgba(22,65,49,.05); }
-.wedgebooks .receipt-card:active { cursor: grabbing; }
-.wedgebooks .receipt-card > button:first-child {
-  width: 100%; display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 7px;
-  padding: 9px; border: 0; background: white; color: var(--ink); text-align: left;
-}
-.wedgebooks .receipt-card i { color: #9cafA7; font-style: normal; font-size: 11px; cursor: grab; }
-.wedgebooks .receipt-card span, .wedgebooks .receipt-card span strong, .wedgebooks .receipt-card span small { display: block; min-width: 0; }
-.wedgebooks .receipt-card span strong { overflow: hidden; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
-.wedgebooks .receipt-card span small { margin-top: 2px; color: var(--muted); font-size: 7px; }
-.wedgebooks .receipt-card b { font-size: 9px; white-space: nowrap; }
-.wedgebooks .receipt-card .restore-ai {
-  width: 100%; padding: 5px 8px; border: 0; border-top: 1px solid #edf1ef;
-  background: var(--mint-2); color: var(--green-dark); font-size: 7px; font-weight: 750;
-}
-.wedgebooks .move-receipt {
-  display: block; padding: 7px 8px 8px; border-top: 1px solid #edf1ef;
-  color: var(--muted); font-size: 7px; font-weight: 750;
-}
-.wedgebooks .move-receipt select {
-  display: block; width: 100%; margin-top: 4px; padding: 6px 7px; border: 1px solid #cfe0d9;
-  border-radius: 6px; background: white; color: var(--green-dark); font-size: 8px; outline: none;
-}
-.wedgebooks .empty-lane {
-  min-height: 78px; display: grid; place-items: center; border: 1px dashed #d4e1dc;
-  border-radius: 8px; color: #9aa9a3; font-size: 8px;
-}
-.wedgebooks .parking-note { margin: 2px 0 0; color: var(--muted); font-size: 8px; line-height: 1.5; }
 
 .wedgebooks .document-workspace { display: grid; grid-template-columns: minmax(300px,.72fr) minmax(0,1.28fr); gap: 16px; align-items: start; }
 .wedgebooks .upload-column, .wedgebooks .review-column { padding: 23px; }
@@ -476,6 +436,8 @@
   .wedgebooks .panel, .wedgebooks .upload-column, .wedgebooks .review-column { padding: 17px; }
   .wedgebooks .document-list button { grid-template-columns: 34px minmax(0,1fr) auto; }
   .wedgebooks .document-list em, .wedgebooks .document-list i { display: none; }
+  .wedgebooks .folder-documents .document-list button { grid-template-columns: 34px minmax(0,1fr) 58px; }
+  .wedgebooks .folder-documents .document-list b { display: none; }
   .wedgebooks .document-meta, .wedgebooks .brain-summary { grid-template-columns: 1fr; }
   .wedgebooks .merchant-warning { align-items: flex-start; flex-direction: column; }
   .wedgebooks .merchant-warning span { text-align: left; }
@@ -491,8 +453,5 @@
   .wedgebooks .standard-columns { grid-template-columns: repeat(2,1fr); }
   .wedgebooks .custom-columns { grid-template-columns: 1fr; }
   .wedgebooks .folder-front-page { padding: 20px; }
-  .wedgebooks .parking-panel .panel-heading { align-items: flex-start; flex-direction: column; }
-  .wedgebooks .parking-help { text-align: left; }
-  .wedgebooks .parking-board { grid-auto-columns: minmax(205px, 82vw); }
   .wedgebooks footer { display: none; }
 }

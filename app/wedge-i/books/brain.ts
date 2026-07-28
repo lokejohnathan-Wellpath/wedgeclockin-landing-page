@@ -57,7 +57,6 @@ export type BookDocument = {
   tax: number;
   total: number;
   status: "Ready" | "Needs review";
-  parkingCategory?: string;
   fileName?: string;
   ocrConfidence?: number;
   createdAt: string;
@@ -251,6 +250,8 @@ const ignoredLine = new RegExp(
     "^(total|sub\\s*total|subtotal|grand\\s*total|jumlah|amount\\s*due)",
     "^(tax|sst|gst|cukai|service\\s*tax)",
     "^(cash|credit|debit|visa|mastercard|change|balance|rounding|payment)",
+    "^(online\\s*transfer|bank\\s*transfer|duitnow|e-wallet|ewallet)",
+    "^(net\\s*rm|net\\s*amount|amount\\s*paid)",
     "^(date|time|receipt|resit|invoice|tax\\s*invoice|bill\\s*no|member|cashier)",
     "^(qty|quantity|item|description|price|disc|amount|unit\\s*price)",
     "^(thank|goods\\s*sold|terms|scan|www\\.|tel|phone|fax|address)",
@@ -331,10 +332,20 @@ function findMerchant(
   documentType: DocumentType,
 ) {
   const explicitSupplier = findExplicitSupplier(lines);
+  const hasReceiptHeading = lines.some((line) =>
+    /\b(sales\s+receipt|official\s+receipt|resit\s+jualan)\b/i.test(line),
+  );
+  const hasFormalInvoiceHeading = lines.some((line) =>
+    /^\s*(invoice|invois|发票)\b/i.test(line) && !/tax\s+invoice\s*(no|#)/i.test(line),
+  );
+  const hasFormalInvoiceFields = lines.some((line) =>
+    /our\s+d\/?o|your\s+ref|payment\s+terms|^\s*terms\s*[:\-]/i.test(line),
+  );
   const formalPurchaseInvoice =
     documentType === "purchase" &&
-    lines.some((line) => /\b(invoice|invois)\b|发票/i.test(line)) &&
-    lines.some((line) => /our\s+d\/?o|your\s+ref|terms|invoice\s*(no|#)/i.test(line));
+    !hasReceiptHeading &&
+    hasFormalInvoiceHeading &&
+    hasFormalInvoiceFields;
 
   if (formalPurchaseInvoice && !explicitSupplier) {
     return merchantNotVisible;

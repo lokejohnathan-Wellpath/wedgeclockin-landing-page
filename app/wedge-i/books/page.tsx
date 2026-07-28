@@ -30,8 +30,6 @@ type CustomMonthlyAmounts = Record<string, number[]>;
 type FolderColumn = {
   label: string;
   value: number;
-  target: string;
-  categories: BookCategory[];
 };
 
 const monthNames = [
@@ -119,16 +117,7 @@ async function prepareImageForOcr(file: File, lineItemsOnly = false) {
   }
 }
 
-function parkingLabel(document: BookDocument, customColumns: string[]) {
-  if (!document.parkingCategory) return "";
-  if (document.parkingCategory.startsWith("custom:")) {
-    const index = Number(document.parkingCategory.split(":")[1]);
-    return customColumns[index] || `Custom ${index + 1}`;
-  }
-  return document.parkingCategory;
-}
-
-function documentRows(documents: BookDocument[], customColumns: string[] = []) {
+function documentRows(documents: BookDocument[]) {
   return documents.flatMap((document) =>
     document.items.map((item) => ({
       date: document.date,
@@ -140,11 +129,7 @@ function documentRows(documents: BookDocument[], customColumns: string[] = []) {
       unit: item.unit,
       unitPrice: item.unitPrice,
       amount: item.amount,
-      category:
-        document.parkingCategory && !document.parkingCategory.startsWith("custom:")
-          ? document.parkingCategory
-          : item.category,
-      folderCategory: parkingLabel(document, customColumns) || "AI line categories",
+      category: item.category,
       confidence: item.confidence,
       tax: document.tax,
       documentTotal: document.total,
@@ -161,18 +146,20 @@ function documentsForMonth(documents: BookDocument[], year: number, month: numbe
   return documents.filter((document) => document.date.startsWith(key));
 }
 
+function removeLegacyParking(document: BookDocument) {
+  const clean = { ...document } as BookDocument & { parkingCategory?: string };
+  delete clean.parkingCategory;
+  return clean;
+}
+
 function monthlySummary(documents: BookDocument[]) {
   const purchases = documents.filter((document) => document.documentType === "purchase");
   const itemTotals = (categories: BookCategory[]) =>
     purchases.reduce(
       (sum, document) =>
-        sum + (
-          document.parkingCategory
-            ? categories.includes(document.parkingCategory as BookCategory) ? document.total : 0
-            : document.items
-              .filter((item) => categories.includes(item.category))
-              .reduce((itemSum, item) => itemSum + item.amount, 0)
-        ),
+        sum + document.items
+          .filter((item) => categories.includes(item.category))
+          .reduce((itemSum, item) => itemSum + item.amount, 0),
       0,
     );
 
@@ -208,32 +195,32 @@ function directPurchaseColumns(
   switch (businessType) {
     case "restaurant":
       return [
-        { label: "Food Items", value: summary.food, target: "Food Items", categories: ["Food Items", "Ingredients & Beverages"] },
-        { label: "Packaging", value: summary.packaging, target: "Packaging", categories: ["Packaging"] },
+        { label: "Food Items", value: summary.food },
+        { label: "Packaging", value: summary.packaging },
       ];
     case "retail":
-      return [{ label: "Stock Purchases", value: summary.stock, target: "Goods for Resale", categories: ["Goods for Resale"] }];
+      return [{ label: "Stock Purchases", value: summary.stock }];
     case "salon":
       return [
-        { label: "Product Stock", value: summary.stock, target: "Goods for Resale", categories: ["Goods for Resale"] },
-        { label: "Treatment Consumables", value: summary.treatmentConsumables, target: "Treatment Consumables", categories: ["Treatment Consumables"] },
+        { label: "Product Stock", value: summary.stock },
+        { label: "Treatment Consumables", value: summary.treatmentConsumables },
       ];
     case "pet-store":
-      return [{ label: "Pet Stock Purchases", value: summary.stock, target: "Goods for Resale", categories: ["Goods for Resale"] }];
+      return [{ label: "Pet Stock Purchases", value: summary.stock }];
     case "pet-spa":
       return [
-        { label: "Product Stock", value: summary.stock, target: "Goods for Resale", categories: ["Goods for Resale"] },
-        { label: "Grooming Consumables", value: summary.petConsumables, target: "Pet Care Consumables", categories: ["Pet Care Consumables"] },
+        { label: "Product Stock", value: summary.stock },
+        { label: "Grooming Consumables", value: summary.petConsumables },
       ];
     case "factory":
       return [
-        { label: "Raw Materials", value: summary.rawMaterials, target: "Raw Materials", categories: ["Raw Materials"] },
-        { label: "Production Overhead", value: summary.productionOverhead, target: "Production Overhead", categories: ["Production Overhead"] },
+        { label: "Raw Materials", value: summary.rawMaterials },
+        { label: "Production Overhead", value: summary.productionOverhead },
       ];
     case "service":
-      return [{ label: "Direct Job Purchases", value: summary.directPurchases, target: "Direct Purchases", categories: ["Direct Purchases"] }];
+      return [{ label: "Direct Job Purchases", value: summary.directPurchases }];
     default:
-      return [{ label: "Direct Purchases", value: summary.directPurchases, target: "Direct Purchases", categories: ["Direct Purchases"] }];
+      return [{ label: "Direct Purchases", value: summary.directPurchases }];
   }
 }
 
@@ -242,39 +229,28 @@ function commonExpenseColumns(
   summary: ReturnType<typeof monthlySummary>,
 ): FolderColumn[] {
   const columns: FolderColumn[] = [
-    { label: "TNB / Electricity", value: summary.tnb, target: "TNB / Electricity", categories: ["TNB / Electricity"] },
-    { label: "Water", value: summary.water, target: "Water", categories: ["Water"] },
-    { label: "Gas", value: summary.gas, target: "Gas", categories: ["Gas"] },
-    { label: "Internet / Telephone", value: summary.utilities, target: "Utilities", categories: ["Utilities"] },
-    { label: "Rental", value: summary.rental, target: "Rent & Premises", categories: ["Rent & Premises"] },
+    { label: "TNB / Electricity", value: summary.tnb },
+    { label: "Water", value: summary.water },
+    { label: "Gas", value: summary.gas },
+    { label: "Internet / Telephone", value: summary.utilities },
+    { label: "Rental", value: summary.rental },
     {
       label: businessType === "factory" ? "Machinery Repairs" : "Repairs & Maintenance",
       value: summary.repairs,
-      target: "Repairs & Maintenance",
-      categories: ["Repairs & Maintenance"],
     },
-    { label: "Office Upkeep", value: summary.office, target: "Office & Administration", categories: ["Office & Administration"] },
-    { label: "Transport & Delivery", value: summary.transport, target: "Transport & Delivery", categories: ["Transport & Delivery"] },
-    { label: "Equipment / Assets", value: summary.equipment, target: "Equipment / Asset", categories: ["Equipment / Asset"] },
-    { label: "Professional Fees", value: summary.professional, target: "Professional Fees", categories: ["Professional Fees"] },
-    { label: "Other Expenses", value: summary.other, target: "Other Expense", categories: ["Other Expense", "Needs Review"] },
+    { label: "Office Upkeep", value: summary.office },
+    { label: "Transport & Delivery", value: summary.transport },
+    { label: "Equipment / Assets", value: summary.equipment },
+    { label: "Professional Fees", value: summary.professional },
+    { label: "Other Expenses", value: summary.other },
   ];
   if (businessType !== "restaurant") {
     columns.splice(4, 0, {
       label: "Packaging",
       value: summary.packaging,
-      target: "Packaging",
-      categories: ["Packaging"],
     });
   }
   return columns;
-}
-
-function dominantDocumentCategory(document: BookDocument) {
-  if (document.parkingCategory) return document.parkingCategory;
-  const totals = new Map<BookCategory, number>();
-  document.items.forEach((item) => totals.set(item.category, (totals.get(item.category) ?? 0) + item.amount));
-  return [...totals.entries()].sort(([, first], [, second]) => second - first)[0]?.[0] ?? "Other Expense";
 }
 
 export default function Home() {
@@ -300,7 +276,6 @@ export default function Home() {
   const [openMonth, setOpenMonth] = useState<number | null>(null);
   const [customColumns, setCustomColumns] = useState<string[]>(defaultCustomColumns);
   const [customMonthlyAmounts, setCustomMonthlyAmounts] = useState<CustomMonthlyAmounts>({});
-  const [draggedDocumentId, setDraggedDocumentId] = useState("");
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
@@ -315,8 +290,13 @@ export default function Home() {
         const value = JSON.parse(savedSetup) as BusinessSetup;
         setSetup({ name: value.name, type: value.type });
       }
-      if (savedDocuments) setDocuments(JSON.parse(savedDocuments));
-      else if (savedLegacy) setDocuments(JSON.parse(savedLegacy));
+      if (savedDocuments) {
+        const values = JSON.parse(savedDocuments) as BookDocument[];
+        setDocuments(values.map(removeLegacyParking));
+      } else if (savedLegacy) {
+        const values = JSON.parse(savedLegacy) as BookDocument[];
+        setDocuments(values.map(removeLegacyParking));
+      }
       if (savedLearning) setLearning(JSON.parse(savedLearning));
       if (savedCustomColumns) {
         const values = JSON.parse(savedCustomColumns) as string[];
@@ -354,18 +334,11 @@ export default function Home() {
   const needsReview = documents.filter((doc) => doc.status === "Needs review").length;
   const categoryTotals = useMemo(() => {
     const totals: Partial<Record<BookCategory, number>> = {};
-    documents.forEach((doc) => {
-      if (doc.parkingCategory && !doc.parkingCategory.startsWith("custom:")) {
-        const category = doc.parkingCategory as BookCategory;
-        totals[category] = (totals[category] ?? 0) + doc.total;
-        return;
-      }
-      if (!doc.parkingCategory) {
-        doc.items.forEach((item) => {
-          totals[item.category] = (totals[item.category] ?? 0) + item.amount;
-        });
-      }
-    });
+    documents.forEach((doc) =>
+      doc.items.forEach((item) => {
+        totals[item.category] = (totals[item.category] ?? 0) + item.amount;
+      }),
+    );
     return totals;
   }, [documents]);
   const availableYears = useMemo(() => {
@@ -648,17 +621,17 @@ export default function Home() {
   }
 
   function exportCsv() {
-    const rows = documentRows(documents, customColumns);
+    const rows = documentRows(documents);
     const headers = [
       "Date", "Type", "Document No", "Merchant", "Description", "Quantity", "Unit",
-      "Unit Price (RM)", "Amount (RM)", "Bookkeeping Category", "Folder Category", "Confidence %",
+      "Unit Price (RM)", "Amount (RM)", "Bookkeeping Category", "Confidence %",
       "Tax (RM)", "Document Total (RM)",
     ];
     const body = rows.map((row) =>
       [
         row.date, row.documentType, row.documentNo, row.merchant, row.description,
         row.quantity, row.unit, row.unitPrice.toFixed(2), row.amount.toFixed(2),
-        row.category, row.folderCategory, row.confidence, row.tax.toFixed(2), row.documentTotal.toFixed(2),
+        row.category, row.confidence, row.tax.toFixed(2), row.documentTotal.toFixed(2),
       ].map(csvEscape).join(","),
     );
     downloadBlob(
@@ -669,12 +642,12 @@ export default function Home() {
   }
 
   function exportExcel() {
-    const rows = documentRows(documents, customColumns);
+    const rows = documentRows(documents);
     const columns = [
       ["Date", "date"], ["Type", "documentType"], ["Document No", "documentNo"],
       ["Merchant", "merchant"], ["Description", "description"], ["Quantity", "quantity"],
       ["Unit", "unit"], ["Unit Price (RM)", "unitPrice"], ["Amount (RM)", "amount"],
-      ["Bookkeeping Category", "category"], ["Folder Category", "folderCategory"], ["Confidence %", "confidence"],
+      ["Bookkeeping Category", "category"], ["Confidence %", "confidence"],
       ["Tax (RM)", "tax"], ["Document Total (RM)", "documentTotal"],
     ] as const;
     const escapeXml = (value: unknown) =>
@@ -715,45 +688,21 @@ export default function Home() {
     });
   }
 
-  function parkDocument(documentId: string, target: string) {
-    const document = documents.find((item) => item.id === documentId);
-    if (!document || document.documentType !== "purchase") return;
-    setDocuments((current) =>
-      current.map((item) => item.id === documentId ? { ...item, parkingCategory: target } : item),
-    );
-    const label = target.startsWith("custom:")
-      ? customColumns[Number(target.split(":")[1])] || "custom column"
-      : target;
-    setMessage(`${document.merchant} parked under ${label}. Monthly totals and auditor export updated.`);
-    setDraggedDocumentId("");
-  }
-
-  function restoreAiParking(documentId: string) {
-    setDocuments((current) =>
-      current.map((item) => item.id === documentId ? { ...item, parkingCategory: undefined } : item),
-    );
-    setMessage("Manual parking removed. This receipt now follows its AI line categories.");
-  }
-
-  function customColumnTotal(monthDocuments: BookDocument[], index: number) {
-    const manual = customMonthlyAmounts[keyForMonth(selectedYear, openMonth ?? 0)]?.[index] ?? 0;
-    const parked = monthDocuments
-      .filter((document) => document.parkingCategory === `custom:${index}`)
-      .reduce((sum, document) => sum + document.total, 0);
-    return manual + parked;
+  function editSourceDocument(document: BookDocument) {
+    setDraft(document);
+    setDocumentType(document.documentType);
+    setFile(null);
+    setFileUrl("");
+    setReceiptText("");
+    setScreen("documents");
+    setMessage("Editing saved source document. Correct the details or category, then confirm and save.");
   }
 
   function exportMonth(month: number) {
     const monthDocuments = documentsForMonth(documents, selectedYear, month);
     const summary = monthlySummary(monthDocuments);
-    const manualCustomValues = customMonthlyAmounts[keyForMonth(selectedYear, month)] ?? Array(6).fill(0);
-    const customValues = customColumns.map((_, index) =>
-      (manualCustomValues[index] ?? 0) +
-      monthDocuments
-        .filter((document) => document.parkingCategory === `custom:${index}`)
-        .reduce((sum, document) => sum + document.total, 0),
-    );
-    const rows = documentRows(monthDocuments, customColumns);
+    const customValues = customMonthlyAmounts[keyForMonth(selectedYear, month)] ?? Array(6).fill(0);
+    const rows = documentRows(monthDocuments);
     const directColumns = directPurchaseColumns(setup?.type ?? "other", summary);
     const commonColumns = commonExpenseColumns(setup?.type ?? "other", summary);
     const escapeXml = (value: unknown) =>
@@ -779,7 +728,7 @@ export default function Home() {
       ["Date", "date"], ["Type", "documentType"], ["Document No", "documentNo"],
       ["Merchant", "merchant"], ["Description", "description"], ["Quantity", "quantity"],
       ["Unit", "unit"], ["Unit Price (RM)", "unitPrice"], ["Amount (RM)", "amount"],
-      ["Bookkeeping Category", "category"], ["Folder Category", "folderCategory"], ["Confidence %", "confidence"],
+      ["Bookkeeping Category", "category"], ["Confidence %", "confidence"],
       ["Tax (RM)", "tax"], ["Document Total (RM)", "documentTotal"],
     ] as const;
     const transactionHeading = columns.map(([name]) => cell(name, "Header")).join("");
@@ -980,7 +929,7 @@ export default function Home() {
               ) : (
                 <div className="document-list">
                   {documents.slice(0, 8).map((document) => (
-                    <button key={document.id} onClick={() => { setDraft(document); setScreen("documents"); }}>
+                    <button key={document.id} onClick={() => editSourceDocument(document)}>
                       <div className="document-logo">{document.merchant.charAt(0)}</div>
                       <div><strong>{document.merchant}</strong><span>{document.date} · {document.items.length} lines</span></div>
                       <em className={document.documentType}>{document.documentType}</em>
@@ -1041,14 +990,7 @@ export default function Home() {
           const summary = monthlySummary(monthDocuments);
           const directColumns = directPurchaseColumns(setup.type, summary);
           const commonColumns = commonExpenseColumns(setup.type, summary);
-          const parkingColumns = [...directColumns, ...commonColumns];
-          const moveOptions = [
-            ...parkingColumns.map((column) => ({ value: column.target, label: column.label })),
-            ...customColumns.map((column, index) => ({
-              value: `custom:${index}`,
-              label: column || `Custom ${index + 1}`,
-            })),
-          ];
+          const summaryColumns = [...directColumns, ...commonColumns];
           const monthKey = keyForMonth(selectedYear, openMonth);
           const customValues = customMonthlyAmounts[monthKey] ?? Array(6).fill(0);
           return (
@@ -1071,7 +1013,7 @@ export default function Home() {
                   </div>
                 </div>
                 <div className="standard-columns">
-                  {parkingColumns.map(({ label, value }) => (
+                  {summaryColumns.map(({ label, value }) => (
                     <article key={label}><span>{label}</span><strong>{money(value)}</strong></article>
                   ))}
                 </div>
@@ -1099,156 +1041,9 @@ export default function Home() {
                         onChange={(event) => updateCustomAmount(openMonth, index, event.target.value)}
                         placeholder="0.00"
                       />
-                      {!!monthDocuments.some((document) => document.parkingCategory === `custom:${index}`) && (
-                        <small>{money(customColumnTotal(monthDocuments, index))} including parked receipts</small>
-                      )}
                     </label>
                   ))}
                 </div>
-              </article>
-              <article className="panel parking-panel">
-                <div className="panel-heading">
-                  <div>
-                    <p className="eyebrow">DRAG & PARK RECEIPTS</p>
-                    <h3>Move a receipt to the correct spending category</h3>
-                  </div>
-                  <span className="parking-help">Use “Move to category” on a receipt, or drag the whole card.</span>
-                </div>
-                <div className="parking-board">
-                  {parkingColumns.map((column) => {
-                    const parkedDocuments = monthDocuments.filter((document) =>
-                      document.documentType === "purchase" &&
-                      (
-                        document.parkingCategory
-                          ? document.parkingCategory === column.target
-                          : column.categories.includes(dominantDocumentCategory(document) as BookCategory)
-                      ),
-                    );
-                    return (
-                      <section
-                        className={`parking-lane ${draggedDocumentId ? "drag-active" : ""}`}
-                        key={column.target}
-                        onDragOver={(event) => event.preventDefault()}
-                        onDrop={(event) => {
-                          event.preventDefault();
-                          parkDocument(
-                            event.dataTransfer.getData("text/wedgebooks-document-id") || draggedDocumentId,
-                            column.target,
-                          );
-                        }}
-                      >
-                        <header><span>{column.label}</span><strong>{money(column.value)}</strong></header>
-                        <div className="parking-stack">
-                          {parkedDocuments.map((document) => (
-                            <article
-                              className="receipt-card"
-                              draggable
-                              key={document.id}
-                              onDragStart={(event) => {
-                                event.dataTransfer.setData("text/wedgebooks-document-id", document.id);
-                                event.dataTransfer.effectAllowed = "move";
-                                setDraggedDocumentId(document.id);
-                              }}
-                              onDragEnd={() => setDraggedDocumentId("")}
-                            >
-                              <button onClick={() => { setDraft(document); setScreen("documents"); }}>
-                                <i>⋮⋮</i>
-                                <span><strong>{document.merchant}</strong><small>{document.documentNo}</small></span>
-                                <b>{money(document.total)}</b>
-                              </button>
-                              {document.parkingCategory && (
-                                <button className="restore-ai" onClick={() => restoreAiParking(document.id)}>Use AI</button>
-                              )}
-                              <label className="move-receipt">
-                                Move to category
-                                <select
-                                  value={document.parkingCategory ?? ""}
-                                  onChange={(event) =>
-                                    event.target.value
-                                      ? parkDocument(document.id, event.target.value)
-                                      : restoreAiParking(document.id)
-                                  }
-                                >
-                                  <option value="">AI category</option>
-                                  {moveOptions.map((option) => (
-                                    <option key={option.value} value={option.value}>{option.label}</option>
-                                  ))}
-                                </select>
-                              </label>
-                            </article>
-                          ))}
-                          {!parkedDocuments.length && <div className="empty-lane">Drop receipt here</div>}
-                        </div>
-                      </section>
-                    );
-                  })}
-                  {customColumns.map((column, index) => {
-                    const target = `custom:${index}`;
-                    const parkedDocuments = monthDocuments.filter((document) => document.parkingCategory === target);
-                    return (
-                      <section
-                        className={`parking-lane custom-lane ${draggedDocumentId ? "drag-active" : ""}`}
-                        key={target}
-                        onDragOver={(event) => event.preventDefault()}
-                        onDrop={(event) => {
-                          event.preventDefault();
-                          parkDocument(
-                            event.dataTransfer.getData("text/wedgebooks-document-id") || draggedDocumentId,
-                            target,
-                          );
-                        }}
-                      >
-                        <header>
-                          <span>{column || `Custom ${index + 1}`}</span>
-                          <strong>{money(customColumnTotal(monthDocuments, index))}</strong>
-                        </header>
-                        <div className="parking-stack">
-                          {parkedDocuments.map((document) => (
-                            <article
-                              className="receipt-card"
-                              draggable
-                              key={document.id}
-                              onDragStart={(event) => {
-                                event.dataTransfer.setData("text/wedgebooks-document-id", document.id);
-                                event.dataTransfer.effectAllowed = "move";
-                                setDraggedDocumentId(document.id);
-                              }}
-                              onDragEnd={() => setDraggedDocumentId("")}
-                            >
-                              <button onClick={() => { setDraft(document); setScreen("documents"); }}>
-                                <i>⋮⋮</i>
-                                <span><strong>{document.merchant}</strong><small>{document.documentNo}</small></span>
-                                <b>{money(document.total)}</b>
-                              </button>
-                              <button className="restore-ai" onClick={() => restoreAiParking(document.id)}>Use AI</button>
-                              <label className="move-receipt">
-                                Move to category
-                                <select
-                                  value={document.parkingCategory ?? ""}
-                                  onChange={(event) =>
-                                    event.target.value
-                                      ? parkDocument(document.id, event.target.value)
-                                      : restoreAiParking(document.id)
-                                  }
-                                >
-                                  <option value="">AI category</option>
-                                  {moveOptions.map((option) => (
-                                    <option key={option.value} value={option.value}>{option.label}</option>
-                                  ))}
-                                </select>
-                              </label>
-                            </article>
-                          ))}
-                          {!parkedDocuments.length && <div className="empty-lane">Drop receipt here</div>}
-                        </div>
-                      </section>
-                    );
-                  })}
-                </div>
-                <p className="parking-note">
-                  Manual parking overrides this receipt&apos;s category in the monthly cover and auditor export.
-                  Use “Use AI” to restore line-by-line classification.
-                </p>
               </article>
               <article className="panel folder-documents">
                 <div className="panel-heading">
@@ -1265,12 +1060,13 @@ export default function Home() {
                 ) : (
                   <div className="document-list">
                     {monthDocuments.map((document) => (
-                      <button key={document.id} onClick={() => { setDraft(document); setScreen("documents"); }}>
+                      <button key={document.id} onClick={() => editSourceDocument(document)}>
                         <div className="document-logo">{document.merchant.charAt(0)}</div>
                         <div><strong>{document.merchant}</strong><span>{document.date} · {document.items.length} lines</span></div>
                         <em className={document.documentType}>{document.documentType}</em>
                         <b>{money(document.total)}</b>
                         <i className={document.status === "Ready" ? "ready" : "review"}>{document.status}</i>
+                        <span className="source-edit">Edit</span>
                       </button>
                     ))}
                   </div>
