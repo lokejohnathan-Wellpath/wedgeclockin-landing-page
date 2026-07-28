@@ -83,17 +83,33 @@ function downloadBlob(contents: BlobPart, name: string, type: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-async function prepareImageForOcr(file: File) {
+async function prepareImageForOcr(file: File, lineItemsOnly = false) {
   try {
     const image = await createImageBitmap(file);
-    const scale = Math.max(1, Math.min(2.2, 3200 / image.width));
+    const sourceX = lineItemsOnly ? Math.round(image.width * 0.015) : 0;
+    const sourceY = lineItemsOnly ? Math.round(image.height * 0.16) : 0;
+    const sourceWidth = lineItemsOnly ? Math.round(image.width * 0.97) : image.width;
+    const sourceHeight = lineItemsOnly ? Math.round(image.height * 0.62) : image.height;
+    const scale = Math.max(1, Math.min(lineItemsOnly ? 3.2 : 2.2, 3600 / sourceWidth));
     const canvas = document.createElement("canvas");
-    canvas.width = Math.round(image.width * scale);
-    canvas.height = Math.round(image.height * scale);
+    canvas.width = Math.round(sourceWidth * scale);
+    canvas.height = Math.round(sourceHeight * scale);
     const context = canvas.getContext("2d");
     if (!context) return file;
-    context.filter = "grayscale(1) contrast(1.75) brightness(1.08)";
-    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    context.filter = lineItemsOnly
+      ? "grayscale(1) contrast(1.4) brightness(1.1)"
+      : "grayscale(1) contrast(1.3) brightness(1.06)";
+    context.drawImage(
+      image,
+      sourceX,
+      sourceY,
+      sourceWidth,
+      sourceHeight,
+      0,
+      0,
+      canvas.width,
+      canvas.height,
+    );
     image.close();
     return await new Promise<Blob>((resolve) =>
       canvas.toBlob((blob) => resolve(blob ?? file), "image/png", 1),
@@ -414,9 +430,16 @@ export default function Home() {
       let confidence: number | undefined;
 
       if (!source && file?.type.startsWith("image/")) {
-        const { createWorker } = await import("tesseract.js");
+        const { createWorker, PSM } = await import("tesseract.js");
         const preparedImage = await prepareImageForOcr(file);
-        const recognise = async (languages: string[], start: number, span: number) => {
+        const lineItemsImage = await prepareImageForOcr(file, true);
+        const recognise = async (
+          languages: string[],
+          start: number,
+          span: number,
+          image: Blob | File,
+          pageMode: (typeof PSM)[keyof typeof PSM],
+        ) => {
           const worker = await createWorker(languages, 1, {
             logger: (status) => {
               if (typeof status.progress === "number") {
@@ -432,22 +455,48 @@ export default function Home() {
             },
           });
           try {
-            return await worker.recognize(preparedImage);
+            await worker.setParameters({
+              tessedit_pageseg_mode: pageMode,
+              preserve_interword_spaces: "1",
+            });
+            return await worker.recognize(image);
           } finally {
             await worker.terminate();
           }
         };
 
-        let bestResult = await recognise(["eng", "msa"], 0, 68);
-        if (bestResult.data.confidence < 72) {
+        const fullPageResult = await recognise(["eng", "msa"], 0, 56, preparedImage, PSM.AUTO);
+        const lineItemsResult = await recognise(
+          ["eng", "msa"],
+          56,
+          30,
+          lineItemsImage,
+          PSM.SPARSE_TEXT,
+        );
+        let extraLanguageText = "";
+        let extraLanguageConfidence = 0;
+        if (Math.max(fullPageResult.data.confidence, lineItemsResult.data.confidence) < 72) {
           setOcrStage("Checking Chinese / Mandarin text");
-          const multilingualResult = await recognise(["eng", "msa", "chi_sim"], 68, 32);
-          if (multilingualResult.data.confidence > bestResult.data.confidence) {
-            bestResult = multilingualResult;
-          }
+          const multilingualResult = await recognise(
+            ["eng", "msa", "chi_sim"],
+            86,
+            14,
+            lineItemsImage,
+            PSM.SPARSE_TEXT,
+          );
+          extraLanguageText = multilingualResult.data.text.trim();
+          extraLanguageConfidence = multilingualResult.data.confidence;
         }
-        source = bestResult.data.text.trim();
-        confidence = bestResult.data.confidence;
+        source = [
+          fullPageResult.data.text.trim(),
+          lineItemsResult.data.text.trim(),
+          extraLanguageText,
+        ].filter(Boolean).join("\n");
+        confidence = Math.max(
+          fullPageResult.data.confidence,
+          lineItemsResult.data.confidence,
+          extraLanguageConfidence,
+        );
       }
 
       if (!source) {
@@ -562,7 +611,7 @@ export default function Home() {
   function saveDocument() {
     if (!draft.items.length) return;
     if (merchantNeedsUpdate) {
-      setMessage("Supplier / merchant is not clear. Please enter the correct name before saving.");
+      setMessage("Supplier name is not shown or not clear. Please type the supplier before saving.");
       return;
     }
     if (itemsNeedUpdate) {
@@ -1347,8 +1396,8 @@ export default function Home() {
                   </div>
                   {merchantNeedsUpdate && (
                     <div className="merchant-warning" role="alert">
-                      <strong>Supplier name is not clear</strong>
-                      <span>Please type the correct supplier or merchant name above before saving.</span>
+                      <strong>Supplier name is not shown</strong>
+                      <span>This invoice does not identify a confirmed supplier. Please type the supplier name above.</span>
                     </div>
                   )}
                   {itemsNeedUpdate && (

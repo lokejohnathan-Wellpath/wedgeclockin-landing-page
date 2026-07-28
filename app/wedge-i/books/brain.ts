@@ -313,10 +313,38 @@ function findDate(lines: string[]) {
   return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
 }
 
-function findMerchant(lines: string[], ocrConfidence?: number) {
+function findExplicitSupplier(lines: string[]) {
+  const index = lines.findIndex((line) =>
+    /^(supplier|vendor|pembekal|supplied\s+by|sold\s+by|供应商)\b/i.test(line.trim()),
+  );
+  if (index < 0) return "";
+  const sameLine = lines[index]
+    .replace(/^(supplier|vendor|pembekal|supplied\s+by|sold\s+by|供应商)\s*[:\-]?\s*/i, "")
+    .trim();
+  if (sameLine.length >= 3) return sameLine;
+  return lines[index + 1]?.trim() ?? "";
+}
+
+function findMerchant(
+  lines: string[],
+  ocrConfidence: number | undefined,
+  documentType: DocumentType,
+) {
+  const explicitSupplier = findExplicitSupplier(lines);
+  const formalPurchaseInvoice =
+    documentType === "purchase" &&
+    lines.some((line) => /\b(invoice|invois)\b|发票/i.test(line)) &&
+    lines.some((line) => /our\s+d\/?o|your\s+ref|terms|invoice\s*(no|#)/i.test(line));
+
+  if (formalPurchaseInvoice && !explicitSupplier) {
+    return merchantNotVisible;
+  }
+
   if (typeof ocrConfidence === "number" && ocrConfidence < 65) {
     return merchantNotVisible;
   }
+
+  if (explicitSupplier) return explicitSupplier;
 
   const candidates = lines.slice(0, 10)
     .map((line, index) => {
@@ -375,6 +403,16 @@ function extractDescription(line: string) {
     .trim();
 }
 
+function descriptionLooksReadable(description: string) {
+  const compact = description.trim();
+  if ((compact.match(/[\u3400-\u9fff]/g)?.length ?? 0) >= 2) return true;
+  const latinLetters = compact.match(/[a-z]/gi) ?? [];
+  if (latinLetters.length < 4) return false;
+  const vowels = compact.match(/[aeiou]/gi)?.length ?? 0;
+  const words = compact.match(/[a-z]{3,}/gi) ?? [];
+  return words.length > 0 && vowels / latinLetters.length >= 0.12;
+}
+
 function findQuantity(line: string) {
   const match = line.match(
     /(?:^|\s)(\d+(?:\.\d+)?)\s*(gulung|papan|bottle|botol|pack|unit|ekor|pcs|pkt|box|bag|kg|litre|liter|tin|pc|g|l)\b/i,
@@ -414,7 +452,13 @@ function extractItemLines(lines: string[]) {
     }
   }
 
-  return candidates;
+  const seen = new Set<string>();
+  return candidates.filter((candidate) => {
+    const key = `${normalise(candidate.description)}|${candidate.amount.toFixed(2)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function findTotal(lines: string[], itemTotal: number) {
@@ -457,6 +501,7 @@ export function parseBookDocument(args: {
       args.learning,
     );
     const { quantity, unit } = findQuantity(candidate.raw);
+    const readableDescription = descriptionLooksReadable(candidate.description);
     return {
       id: `${Date.now()}-${index}`,
       description: candidate.description,
@@ -465,8 +510,10 @@ export function parseBookDocument(args: {
       unitPrice: candidate.amount / quantity,
       amount: candidate.amount,
       ...decision,
-      confidence: Math.min(decision.confidence, Math.round(args.ocrConfidence ?? 100)),
-      descriptionConfirmed: (args.ocrConfidence ?? 100) >= 65,
+      confidence: readableDescription
+        ? Math.min(decision.confidence, Math.round(args.ocrConfidence ?? 100))
+        : 25,
+      descriptionConfirmed: readableDescription && (args.ocrConfidence ?? 100) >= 65,
     };
   });
 
@@ -494,7 +541,7 @@ export function parseBookDocument(args: {
         : [];
 
   const confidenceFloor = args.ocrConfidence ?? 100;
-  const merchant = findMerchant(lines, args.ocrConfidence);
+  const merchant = findMerchant(lines, args.ocrConfidence, args.documentType);
   const status =
     finalItems.length > 0 &&
     finalItems.every((item) => item.confidence >= 70) &&
