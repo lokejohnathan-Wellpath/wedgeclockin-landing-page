@@ -2,8 +2,10 @@
 
 import { ChangeEvent, DragEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import JSZip from "jszip";
 import "./books.css";
 import { accountingDeskImage, receiptIsolationImage } from "./images";
+import { deleteSourceFile, getSourceFile, saveSourceFile } from "./source-files";
 import {
   allCategories,
   BookDocument,
@@ -108,6 +110,21 @@ function downloadBlob(contents: BlobPart, name: string, type: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function safeFilePart(value: string) {
+  return normalise(value)
+    .replace(/[^a-z0-9\u3400-\u9fff]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60) || "document";
+}
+
+function auditorSourceFileName(document: BookDocument) {
+  if (!document.fileName) return "";
+  const extensionMatch = document.fileName.match(/\.[a-z0-9]{1,8}$/i);
+  const extension = extensionMatch?.[0].toLowerCase() ?? "";
+  const reference = document.documentNo || document.merchant;
+  return `${document.date}-${safeFilePart(reference)}-${safeFilePart(document.id).slice(-8)}${extension}`;
+}
+
 async function prepareImageForOcr(file: File, lineItemsOnly = false) {
   try {
     const image = await createImageBitmap(file);
@@ -164,6 +181,7 @@ function documentRows(documents: BookDocument[]) {
         category: item.category,
         tax: document.tax,
         documentTotal: document.total,
+        sourceDocument: auditorSourceFileName(document),
       };
     }),
   );
@@ -303,6 +321,8 @@ export default function Home() {
   const [customCategoryDrafts, setCustomCategoryDrafts] = useState<string[]>(defaultCustomColumns);
   const [savedCategoryIndex, setSavedCategoryIndex] = useState<number | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [exportingMonth, setExportingMonth] = useState<number | null>(null);
+  const [editingDocumentId, setEditingDocumentId] = useState<string | null>(null);
   const [searchInput, setSearchInput] = useState("");
   const [activeSearch, setActiveSearch] = useState("");
   const [hydrated, setHydrated] = useState(false);
@@ -424,6 +444,17 @@ export default function Home() {
     setActiveSearch("");
   }
 
+  function openNewDocument() {
+    setEditingDocumentId(null);
+    setDraft(emptyDocument);
+    setFile(null);
+    setFileUrl("");
+    setReceiptText("");
+    setOcrProgress(0);
+    setOcrStage("");
+    setScreen("documents");
+  }
+
   function chooseFile(selected?: File) {
     if (!selected) return;
     if (!selected.type.startsWith("image/") && !selected.type.startsWith("text/") && !selected.name.endsWith(".txt")) {
@@ -541,15 +572,25 @@ export default function Home() {
       const chosenType = documentType || detectedType;
       setDocumentType(chosenType);
       setReceiptText(source);
-      setDraft(
-        parseBookDocument({
+      const parsedDocument = parseBookDocument({
           text: source,
           businessType: setup.type,
           documentType: chosenType,
           learning,
           fileName: file?.name,
           ocrConfidence: confidence,
-        }),
+        });
+      const existingDocument = editingDocumentId
+        ? documents.find((document) => document.id === editingDocumentId)
+        : null;
+      setDraft(
+        existingDocument
+          ? {
+              ...parsedDocument,
+              id: existingDocument.id,
+              createdAt: existingDocument.createdAt,
+            }
+          : parsedDocument,
       );
       setOcrProgress(100);
       setOcrStage("Document read");
@@ -565,15 +606,18 @@ export default function Home() {
   function reclassifyDocument(nextType: DocumentType) {
     setDocumentType(nextType);
     if (!setup || !receiptText.trim()) return;
-    setDraft(
-      parseBookDocument({
+    const parsedDocument = parseBookDocument({
         text: receiptText,
         businessType: setup.type,
         documentType: nextType,
         learning,
         fileName: file?.name,
         ocrConfidence: draft.ocrConfidence,
-      }),
+      });
+    setDraft(
+      editingDocumentId
+        ? { ...parsedDocument, id: editingDocumentId, createdAt: draft.createdAt }
+        : parsedDocument,
     );
   }
 
@@ -667,7 +711,7 @@ export default function Home() {
     });
   }
 
-  function saveDocument() {
+  async function saveDocument() {
     if (!draft.items.length) return;
     if (merchantNeedsUpdate) {
       setMessage("Supplier name is not shown or not clear. Please type the supplier before saving.");
@@ -707,6 +751,7 @@ export default function Home() {
       Math.abs(savedItemTotal + draft.tax - draft.total) < 0.02;
     const savedDocument: BookDocument = {
       ...draft,
+      fileName: file?.name ?? draft.fileName,
       status:
         savedTotalsAgree &&
         draft.items.every(
@@ -718,6 +763,17 @@ export default function Home() {
           ? "Ready"
           : "Needs review",
     };
+    if (file) {
+      try {
+        await saveSourceFile(savedDocument.id, file);
+      } catch {
+        setMessage(
+          "The bookkeeping lines are ready, but the receipt image could not be stored. " +
+          "Please free browser storage and try Insert to journal again.",
+        );
+        return;
+      }
+    }
     setLearning((current) => ({ ...current, ...additions }));
     setDocuments((current) => [
       savedDocument,
@@ -728,6 +784,7 @@ export default function Home() {
       `The brain learned ${Object.keys(additions).length} correction${Object.keys(additions).length === 1 ? "" : "s"}.`,
     );
     setDraft(emptyDocument);
+    setEditingDocumentId(null);
     setFile(null);
     setFileUrl("");
     setReceiptText("");
@@ -738,6 +795,7 @@ export default function Home() {
   function loadSample() {
     if (!setup) return;
     setScreen("documents");
+    setEditingDocumentId(null);
     setFile(null);
     setFileUrl("");
     setReceiptText(sampleText);
@@ -751,13 +809,13 @@ export default function Home() {
     const headers = [
       "Date", "Type", "Invoice / Receipt No.", "Supplier / Merchant", "Journal Description",
       "Quantity", "Unit", "Unit Price (RM)", "Amount (RM)", "Bookkeeping Category",
-      "Tax (RM)", "Document Total (RM)",
+      "Tax (RM)", "Document Total (RM)", "Source Document File",
     ];
     const body = rows.map((row) =>
       [
         row.date, row.documentType, row.documentNo, row.merchant, row.description,
         row.quantity, row.unit, row.unitPrice.toFixed(2), row.amount.toFixed(2),
-        row.category, row.tax.toFixed(2), row.documentTotal.toFixed(2),
+        row.category, row.tax.toFixed(2), row.documentTotal.toFixed(2), row.sourceDocument,
       ].map(csvEscape).join(","),
     );
     downloadBlob(
@@ -774,7 +832,7 @@ export default function Home() {
       ["Supplier / Merchant", "merchant"], ["Journal Description", "description"], ["Quantity", "quantity"],
       ["Unit", "unit"], ["Unit Price (RM)", "unitPrice"], ["Amount (RM)", "amount"],
       ["Bookkeeping Category", "category"], ["Tax (RM)", "tax"],
-      ["Document Total (RM)", "documentTotal"],
+      ["Document Total (RM)", "documentTotal"], ["Source Document File", "sourceDocument"],
     ] as const;
     const escapeXml = (value: unknown) =>
       String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -851,7 +909,12 @@ export default function Home() {
     setMessage(`${category} removed.`);
   }
 
-  function deleteSourceDocument(document: BookDocument) {
+  async function deleteSourceDocument(document: BookDocument) {
+    try {
+      await deleteSourceFile(document.id);
+    } catch {
+      // A legacy document may not have a stored source file.
+    }
     setDocuments((current) => current.filter((item) => item.id !== document.id));
     setPendingDeleteId(null);
     setMessage(
@@ -868,17 +931,36 @@ export default function Home() {
     setMessage(`Forgot learned rule for “${term}”.`);
   }
 
-  function editSourceDocument(document: BookDocument) {
+  async function editSourceDocument(document: BookDocument) {
+    setEditingDocumentId(document.id);
     setDraft(document);
     setDocumentType(document.documentType);
     setFile(null);
     setFileUrl("");
     setReceiptText("");
     setScreen("documents");
-    setMessage("Editing saved source document. Correct the details or category, then confirm and save.");
+    try {
+      const source = await getSourceFile(document.id);
+      if (source) {
+        const restoredFile = new File([source.blob], source.fileName, { type: source.mimeType });
+        setFile(restoredFile);
+        setFileUrl(
+          source.mimeType.startsWith("image/") ? URL.createObjectURL(source.blob) : "",
+        );
+        setMessage("Original source opened. Correct the details or category, then insert it into the journal.");
+        return;
+      }
+    } catch {
+      // Continue with the stored bookkeeping lines when IndexedDB is unavailable.
+    }
+    setMessage(
+      "Editing saved bookkeeping lines. This older record does not have a stored receipt image.",
+    );
   }
 
-  function exportMonth(month: number) {
+  async function exportMonth(month: number) {
+    if (exportingMonth !== null) return;
+    setExportingMonth(month);
     const monthDocuments = documentsForMonth(documents, selectedYear, month);
     const summary = monthlySummary(monthDocuments);
     const rows = documentRows(monthDocuments);
@@ -905,7 +987,7 @@ export default function Home() {
       ["Supplier / Merchant", "merchant"], ["Journal Description", "description"], ["Quantity", "quantity"],
       ["Unit", "unit"], ["Unit Price (RM)", "unitPrice"], ["Amount (RM)", "amount"],
       ["Bookkeeping Category", "category"], ["Tax (RM)", "tax"],
-      ["Document Total (RM)", "documentTotal"],
+      ["Document Total (RM)", "documentTotal"], ["Source Document File", "sourceDocument"],
     ] as const;
     const transactionHeading = columns.map(([name]) => cell(name, "Header")).join("");
     const transactionRows = rows.map((row) =>
@@ -921,11 +1003,69 @@ export default function Home() {
 <Worksheet ss:Name="Month Summary"><Table>${summaryXml}</Table></Worksheet>
 <Worksheet ss:Name="Transactions"><Table><Row>${transactionHeading}</Row>${transactionRows}</Table></Worksheet>
 </Workbook>`;
-    downloadBlob(
-      workbook,
-      `WedgeBooks-${selectedYear}-${String(month + 1).padStart(2, "0")}-Auditor.xls`,
-      "application/vnd.ms-excel",
-    );
+    try {
+      const period = `${selectedYear}-${String(month + 1).padStart(2, "0")}`;
+      const zip = new JSZip();
+      zip.file(`WedgeBooks-${period}-Bookkeeping.xls`, workbook);
+      const sourceFolder = zip.folder("Source-Documents");
+      const missingSources: string[] = [];
+
+      for (const document of monthDocuments) {
+        let source = null;
+        try {
+          source = await getSourceFile(document.id);
+        } catch {
+          source = null;
+        }
+        const archiveName = auditorSourceFileName(document);
+        if (source && archiveName) {
+          sourceFolder?.file(archiveName, source.blob);
+        } else {
+          missingSources.push(
+            `${document.date} | ${document.documentNo || "No document number"} | ` +
+            `${document.merchant} | ${money(document.total)}`,
+          );
+        }
+      }
+
+      if (missingSources.length) {
+        sourceFolder?.file(
+          "Missing-Source-Documents.txt",
+          [
+            "The following legacy bookkeeping records do not have an original image stored:",
+            "",
+            ...missingSources,
+          ].join("\r\n"),
+        );
+      }
+      zip.file(
+        "README.txt",
+        [
+          `WedgeBooks auditor package — ${monthNames[month]} ${selectedYear}`,
+          `Business: ${setup?.name ?? ""}`,
+          `Total expenditure: ${money(summary.spending)}`,
+          "",
+          "The Excel Source Document File column matches files in the Source-Documents folder.",
+          "Records listed in Missing-Source-Documents.txt were created before source-image storage was enabled.",
+        ].join("\r\n"),
+      );
+
+      const archive = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });
+      downloadBlob(
+        archive,
+        `WedgeBooks-${period}-Auditor-Package.zip`,
+        "application/zip",
+      );
+      setMessage(
+        `Auditor ZIP created with the Excel workbook and ` +
+        `${monthDocuments.length - missingSources.length} source document` +
+        `${monthDocuments.length - missingSources.length === 1 ? "" : "s"}.`,
+      );
+    } catch {
+      setMessage("The auditor ZIP could not be created. Please try again.");
+    } finally {
+      setExportingMonth(null);
+    }
   }
 
   if (!hydrated) {
@@ -1008,7 +1148,7 @@ export default function Home() {
           <button className={screen === "folders" ? "active" : ""} onClick={() => { setScreen("folders"); setOpenMonth(null); }}>
             <span className="nav-icon">▱</span> Monthly folders
           </button>
-          <button className={screen === "documents" ? "active" : ""} onClick={() => setScreen("documents")}>
+          <button className={screen === "documents" ? "active" : ""} onClick={openNewDocument}>
             <span className="nav-icon">▤</span> Documents
           </button>
           <button className={screen === "brain" ? "active" : ""} onClick={() => setScreen("brain")}>
@@ -1050,7 +1190,7 @@ export default function Home() {
               {screen === "exports" && "Bookkeeping exports"}
             </h1>
           </div>
-          <button className="primary compact" onClick={() => setScreen("documents")}>+ Add document</button>
+          <button className="primary compact" onClick={openNewDocument}>+ Add document</button>
         </header>
 
         {message && <div className="notice">{message}<button onClick={() => setMessage("")}>×</button></div>}
@@ -1063,7 +1203,7 @@ export default function Home() {
                 <h2>Every document,<br />properly isolated.</h2>
                 <p>The eye reads the real image. The brain separates sales, direct purchases, overheads and assets.</p>
                 <div className="hero-actions">
-                  <button className="primary" onClick={() => setScreen("documents")}>Upload document</button>
+                  <button className="primary" onClick={openNewDocument}>Upload document</button>
                   <button className="secondary" onClick={() => { setScreen("folders"); setOpenMonth(null); }}>Monthly folders</button>
                 </div>
               </div>
@@ -1122,7 +1262,7 @@ export default function Home() {
                   ) : (
                     <div className="document-list search-document-list">
                       {searchResults.map((document) => (
-                        <button key={document.id} type="button" onClick={() => editSourceDocument(document)}>
+                        <button key={document.id} type="button" onClick={() => void editSourceDocument(document)}>
                           <div className="document-logo">{document.merchant.charAt(0) || "?"}</div>
                           <div>
                             <strong>{document.merchant}</strong>
@@ -1146,7 +1286,7 @@ export default function Home() {
                 <p className="eyebrow">BUILT FOR CLEAN BOOKS</p>
                 <h3>Receipts in. Proper categories out.</h3>
                 <p>Utilities, rent, goods, sales and direct purchases are separated line by line—ready for Excel or CSV.</p>
-                <button className="primary" onClick={() => setScreen("documents")}>Process a document</button>
+                <button className="primary" onClick={openNewDocument}>Process a document</button>
               </div>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={receiptIsolationImage} alt="Receipts organised into bookkeeping categories" />
@@ -1161,12 +1301,12 @@ export default function Home() {
                   <div className="empty-icon">▤</div>
                   <h4>No documents recorded</h4>
                   <p>Upload the first real receipt or invoice.</p>
-                  <button className="secondary" onClick={() => setScreen("documents")}>Add document</button>
+                  <button className="secondary" onClick={openNewDocument}>Add document</button>
                 </div>
               ) : (
                 <div className="document-list">
                   {documents.slice(0, 8).map((document) => (
-                    <button key={document.id} onClick={() => editSourceDocument(document)}>
+                    <button key={document.id} onClick={() => void editSourceDocument(document)}>
                       <div className="document-logo">{document.merchant.charAt(0)}</div>
                       <div><strong>{document.merchant}</strong><span>{document.date} · {document.items.length} lines</span></div>
                       <em className={document.documentType}>{document.documentType}</em>
@@ -1231,7 +1371,13 @@ export default function Home() {
             <section className="folder-detail">
               <div className="folder-detail-actions">
                 <button className="text-button" onClick={() => setOpenMonth(null)}>← All monthly folders</button>
-                <button className="primary" onClick={() => exportMonth(openMonth)}>Download auditor Excel</button>
+                <button
+                  className="primary"
+                  disabled={exportingMonth !== null}
+                  onClick={() => void exportMonth(openMonth)}
+                >
+                  {exportingMonth === openMonth ? "Building auditor ZIP…" : "Download auditor ZIP"}
+                </button>
               </div>
               <article className="folder-front-page">
                 <div className="folder-title">
@@ -1310,13 +1456,13 @@ export default function Home() {
                     <div className="empty-icon">▤</div>
                     <h4>This month is empty</h4>
                     <p>Documents dated in {monthNames[openMonth]} will appear here automatically.</p>
-                    <button className="secondary" onClick={() => setScreen("documents")}>Add document</button>
+                    <button className="secondary" onClick={openNewDocument}>Add document</button>
                   </div>
                 ) : (
                   <div className="document-list">
                     {monthDocuments.map((document) => (
                       <article className="source-document-row" key={document.id}>
-                        <button className="source-document-main" onClick={() => editSourceDocument(document)}>
+                        <button className="source-document-main" onClick={() => void editSourceDocument(document)}>
                           <div className="document-logo">{document.merchant.charAt(0)}</div>
                           <div>
                             <strong>{document.merchant}</strong>
@@ -1337,10 +1483,10 @@ export default function Home() {
                             {duplicateIds.has(document.id) ? "Duplicate?" : document.status}
                           </i>
                         </button>
-                        <button className="source-edit" onClick={() => editSourceDocument(document)}>Edit</button>
+                        <button className="source-edit" onClick={() => void editSourceDocument(document)}>Edit</button>
                         {pendingDeleteId === document.id ? (
                           <div className="source-delete-confirm">
-                            <button onClick={() => deleteSourceDocument(document)}>Delete?</button>
+                            <button onClick={() => void deleteSourceDocument(document)}>Delete?</button>
                             <button onClick={() => setPendingDeleteId(null)}>Cancel</button>
                           </div>
                         ) : (
@@ -1420,7 +1566,10 @@ export default function Home() {
                   <button className="secondary full" onClick={() => void readDocument()}>Reprocess corrected text</button>
                 </details>
               )}
-              <p className="privacy-note">OCR runs on this device. The image is not stored by WedgeBooks.</p>
+              <p className="privacy-note">
+                OCR runs on this device. After journal insertion, the original file is stored in this browser
+                for receipt search and the monthly auditor ZIP.
+              </p>
             </div>
 
             <div className="review-column">
@@ -1588,7 +1737,7 @@ export default function Home() {
                           ? "Correct and confirm every unclear item description before saving."
                           : "Correct a category once; the brain remembers it."}
                     </span>
-                    <button className="primary" disabled={merchantNeedsUpdate || itemsNeedUpdate} onClick={saveDocument}>
+                    <button className="primary" disabled={merchantNeedsUpdate || itemsNeedUpdate} onClick={() => void saveDocument()}>
                       Insert to journal
                     </button>
                   </div>
