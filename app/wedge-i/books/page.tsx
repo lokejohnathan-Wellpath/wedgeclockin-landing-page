@@ -18,14 +18,26 @@ import {
   parseBookDocument,
 } from "./brain";
 
-type OcrLanguage = "eng+msa" | "eng+chi_sim" | "eng+tam";
-type Screen = "dashboard" | "documents" | "brain" | "exports";
+type Screen = "dashboard" | "folders" | "documents" | "brain" | "exports";
 
 type BusinessSetup = {
   name: string;
   type: BusinessType;
-  ocrLanguage: OcrLanguage;
 };
+
+type CustomMonthlyAmounts = Record<string, number[]>;
+type FolderColumn = {
+  label: string;
+  value: number;
+  target: string;
+  categories: BookCategory[];
+};
+
+const monthNames = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+] as const;
+const defaultCustomColumns = Array.from({ length: 6 }, (_, index) => `Custom ${index + 1}`);
 
 const emptyDocument: BookDocument = {
   id: "",
@@ -70,7 +82,16 @@ function downloadBlob(contents: BlobPart, name: string, type: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function documentRows(documents: BookDocument[]) {
+function parkingLabel(document: BookDocument, customColumns: string[]) {
+  if (!document.parkingCategory) return "";
+  if (document.parkingCategory.startsWith("custom:")) {
+    const index = Number(document.parkingCategory.split(":")[1]);
+    return customColumns[index] || `Custom ${index + 1}`;
+  }
+  return document.parkingCategory;
+}
+
+function documentRows(documents: BookDocument[], customColumns: string[] = []) {
   return documents.flatMap((document) =>
     document.items.map((item) => ({
       date: document.date,
@@ -82,12 +103,141 @@ function documentRows(documents: BookDocument[]) {
       unit: item.unit,
       unitPrice: item.unitPrice,
       amount: item.amount,
-      category: item.category,
+      category:
+        document.parkingCategory && !document.parkingCategory.startsWith("custom:")
+          ? document.parkingCategory
+          : item.category,
+      folderCategory: parkingLabel(document, customColumns) || "AI line categories",
       confidence: item.confidence,
       tax: document.tax,
       documentTotal: document.total,
     })),
   );
+}
+
+function keyForMonth(year: number, month: number) {
+  return `${year}-${String(month + 1).padStart(2, "0")}`;
+}
+
+function documentsForMonth(documents: BookDocument[], year: number, month: number) {
+  const key = keyForMonth(year, month);
+  return documents.filter((document) => document.date.startsWith(key));
+}
+
+function monthlySummary(documents: BookDocument[]) {
+  const purchases = documents.filter((document) => document.documentType === "purchase");
+  const itemTotals = (categories: BookCategory[]) =>
+    purchases.reduce(
+      (sum, document) =>
+        sum + (
+          document.parkingCategory
+            ? categories.includes(document.parkingCategory as BookCategory) ? document.total : 0
+            : document.items
+              .filter((item) => categories.includes(item.category))
+              .reduce((itemSum, item) => itemSum + item.amount, 0)
+        ),
+      0,
+    );
+
+  return {
+    spending: purchases.reduce((sum, document) => sum + document.total, 0),
+    food: itemTotals(["Food Items", "Ingredients & Beverages"]),
+    stock: itemTotals(["Goods for Resale"]),
+    treatmentConsumables: itemTotals(["Treatment Consumables"]),
+    petConsumables: itemTotals(["Pet Care Consumables"]),
+    rawMaterials: itemTotals(["Raw Materials"]),
+    productionOverhead: itemTotals(["Production Overhead"]),
+    directPurchases: itemTotals(["Direct Purchases"]),
+    packaging: itemTotals(["Packaging"]),
+    gas: itemTotals(["Gas"]),
+    tnb: itemTotals(["TNB / Electricity"]),
+    water: itemTotals(["Water"]),
+    rental: itemTotals(["Rent & Premises"]),
+    utilities: itemTotals(["Utilities"]),
+    repairs: itemTotals(["Repairs & Maintenance"]),
+    transport: itemTotals(["Transport & Delivery"]),
+    office: itemTotals(["Office & Administration"]),
+    equipment: itemTotals(["Equipment / Asset"]),
+    professional: itemTotals(["Professional Fees"]),
+    other: itemTotals(["Other Expense", "Needs Review"]),
+    needsReview: documents.filter((document) => document.status === "Needs review").length,
+  };
+}
+
+function directPurchaseColumns(
+  businessType: BusinessType,
+  summary: ReturnType<typeof monthlySummary>,
+): FolderColumn[] {
+  switch (businessType) {
+    case "restaurant":
+      return [
+        { label: "Food Items", value: summary.food, target: "Food Items", categories: ["Food Items", "Ingredients & Beverages"] },
+        { label: "Packaging", value: summary.packaging, target: "Packaging", categories: ["Packaging"] },
+      ];
+    case "retail":
+      return [{ label: "Stock Purchases", value: summary.stock, target: "Goods for Resale", categories: ["Goods for Resale"] }];
+    case "salon":
+      return [
+        { label: "Product Stock", value: summary.stock, target: "Goods for Resale", categories: ["Goods for Resale"] },
+        { label: "Treatment Consumables", value: summary.treatmentConsumables, target: "Treatment Consumables", categories: ["Treatment Consumables"] },
+      ];
+    case "pet-store":
+      return [{ label: "Pet Stock Purchases", value: summary.stock, target: "Goods for Resale", categories: ["Goods for Resale"] }];
+    case "pet-spa":
+      return [
+        { label: "Product Stock", value: summary.stock, target: "Goods for Resale", categories: ["Goods for Resale"] },
+        { label: "Grooming Consumables", value: summary.petConsumables, target: "Pet Care Consumables", categories: ["Pet Care Consumables"] },
+      ];
+    case "factory":
+      return [
+        { label: "Raw Materials", value: summary.rawMaterials, target: "Raw Materials", categories: ["Raw Materials"] },
+        { label: "Production Overhead", value: summary.productionOverhead, target: "Production Overhead", categories: ["Production Overhead"] },
+      ];
+    case "service":
+      return [{ label: "Direct Job Purchases", value: summary.directPurchases, target: "Direct Purchases", categories: ["Direct Purchases"] }];
+    default:
+      return [{ label: "Direct Purchases", value: summary.directPurchases, target: "Direct Purchases", categories: ["Direct Purchases"] }];
+  }
+}
+
+function commonExpenseColumns(
+  businessType: BusinessType,
+  summary: ReturnType<typeof monthlySummary>,
+): FolderColumn[] {
+  const columns: FolderColumn[] = [
+    { label: "TNB / Electricity", value: summary.tnb, target: "TNB / Electricity", categories: ["TNB / Electricity"] },
+    { label: "Water", value: summary.water, target: "Water", categories: ["Water"] },
+    { label: "Gas", value: summary.gas, target: "Gas", categories: ["Gas"] },
+    { label: "Internet / Telephone", value: summary.utilities, target: "Utilities", categories: ["Utilities"] },
+    { label: "Rental", value: summary.rental, target: "Rent & Premises", categories: ["Rent & Premises"] },
+    {
+      label: businessType === "factory" ? "Machinery Repairs" : "Repairs & Maintenance",
+      value: summary.repairs,
+      target: "Repairs & Maintenance",
+      categories: ["Repairs & Maintenance"],
+    },
+    { label: "Office Upkeep", value: summary.office, target: "Office & Administration", categories: ["Office & Administration"] },
+    { label: "Transport & Delivery", value: summary.transport, target: "Transport & Delivery", categories: ["Transport & Delivery"] },
+    { label: "Equipment / Assets", value: summary.equipment, target: "Equipment / Asset", categories: ["Equipment / Asset"] },
+    { label: "Professional Fees", value: summary.professional, target: "Professional Fees", categories: ["Professional Fees"] },
+    { label: "Other Expenses", value: summary.other, target: "Other Expense", categories: ["Other Expense", "Needs Review"] },
+  ];
+  if (businessType !== "restaurant") {
+    columns.splice(4, 0, {
+      label: "Packaging",
+      value: summary.packaging,
+      target: "Packaging",
+      categories: ["Packaging"],
+    });
+  }
+  return columns;
+}
+
+function dominantDocumentCategory(document: BookDocument) {
+  if (document.parkingCategory) return document.parkingCategory;
+  const totals = new Map<BookCategory, number>();
+  document.items.forEach((item) => totals.set(item.category, (totals.get(item.category) ?? 0) + item.amount));
+  return [...totals.entries()].sort(([, first], [, second]) => second - first)[0]?.[0] ?? "Other Expense";
 }
 
 export default function Home() {
@@ -96,7 +246,6 @@ export default function Home() {
   const [setupDraft, setSetupDraft] = useState<BusinessSetup>({
     name: "",
     type: "restaurant",
-    ocrLanguage: "eng+msa",
   });
   const [documents, setDocuments] = useState<BookDocument[]>([]);
   const [learning, setLearning] = useState<LearningMap>({});
@@ -110,6 +259,11 @@ export default function Home() {
   const [ocrProgress, setOcrProgress] = useState(0);
   const [ocrStage, setOcrStage] = useState("");
   const [message, setMessage] = useState("");
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [openMonth, setOpenMonth] = useState<number | null>(null);
+  const [customColumns, setCustomColumns] = useState<string[]>(defaultCustomColumns);
+  const [customMonthlyAmounts, setCustomMonthlyAmounts] = useState<CustomMonthlyAmounts>({});
+  const [draggedDocumentId, setDraggedDocumentId] = useState("");
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
@@ -118,10 +272,20 @@ export default function Home() {
       const savedDocuments = localStorage.getItem("wedgebooks.documents");
       const savedLegacy = localStorage.getItem("wedgebooks.receipts");
       const savedLearning = localStorage.getItem("wedgebooks.learning");
-      if (savedSetup) setSetup(JSON.parse(savedSetup));
+      const savedCustomColumns = localStorage.getItem("wedgebooks.customColumns");
+      const savedCustomAmounts = localStorage.getItem("wedgebooks.customMonthlyAmounts");
+      if (savedSetup) {
+        const value = JSON.parse(savedSetup) as BusinessSetup;
+        setSetup({ name: value.name, type: value.type });
+      }
       if (savedDocuments) setDocuments(JSON.parse(savedDocuments));
       else if (savedLegacy) setDocuments(JSON.parse(savedLegacy));
       if (savedLearning) setLearning(JSON.parse(savedLearning));
+      if (savedCustomColumns) {
+        const values = JSON.parse(savedCustomColumns) as string[];
+        setCustomColumns(defaultCustomColumns.map((fallback, index) => values[index] || fallback));
+      }
+      if (savedCustomAmounts) setCustomMonthlyAmounts(JSON.parse(savedCustomAmounts));
       setHydrated(true);
     }, 0);
     return () => window.clearTimeout(timer);
@@ -132,7 +296,9 @@ export default function Home() {
     if (setup) localStorage.setItem("wedgebooks.setup", JSON.stringify(setup));
     localStorage.setItem("wedgebooks.documents", JSON.stringify(documents));
     localStorage.setItem("wedgebooks.learning", JSON.stringify(learning));
-  }, [setup, documents, learning, hydrated]);
+    localStorage.setItem("wedgebooks.customColumns", JSON.stringify(customColumns));
+    localStorage.setItem("wedgebooks.customMonthlyAmounts", JSON.stringify(customMonthlyAmounts));
+  }, [setup, documents, learning, customColumns, customMonthlyAmounts, hydrated]);
 
   useEffect(() => {
     return () => {
@@ -151,13 +317,26 @@ export default function Home() {
   const needsReview = documents.filter((doc) => doc.status === "Needs review").length;
   const categoryTotals = useMemo(() => {
     const totals: Partial<Record<BookCategory, number>> = {};
-    documents.forEach((doc) =>
-      doc.items.forEach((item) => {
-        totals[item.category] = (totals[item.category] ?? 0) + item.amount;
-      }),
-    );
+    documents.forEach((doc) => {
+      if (doc.parkingCategory && !doc.parkingCategory.startsWith("custom:")) {
+        const category = doc.parkingCategory as BookCategory;
+        totals[category] = (totals[category] ?? 0) + doc.total;
+        return;
+      }
+      if (!doc.parkingCategory) {
+        doc.items.forEach((item) => {
+          totals[item.category] = (totals[item.category] ?? 0) + item.amount;
+        });
+      }
+    });
     return totals;
   }, [documents]);
+  const availableYears = useMemo(() => {
+    const years = documents
+      .map((document) => Number(document.date.slice(0, 4)))
+      .filter((year) => Number.isFinite(year) && year > 2000);
+    return [...new Set([new Date().getFullYear(), selectedYear, ...years])].sort((a, b) => b - a);
+  }, [documents, selectedYear]);
   const merchantNeedsUpdate =
     !!draft.items.length &&
     (!draft.merchant.trim() || draft.merchant.trim() === merchantNotVisible);
@@ -209,8 +388,7 @@ export default function Home() {
 
       if (!source && file?.type.startsWith("image/")) {
         const { createWorker } = await import("tesseract.js");
-        const languages = setup.ocrLanguage.split("+");
-        const worker = await createWorker(languages, 1, {
+        const worker = await createWorker(["eng", "msa", "chi_sim"], 1, {
           logger: (status) => {
             if (typeof status.progress === "number") {
               setOcrProgress(Math.round(status.progress * 100));
@@ -327,17 +505,17 @@ export default function Home() {
   }
 
   function exportCsv() {
-    const rows = documentRows(documents);
+    const rows = documentRows(documents, customColumns);
     const headers = [
       "Date", "Type", "Document No", "Merchant", "Description", "Quantity", "Unit",
-      "Unit Price (RM)", "Amount (RM)", "Bookkeeping Category", "Confidence %",
+      "Unit Price (RM)", "Amount (RM)", "Bookkeeping Category", "Folder Category", "Confidence %",
       "Tax (RM)", "Document Total (RM)",
     ];
     const body = rows.map((row) =>
       [
         row.date, row.documentType, row.documentNo, row.merchant, row.description,
         row.quantity, row.unit, row.unitPrice.toFixed(2), row.amount.toFixed(2),
-        row.category, row.confidence, row.tax.toFixed(2), row.documentTotal.toFixed(2),
+        row.category, row.folderCategory, row.confidence, row.tax.toFixed(2), row.documentTotal.toFixed(2),
       ].map(csvEscape).join(","),
     );
     downloadBlob(
@@ -348,12 +526,12 @@ export default function Home() {
   }
 
   function exportExcel() {
-    const rows = documentRows(documents);
+    const rows = documentRows(documents, customColumns);
     const columns = [
       ["Date", "date"], ["Type", "documentType"], ["Document No", "documentNo"],
       ["Merchant", "merchant"], ["Description", "description"], ["Quantity", "quantity"],
       ["Unit", "unit"], ["Unit Price (RM)", "unitPrice"], ["Amount (RM)", "amount"],
-      ["Bookkeeping Category", "category"], ["Confidence %", "confidence"],
+      ["Bookkeeping Category", "category"], ["Folder Category", "folderCategory"], ["Confidence %", "confidence"],
       ["Tax (RM)", "tax"], ["Document Total (RM)", "documentTotal"],
     ] as const;
     const escapeXml = (value: unknown) =>
@@ -372,6 +550,114 @@ export default function Home() {
 <Styles><Style ss:ID="Header"><Font ss:Bold="1"/><Interior ss:Color="#DDF4EB" ss:Pattern="Solid"/></Style></Styles>
 <Worksheet ss:Name="Bookkeeping"><Table><Row>${heading}</Row>${rowXml}</Table></Worksheet></Workbook>`;
     downloadBlob(workbook, "wedgebooks-bookkeeping.xls", "application/vnd.ms-excel");
+  }
+
+  function updateCustomColumn(index: number, value: string) {
+    setCustomColumns((current) =>
+      current.map((column, columnIndex) => (columnIndex === index ? value : column)),
+    );
+  }
+
+  function updateCustomAmount(month: number, index: number, value: string) {
+    const monthKey = keyForMonth(selectedYear, month);
+    const amount = Number(value);
+    setCustomMonthlyAmounts((current) => {
+      const values = current[monthKey] ?? Array(6).fill(0);
+      return {
+        ...current,
+        [monthKey]: values.map((existing, columnIndex) =>
+          columnIndex === index ? (Number.isFinite(amount) ? amount : 0) : existing,
+        ),
+      };
+    });
+  }
+
+  function parkDocument(documentId: string, target: string) {
+    const document = documents.find((item) => item.id === documentId);
+    if (!document || document.documentType !== "purchase") return;
+    setDocuments((current) =>
+      current.map((item) => item.id === documentId ? { ...item, parkingCategory: target } : item),
+    );
+    const label = target.startsWith("custom:")
+      ? customColumns[Number(target.split(":")[1])] || "custom column"
+      : target;
+    setMessage(`${document.merchant} parked under ${label}. Monthly totals and auditor export updated.`);
+    setDraggedDocumentId("");
+  }
+
+  function restoreAiParking(documentId: string) {
+    setDocuments((current) =>
+      current.map((item) => item.id === documentId ? { ...item, parkingCategory: undefined } : item),
+    );
+    setMessage("Manual parking removed. This receipt now follows its AI line categories.");
+  }
+
+  function customColumnTotal(monthDocuments: BookDocument[], index: number) {
+    const manual = customMonthlyAmounts[keyForMonth(selectedYear, openMonth ?? 0)]?.[index] ?? 0;
+    const parked = monthDocuments
+      .filter((document) => document.parkingCategory === `custom:${index}`)
+      .reduce((sum, document) => sum + document.total, 0);
+    return manual + parked;
+  }
+
+  function exportMonth(month: number) {
+    const monthDocuments = documentsForMonth(documents, selectedYear, month);
+    const summary = monthlySummary(monthDocuments);
+    const manualCustomValues = customMonthlyAmounts[keyForMonth(selectedYear, month)] ?? Array(6).fill(0);
+    const customValues = customColumns.map((_, index) =>
+      (manualCustomValues[index] ?? 0) +
+      monthDocuments
+        .filter((document) => document.parkingCategory === `custom:${index}`)
+        .reduce((sum, document) => sum + document.total, 0),
+    );
+    const rows = documentRows(monthDocuments, customColumns);
+    const directColumns = directPurchaseColumns(setup?.type ?? "other", summary);
+    const commonColumns = commonExpenseColumns(setup?.type ?? "other", summary);
+    const escapeXml = (value: unknown) =>
+      String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const cell = (value: string | number, style = "") =>
+      `<Cell${style ? ` ss:StyleID="${style}"` : ""}><Data ss:Type="${typeof value === "number" ? "Number" : "String"}">${escapeXml(value)}</Data></Cell>`;
+
+    const summaryRows: Array<[string, number]> = [
+      ["Total Spending (RM)", summary.spending],
+      ...directColumns.map(({ label, value }) => [`${label} (RM)`, value] as [string, number]),
+      ...commonColumns.map(({ label, value }) => [`${label} (RM)`, value] as [string, number]),
+      ...customColumns.map((name, index) => [name || `Custom ${index + 1}`, customValues[index] ?? 0] as [string, number]),
+    ];
+    const summaryXml = [
+      `<Row>${cell(`${monthNames[month]} ${selectedYear} — Auditor Cover`, "Title")}</Row>`,
+      `<Row>${cell("Business", "Header")}${cell(setup?.name ?? "")}</Row>`,
+      `<Row>${cell("Documents", "Header")}${cell(monthDocuments.length)}</Row>`,
+      `<Row>${cell("Needs Review", "Header")}${cell(summary.needsReview)}</Row>`,
+      ...summaryRows.map(([label, value]) => `<Row>${cell(label, "Header")}${cell(value, "Money")}</Row>`),
+    ].join("");
+
+    const columns = [
+      ["Date", "date"], ["Type", "documentType"], ["Document No", "documentNo"],
+      ["Merchant", "merchant"], ["Description", "description"], ["Quantity", "quantity"],
+      ["Unit", "unit"], ["Unit Price (RM)", "unitPrice"], ["Amount (RM)", "amount"],
+      ["Bookkeeping Category", "category"], ["Folder Category", "folderCategory"], ["Confidence %", "confidence"],
+      ["Tax (RM)", "tax"], ["Document Total (RM)", "documentTotal"],
+    ] as const;
+    const transactionHeading = columns.map(([name]) => cell(name, "Header")).join("");
+    const transactionRows = rows.map((row) =>
+      `<Row>${columns.map(([, key]) => cell(row[key])).join("")}</Row>`,
+    ).join("");
+    const workbook = `<?xml version="1.0"?><?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+<Styles>
+<Style ss:ID="Header"><Font ss:Bold="1"/><Interior ss:Color="#DDF4EB" ss:Pattern="Solid"/></Style>
+<Style ss:ID="Title"><Font ss:Bold="1" ss:Size="16" ss:Color="#0D5E43"/></Style>
+<Style ss:ID="Money"><NumberFormat ss:Format="&quot;RM&quot; #,##0.00"/></Style>
+</Styles>
+<Worksheet ss:Name="Month Summary"><Table>${summaryXml}</Table></Worksheet>
+<Worksheet ss:Name="Transactions"><Table><Row>${transactionHeading}</Row>${transactionRows}</Table></Worksheet>
+</Workbook>`;
+    downloadBlob(
+      workbook,
+      `WedgeBooks-${selectedYear}-${String(month + 1).padStart(2, "0")}-Auditor.xls`,
+      "application/vnd.ms-excel",
+    );
   }
 
   if (!hydrated) {
@@ -422,19 +708,11 @@ export default function Home() {
                 </button>
               ))}
           </div>
-          <label className="field-label">
-            Main document language
-            <select
-              value={setupDraft.ocrLanguage}
-              onChange={(event) =>
-                setSetupDraft({ ...setupDraft, ocrLanguage: event.target.value as OcrLanguage })
-              }
-            >
-              <option value="eng+msa">English + Bahasa Malaysia</option>
-              <option value="eng+chi_sim">English + 中文</option>
-              <option value="eng+tam">English + தமிழ்</option>
-            </select>
-          </label>
+          <div className="automatic-language">
+            <span>Automatic document reading</span>
+            <strong>English · Bahasa Malaysia · 中文 / Mandarin</strong>
+            <small>No language button needed—the AI Eye reads all three automatically.</small>
+          </div>
           <button className="primary full setup-submit" disabled={!setupDraft.name.trim()} onClick={saveSetup}>
             Start bookkeeping
           </button>
@@ -458,6 +736,9 @@ export default function Home() {
         <nav aria-label="Main navigation">
           <button className={screen === "dashboard" ? "active" : ""} onClick={() => setScreen("dashboard")}>
             <span className="nav-icon">⌂</span> Dashboard
+          </button>
+          <button className={screen === "folders" ? "active" : ""} onClick={() => { setScreen("folders"); setOpenMonth(null); }}>
+            <span className="nav-icon">▱</span> Monthly folders
           </button>
           <button className={screen === "documents" ? "active" : ""} onClick={() => setScreen("documents")}>
             <span className="nav-icon">▤</span> Documents
@@ -495,6 +776,7 @@ export default function Home() {
             <p className="eyebrow">WEDGEBOOKS · PURE BOOKKEEPING</p>
             <h1>
               {screen === "dashboard" && `Hello, ${setup.name}`}
+              {screen === "folders" && (openMonth === null ? "Monthly auditor folders" : `${monthNames[openMonth]} ${selectedYear}`)}
               {screen === "documents" && "Receipt & invoice isolation"}
               {screen === "brain" && "Wedge Brain memory"}
               {screen === "exports" && "Bookkeeping exports"}
@@ -514,7 +796,7 @@ export default function Home() {
                 <p>The eye reads the real image. The brain separates sales, direct purchases, overheads and assets.</p>
                 <div className="hero-actions">
                   <button className="primary" onClick={() => setScreen("documents")}>Upload document</button>
-                  <button className="secondary" onClick={loadSample}>Try bookkeeping sample</button>
+                  <button className="secondary" onClick={() => { setScreen("folders"); setOpenMonth(null); }}>Monthly folders</button>
                 </div>
               </div>
               <div className="hero-visual">
@@ -568,6 +850,253 @@ export default function Home() {
             </section>
           </>
         )}
+
+        {screen === "folders" && openMonth === null && (
+          <section className="folders-view">
+            <div className="folder-toolbar">
+              <div>
+                <p className="eyebrow">JANUARY — DECEMBER</p>
+                <h2>Auditor-ready monthly folders</h2>
+                <p>Each saved document is filed automatically using its receipt or invoice date.</p>
+              </div>
+              <label>
+                Book year
+                <select value={selectedYear} onChange={(event) => setSelectedYear(Number(event.target.value))}>
+                  {availableYears.map((year) => <option key={year}>{year}</option>)}
+                </select>
+              </label>
+            </div>
+            <div className="folder-grid">
+              {monthNames.map((monthName, month) => {
+                const monthDocuments = documentsForMonth(documents, selectedYear, month);
+                const summary = monthlySummary(monthDocuments);
+                const directColumns = directPurchaseColumns(setup.type, summary);
+                return (
+                  <article className="month-folder" key={monthName}>
+                    <button className="folder-cover" onClick={() => setOpenMonth(month)}>
+                      <span className="folder-tab">{String(month + 1).padStart(2, "0")}</span>
+                      <p>{selectedYear}</p>
+                      <h3>{monthName}</h3>
+                      <strong>{money(summary.spending)}</strong>
+                      <small>{monthDocuments.length} document{monthDocuments.length === 1 ? "" : "s"}</small>
+                      <div className="folder-mini-totals">
+                        <span>{directColumns[0].label} <b>{money(directColumns[0].value)}</b></span>
+                        <span>TNB <b>{money(summary.tnb)}</b></span>
+                        <span>Rental <b>{money(summary.rental)}</b></span>
+                      </div>
+                      <em>{summary.needsReview ? `${summary.needsReview} to review` : "Open folder →"}</em>
+                    </button>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {screen === "folders" && openMonth !== null && (() => {
+          const monthDocuments = documentsForMonth(documents, selectedYear, openMonth);
+          const summary = monthlySummary(monthDocuments);
+          const directColumns = directPurchaseColumns(setup.type, summary);
+          const commonColumns = commonExpenseColumns(setup.type, summary);
+          const parkingColumns = [...directColumns, ...commonColumns];
+          const monthKey = keyForMonth(selectedYear, openMonth);
+          const customValues = customMonthlyAmounts[monthKey] ?? Array(6).fill(0);
+          return (
+            <section className="folder-detail">
+              <div className="folder-detail-actions">
+                <button className="text-button" onClick={() => setOpenMonth(null)}>← All monthly folders</button>
+                <button className="primary" onClick={() => exportMonth(openMonth)}>Download auditor Excel</button>
+              </div>
+              <article className="folder-front-page">
+                <div className="folder-title">
+                  <div>
+                    <p className="eyebrow">MONTHLY BOOKKEEPING COVER</p>
+                    <h2>{monthNames[openMonth]} {selectedYear}</h2>
+                    <span>{setup.name} · {monthDocuments.length} document{monthDocuments.length === 1 ? "" : "s"}</span>
+                  </div>
+                  <div className="spending-total">
+                    <span>Total spending</span>
+                    <strong>{money(summary.spending)}</strong>
+                    <small>From purchase receipts and invoices</small>
+                  </div>
+                </div>
+                <div className="standard-columns">
+                  {parkingColumns.map(({ label, value }) => (
+                    <article key={label}><span>{label}</span><strong>{money(value)}</strong></article>
+                  ))}
+                </div>
+                <div className="custom-columns-heading">
+                  <div><p className="eyebrow">YOUR SIX FREE COLUMNS</p><h3>Name and enter categories we do not cover</h3></div>
+                  <small>Saved separately for this month and included in the auditor file.</small>
+                </div>
+                <div className="custom-columns">
+                  {customColumns.map((column, index) => (
+                    <label key={index}>
+                      <input
+                        aria-label={`Custom column ${index + 1} name`}
+                        className="custom-column-name"
+                        value={column}
+                        onChange={(event) => updateCustomColumn(index, event.target.value)}
+                        placeholder={`Custom ${index + 1}`}
+                      />
+                      <span>RM</span>
+                      <input
+                        aria-label={`${column || `Custom ${index + 1}`} amount`}
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={customValues[index] || ""}
+                        onChange={(event) => updateCustomAmount(openMonth, index, event.target.value)}
+                        placeholder="0.00"
+                      />
+                      {!!monthDocuments.some((document) => document.parkingCategory === `custom:${index}`) && (
+                        <small>{money(customColumnTotal(monthDocuments, index))} including parked receipts</small>
+                      )}
+                    </label>
+                  ))}
+                </div>
+              </article>
+              <article className="panel parking-panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">DRAG & PARK RECEIPTS</p>
+                    <h3>Move a receipt to the correct spending category</h3>
+                  </div>
+                  <span className="parking-help">Drag the ⋮⋮ receipt card into another column</span>
+                </div>
+                <div className="parking-board">
+                  {parkingColumns.map((column) => {
+                    const parkedDocuments = monthDocuments.filter((document) =>
+                      document.documentType === "purchase" &&
+                      (
+                        document.parkingCategory
+                          ? document.parkingCategory === column.target
+                          : column.categories.includes(dominantDocumentCategory(document) as BookCategory)
+                      ),
+                    );
+                    return (
+                      <section
+                        className={`parking-lane ${draggedDocumentId ? "drag-active" : ""}`}
+                        key={column.target}
+                        onDragOver={(event) => event.preventDefault()}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          parkDocument(
+                            event.dataTransfer.getData("text/wedgebooks-document-id") || draggedDocumentId,
+                            column.target,
+                          );
+                        }}
+                      >
+                        <header><span>{column.label}</span><strong>{money(column.value)}</strong></header>
+                        <div className="parking-stack">
+                          {parkedDocuments.map((document) => (
+                            <article
+                              className="receipt-card"
+                              draggable
+                              key={document.id}
+                              onDragStart={(event) => {
+                                event.dataTransfer.setData("text/wedgebooks-document-id", document.id);
+                                event.dataTransfer.effectAllowed = "move";
+                                setDraggedDocumentId(document.id);
+                              }}
+                              onDragEnd={() => setDraggedDocumentId("")}
+                            >
+                              <button onClick={() => { setDraft(document); setScreen("documents"); }}>
+                                <i>⋮⋮</i>
+                                <span><strong>{document.merchant}</strong><small>{document.documentNo}</small></span>
+                                <b>{money(document.total)}</b>
+                              </button>
+                              {document.parkingCategory && (
+                                <button className="restore-ai" onClick={() => restoreAiParking(document.id)}>Use AI</button>
+                              )}
+                            </article>
+                          ))}
+                          {!parkedDocuments.length && <div className="empty-lane">Drop receipt here</div>}
+                        </div>
+                      </section>
+                    );
+                  })}
+                  {customColumns.map((column, index) => {
+                    const target = `custom:${index}`;
+                    const parkedDocuments = monthDocuments.filter((document) => document.parkingCategory === target);
+                    return (
+                      <section
+                        className={`parking-lane custom-lane ${draggedDocumentId ? "drag-active" : ""}`}
+                        key={target}
+                        onDragOver={(event) => event.preventDefault()}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          parkDocument(
+                            event.dataTransfer.getData("text/wedgebooks-document-id") || draggedDocumentId,
+                            target,
+                          );
+                        }}
+                      >
+                        <header>
+                          <span>{column || `Custom ${index + 1}`}</span>
+                          <strong>{money(customColumnTotal(monthDocuments, index))}</strong>
+                        </header>
+                        <div className="parking-stack">
+                          {parkedDocuments.map((document) => (
+                            <article
+                              className="receipt-card"
+                              draggable
+                              key={document.id}
+                              onDragStart={(event) => {
+                                event.dataTransfer.setData("text/wedgebooks-document-id", document.id);
+                                event.dataTransfer.effectAllowed = "move";
+                                setDraggedDocumentId(document.id);
+                              }}
+                              onDragEnd={() => setDraggedDocumentId("")}
+                            >
+                              <button onClick={() => { setDraft(document); setScreen("documents"); }}>
+                                <i>⋮⋮</i>
+                                <span><strong>{document.merchant}</strong><small>{document.documentNo}</small></span>
+                                <b>{money(document.total)}</b>
+                              </button>
+                              <button className="restore-ai" onClick={() => restoreAiParking(document.id)}>Use AI</button>
+                            </article>
+                          ))}
+                          {!parkedDocuments.length && <div className="empty-lane">Drop receipt here</div>}
+                        </div>
+                      </section>
+                    );
+                  })}
+                </div>
+                <p className="parking-note">
+                  Manual parking overrides this receipt&apos;s category in the monthly cover and auditor export.
+                  Use “Use AI” to restore line-by-line classification.
+                </p>
+              </article>
+              <article className="panel folder-documents">
+                <div className="panel-heading">
+                  <div><p className="eyebrow">SOURCE DOCUMENTS</p><h3>Receipts & invoices in this folder</h3></div>
+                  {!!summary.needsReview && <span className="status-pill review">{summary.needsReview} need review</span>}
+                </div>
+                {!monthDocuments.length ? (
+                  <div className="empty compact-folder-empty">
+                    <div className="empty-icon">▤</div>
+                    <h4>This month is empty</h4>
+                    <p>Documents dated in {monthNames[openMonth]} will appear here automatically.</p>
+                    <button className="secondary" onClick={() => setScreen("documents")}>Add document</button>
+                  </div>
+                ) : (
+                  <div className="document-list">
+                    {monthDocuments.map((document) => (
+                      <button key={document.id} onClick={() => { setDraft(document); setScreen("documents"); }}>
+                        <div className="document-logo">{document.merchant.charAt(0)}</div>
+                        <div><strong>{document.merchant}</strong><span>{document.date} · {document.items.length} lines</span></div>
+                        <em className={document.documentType}>{document.documentType}</em>
+                        <b>{money(document.total)}</b>
+                        <i className={document.status === "Ready" ? "ready" : "review"}>{document.status}</i>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </article>
+            </section>
+          );
+        })()}
 
         {screen === "documents" && (
           <section className="document-workspace">

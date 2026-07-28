@@ -12,6 +12,7 @@ export type DocumentType = "purchase" | "sales";
 
 export type BookCategory =
   | "Sales Income"
+  | "Food Items"
   | "Direct Purchases"
   | "Goods for Resale"
   | "Ingredients & Beverages"
@@ -20,6 +21,9 @@ export type BookCategory =
   | "Pet Care Consumables"
   | "Raw Materials"
   | "Production Overhead"
+  | "TNB / Electricity"
+  | "Water"
+  | "Gas"
   | "Utilities"
   | "Rent & Premises"
   | "Repairs & Maintenance"
@@ -52,6 +56,7 @@ export type BookDocument = {
   tax: number;
   total: number;
   status: "Ready" | "Needs review";
+  parkingCategory?: string;
   fileName?: string;
   ocrConfidence?: number;
   createdAt: string;
@@ -109,6 +114,7 @@ export const businessProfiles: Record<
 
 export const allCategories: BookCategory[] = [
   "Sales Income",
+  "Food Items",
   "Direct Purchases",
   "Goods for Resale",
   "Ingredients & Beverages",
@@ -117,6 +123,9 @@ export const allCategories: BookCategory[] = [
   "Pet Care Consumables",
   "Raw Materials",
   "Production Overhead",
+  "TNB / Electricity",
+  "Water",
+  "Gas",
   "Utilities",
   "Rent & Premises",
   "Repairs & Maintenance",
@@ -130,11 +139,31 @@ export const allCategories: BookCategory[] = [
 
 const categoryConcepts: Array<{ category: BookCategory; terms: string[] }> = [
   {
+    category: "TNB / Electricity",
+    terms: [
+      "electricity", "electric", "elektrik", "tenaga nasional", "tnb", "bil elektrik",
+      "电费", "电力", "மின்சாரம்",
+    ],
+  },
+  {
+    category: "Water",
+    terms: [
+      "water bill", "bil air", "syabas", "air selangor", "water utility",
+      "水费", "自来水", "தண்ணீர்",
+    ],
+  },
+  {
+    category: "Gas",
+    terms: [
+      "gas bill", "cooking gas", "lpg", "tong gas", "gas cylinder", "natural gas",
+      "煤气", "燃气", "瓦斯",
+    ],
+  },
+  {
     category: "Utilities",
     terms: [
-      "electricity", "electric", "elektrik", "tenaga nasional", "tnb", "water bill",
-      "bil air", "syabas", "air selangor", "gas bill", "internet", "unifi",
-      "telephone", "telekom", "电费", "水费", "煤气", "மின்சாரம்", "தண்ணீர்",
+      "internet", "unifi", "telephone", "telekom", "broadband", "wifi",
+      "网络费", "电话费",
     ],
   },
   {
@@ -147,7 +176,8 @@ const categoryConcepts: Array<{ category: BookCategory; terms: string[] }> = [
   {
     category: "Repairs & Maintenance",
     terms: [
-      "repair", "maintenance", "pembaikan", "baiki", "servicing", "cleaning service",
+      "repair", "maintenance", "pembaikan", "baiki", "servicing", "machine repair",
+      "machinery repair", "equipment repair",
       "维修", "保养", "பழுது", "பராமரிப்பு",
     ],
   },
@@ -162,8 +192,16 @@ const categoryConcepts: Array<{ category: BookCategory; terms: string[] }> = [
     category: "Office & Administration",
     terms: [
       "stationery", "office", "printing", "printer", "toner", "ink cartridge",
-      "photostat", "software subscription", "alat tulis", "文具", "打印",
+      "photostat", "software subscription", "alat tulis", "office upkeep",
+      "office cleaning", "pantry supplies", "janitorial", "pejabat", "文具", "打印",
       "அலுவலகம்",
+    ],
+  },
+  {
+    category: "Goods for Resale",
+    terms: [
+      "stock purchase", "retail stock", "goods for resale", "product stock", "resale item",
+      "stok jualan", "stok kedai", "barang jualan", "零售库存", "转售商品",
     ],
   },
   {
@@ -179,6 +217,15 @@ const categoryConcepts: Array<{ category: BookCategory; terms: string[] }> = [
       "machine", "machinery", "equipment", "computer", "laptop", "freezer",
       "refrigerator", "fridge", "oven", "air conditioner", "furniture", "mesin",
       "peralatan", "机器", "设备", "电脑", "இயந்திரம்",
+    ],
+  },
+  {
+    category: "Food Items",
+    terms: [
+      "chicken", "ayam", "beef", "daging", "fish", "ikan", "prawn", "udang",
+      "vegetable", "sayur", "tomato", "rice", "beras", "flour", "tepung",
+      "egg", "telur", "milk", "susu", "cooking oil", "minyak masak", "sugar", "gula",
+      "food item", "ingredient", "食品", "食材", "鸡肉", "鱼", "蔬菜", "米",
     ],
   },
   {
