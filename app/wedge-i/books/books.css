@@ -177,6 +177,43 @@
 .wedgebooks .stats span { color: var(--muted); font-size: 10px; font-weight: 650; }
 .wedgebooks .stats strong { font-size: 23px; margin: 8px 0 3px; letter-spacing: -.035em; }
 .wedgebooks .stats small { color: #99a69f; font-size: 9px; }
+.wedgebooks .receipt-search { margin-bottom: 15px; }
+.wedgebooks .receipt-search .panel-heading { margin-bottom: 15px; }
+.wedgebooks .receipt-search .panel-heading h3 { font-size: 21px; margin-bottom: 5px; }
+.wedgebooks .receipt-search .panel-heading p:last-child { color: var(--muted); font-size: 10px; }
+.wedgebooks .receipt-search form > label {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}
+.wedgebooks .receipt-search form > div { display: flex; gap: 8px; }
+.wedgebooks .receipt-search input {
+  min-width: 0; flex: 1; border: 1px solid #cdded7; border-radius: 10px;
+  padding: 12px 14px; background: #fbfdfc; color: var(--ink); font-size: 12px; outline: none;
+}
+.wedgebooks .receipt-search input:focus {
+  border-color: var(--green); box-shadow: 0 0 0 3px rgba(21,122,88,.09); background: white;
+}
+.wedgebooks .receipt-search button:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+.wedgebooks .search-results { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 15px; }
+.wedgebooks .search-result-heading { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 5px; }
+.wedgebooks .search-result-heading strong { font-size: 11px; }
+.wedgebooks .search-result-heading span { color: var(--muted); font-size: 9px; }
+.wedgebooks .search-empty {
+  display: flex; align-items: center; gap: 11px; margin-top: 12px; padding: 15px;
+  border: 1px dashed #d8e2de; border-radius: 10px; background: #fbfdfc;
+}
+.wedgebooks .search-empty > span {
+  width: 34px; height: 34px; display: grid; place-items: center; border-radius: 9px;
+  background: var(--mint); color: var(--green); font-size: 18px;
+}
+.wedgebooks .search-empty strong { font-size: 11px; }
+.wedgebooks .search-empty p { margin-top: 3px; color: var(--muted); font-size: 9px; }
+.wedgebooks .search-document-list button {
+  grid-template-columns: 38px minmax(0,1fr) 72px 110px 92px;
+}
+.wedgebooks .search-document-list .open-result {
+  margin: 0; color: var(--green); font-size: 9px; font-weight: 800; text-align: right;
+}
 .wedgebooks .accounting-story {
   min-height: 250px; display: grid; grid-template-columns: .8fr 1.2fr; overflow: hidden;
   margin: 0 0 15px; border: 1px solid var(--line); border-radius: 16px; background: white;
@@ -450,6 +487,11 @@
   .wedgebooks .hero-steps { flex-wrap: wrap; }
   .wedgebooks .accounting-story > div { padding: 25px; }
   .wedgebooks .stats { grid-template-columns: 1fr; }
+  .wedgebooks .receipt-search form > div { flex-wrap: wrap; }
+  .wedgebooks .receipt-search input { flex-basis: 100%; }
+  .wedgebooks .search-result-heading { align-items: flex-start; flex-direction: column; gap: 3px; }
+  .wedgebooks .search-document-list button { grid-template-columns: 34px minmax(0,1fr) auto; }
+  .wedgebooks .search-document-list .open-result { display: block; }
   .wedgebooks .panel, .wedgebooks .upload-column, .wedgebooks .review-column { padding: 17px; }
   .wedgebooks .document-list button { grid-template-columns: 34px minmax(0,1fr) auto; }
   .wedgebooks .document-list em, .wedgebooks .document-list i { display: none; }

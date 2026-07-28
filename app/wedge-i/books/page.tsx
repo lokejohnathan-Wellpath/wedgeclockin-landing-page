@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, DragEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, DragEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import "./books.css";
 import { accountingDeskImage, receiptIsolationImage } from "./images";
@@ -64,6 +64,31 @@ function money(value: number) {
     style: "currency",
     currency: "MYR",
   }).format(value);
+}
+
+function documentSearchText(document: BookDocument) {
+  return normalise([
+    document.merchant,
+    document.documentNo,
+    document.fileName ?? "",
+    document.date,
+    document.documentType,
+    ...document.items.flatMap((item) => [
+      item.description,
+      item.category,
+      item.unit,
+    ]),
+  ].join(" "));
+}
+
+function matchedItemDescriptions(document: BookDocument, query: string) {
+  const tokens = normalise(query).split(/\s+/).filter(Boolean);
+  const matchingItems = document.items.filter((item) => {
+    const itemText = normalise(`${item.description} ${item.category}`);
+    return tokens.some((token) => itemText.includes(token));
+  });
+  const items = matchingItems.length ? matchingItems : document.items;
+  return items.slice(0, 2).map((item) => item.description).join(" · ");
 }
 
 function csvEscape(value: string | number) {
@@ -278,6 +303,8 @@ export default function Home() {
   const [openMonth, setOpenMonth] = useState<number | null>(null);
   const [customColumns, setCustomColumns] = useState<string[]>(defaultCustomColumns);
   const [customMonthlyAmounts, setCustomMonthlyAmounts] = useState<CustomMonthlyAmounts>({});
+  const [searchInput, setSearchInput] = useState("");
+  const [activeSearch, setActiveSearch] = useState("");
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
@@ -349,6 +376,14 @@ export default function Home() {
       .filter((year) => Number.isFinite(year) && year > 2000);
     return [...new Set([new Date().getFullYear(), selectedYear, ...years])].sort((a, b) => b - a);
   }, [documents, selectedYear]);
+  const searchResults = useMemo(() => {
+    const tokens = normalise(activeSearch).split(/\s+/).filter(Boolean);
+    if (!tokens.length) return [];
+    return documents.filter((document) => {
+      const searchable = documentSearchText(document);
+      return tokens.every((token) => searchable.includes(token));
+    });
+  }, [activeSearch, documents]);
   const merchantNeedsUpdate =
     !!draft.items.length &&
     (!draft.merchant.trim() || draft.merchant.trim() === merchantNotVisible);
@@ -368,6 +403,16 @@ export default function Home() {
     if (!setupDraft.name.trim()) return;
     setSetup({ ...setupDraft, name: setupDraft.name.trim() });
     setMessage("Business profile saved. The brain will use this context for every document.");
+  }
+
+  function searchReceipts(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setActiveSearch(searchInput.trim());
+  }
+
+  function clearReceiptSearch() {
+    setSearchInput("");
+    setActiveSearch("");
   }
 
   function chooseFile(selected?: File) {
@@ -947,6 +992,67 @@ export default function Home() {
               <article><span>Sales documents</span><strong>{money(totalSales)}</strong><small>Recorded sales receipts</small></article>
               <article><span>Purchase documents</span><strong>{money(totalPurchases)}</strong><small>Purchases and expenses</small></article>
               <article><span>Needs review</span><strong>{needsReview}</strong><small>Only uncertain documents</small></article>
+            </section>
+            <section className="panel receipt-search">
+              <div className="panel-heading">
+                <div>
+                  <p className="eyebrow">FIND A SAVED RECEIPT</p>
+                  <h3>Search your documents</h3>
+                  <p>Search by item or description, supplier, or supplier invoice number.</p>
+                </div>
+              </div>
+              <form onSubmit={searchReceipts} role="search">
+                <label htmlFor="receipt-search">Receipt search</label>
+                <div>
+                  <input
+                    id="receipt-search"
+                    type="search"
+                    value={searchInput}
+                    onChange={(event) => setSearchInput(event.target.value)}
+                    placeholder="Example: Pork Loin, Hup Soon, or IV-26070157"
+                    autoComplete="off"
+                  />
+                  {activeSearch && (
+                    <button className="secondary" type="button" onClick={clearReceiptSearch}>Clear</button>
+                  )}
+                  <button className="primary" type="submit" disabled={!searchInput.trim()}>Search</button>
+                </div>
+              </form>
+              {activeSearch && (
+                <div className="search-results" aria-live="polite">
+                  <div className="search-result-heading">
+                    <strong>{searchResults.length} {searchResults.length === 1 ? "receipt" : "receipts"} found</strong>
+                    <span>Results for “{activeSearch}”</span>
+                  </div>
+                  {!searchResults.length ? (
+                    <div className="search-empty">
+                      <span>⌕</span>
+                      <div>
+                        <strong>No matching receipt</strong>
+                        <p>Try a shorter item name, supplier name, or invoice number.</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="document-list search-document-list">
+                      {searchResults.map((document) => (
+                        <button key={document.id} type="button" onClick={() => editSourceDocument(document)}>
+                          <div className="document-logo">{document.merchant.charAt(0) || "?"}</div>
+                          <div>
+                            <strong>{document.merchant}</strong>
+                            <span>
+                              {document.documentNo || "No invoice number"} · {document.date}
+                              {matchedItemDescriptions(document, activeSearch) && ` · ${matchedItemDescriptions(document, activeSearch)}`}
+                            </span>
+                          </div>
+                          <em className={document.documentType}>{document.documentType}</em>
+                          <b>{money(document.total)}</b>
+                          <span className="open-result">Open receipt →</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </section>
             <section className="accounting-story">
               <div>
