@@ -36,7 +36,7 @@ const monthNames = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ] as const;
-const defaultCustomColumns = Array.from({ length: 6 }, (_, index) => `Custom ${index + 1}`);
+const defaultCustomColumns = Array(6).fill("");
 
 const emptyDocument: BookDocument = {
   id: "",
@@ -144,26 +144,68 @@ async function prepareImageForOcr(file: File, lineItemsOnly = false) {
 
 function documentRows(documents: BookDocument[]) {
   return documents.flatMap((document) =>
-    document.items.map((item) => ({
-      date: document.date,
-      documentType: document.documentType,
-      documentNo: document.documentNo,
-      merchant: document.merchant,
-      description: item.description,
-      quantity: item.quantity,
-      unit: item.unit,
-      unitPrice: item.unitPrice,
-      amount: item.amount,
-      category: item.category,
-      confidence: item.confidence,
-      tax: document.tax,
-      documentTotal: document.total,
-    })),
+    document.items.map((item) => {
+      const sourceLabel = document.documentType === "sales" ? "Receipt" : "Invoice";
+      const sourceReference = document.documentNo
+        ? ` | ${sourceLabel} ${document.documentNo}`
+        : "";
+      return {
+        date: document.date,
+        documentType: document.documentType,
+        documentNo: document.documentNo,
+        merchant: document.merchant,
+        description: `${item.description}${sourceReference}`,
+        quantity: item.quantity,
+        unit: item.unit,
+        unitPrice: item.unitPrice,
+        amount: item.amount,
+        category: item.category,
+        tax: document.tax,
+        documentTotal: document.total,
+      };
+    }),
   );
+}
+
+function customMonthlyRows(
+  columns: string[],
+  monthlyAmounts: CustomMonthlyAmounts,
+  businessName: string,
+  onlyMonthKey?: string,
+) {
+  return Object.entries(monthlyAmounts).flatMap(([monthKey, values]) => {
+    if (onlyMonthKey && monthKey !== onlyMonthKey) return [];
+    return columns.flatMap((column, index) => {
+      const category = column.trim();
+      const amount = values[index] ?? 0;
+      if (!category || amount <= 0) return [];
+      return [{
+        date: `${monthKey}-01`,
+        documentType: "purchase" as const,
+        documentNo: "Manual monthly entry",
+        merchant: businessName,
+        description: `${category} | Monthly custom entry ${monthKey}`,
+        quantity: 1,
+        unit: "month",
+        unitPrice: amount,
+        amount,
+        category,
+        tax: 0,
+        documentTotal: amount,
+      }];
+    });
+  });
 }
 
 function keyForMonth(year: number, month: number) {
   return `${year}-${String(month + 1).padStart(2, "0")}`;
+}
+
+function customSpendingTotal(columns: string[], values: number[]) {
+  return columns.reduce(
+    (sum, column, index) => sum + (column.trim() ? (values[index] ?? 0) : 0),
+    0,
+  );
 }
 
 function documentsForMonth(documents: BookDocument[], year: number, month: number) {
@@ -329,7 +371,10 @@ export default function Home() {
       if (savedLearning) setLearning(JSON.parse(savedLearning));
       if (savedCustomColumns) {
         const values = JSON.parse(savedCustomColumns) as string[];
-        setCustomColumns(defaultCustomColumns.map((fallback, index) => values[index] || fallback));
+        setCustomColumns(defaultCustomColumns.map((fallback, index) => {
+          const value = values[index]?.trim() ?? "";
+          return /^custom\s+\d+$/i.test(value) ? "" : (value || fallback);
+        }));
       }
       if (savedCustomAmounts) setCustomMonthlyAmounts(JSON.parse(savedCustomAmounts));
       setHydrated(true);
@@ -710,17 +755,20 @@ export default function Home() {
   }
 
   function exportCsv() {
-    const rows = documentRows(documents);
+    const rows = [
+      ...documentRows(documents),
+      ...customMonthlyRows(customColumns, customMonthlyAmounts, setup?.name ?? "Manual entry"),
+    ];
     const headers = [
-      "Date", "Type", "Document No", "Merchant", "Description", "Quantity", "Unit",
-      "Unit Price (RM)", "Amount (RM)", "Bookkeeping Category", "Confidence %",
+      "Date", "Type", "Invoice / Receipt No.", "Supplier / Merchant", "Journal Description",
+      "Quantity", "Unit", "Unit Price (RM)", "Amount (RM)", "Bookkeeping Category",
       "Tax (RM)", "Document Total (RM)",
     ];
     const body = rows.map((row) =>
       [
         row.date, row.documentType, row.documentNo, row.merchant, row.description,
         row.quantity, row.unit, row.unitPrice.toFixed(2), row.amount.toFixed(2),
-        row.category, row.confidence, row.tax.toFixed(2), row.documentTotal.toFixed(2),
+        row.category, row.tax.toFixed(2), row.documentTotal.toFixed(2),
       ].map(csvEscape).join(","),
     );
     downloadBlob(
@@ -731,13 +779,16 @@ export default function Home() {
   }
 
   function exportExcel() {
-    const rows = documentRows(documents);
+    const rows = [
+      ...documentRows(documents),
+      ...customMonthlyRows(customColumns, customMonthlyAmounts, setup?.name ?? "Manual entry"),
+    ];
     const columns = [
-      ["Date", "date"], ["Type", "documentType"], ["Document No", "documentNo"],
-      ["Merchant", "merchant"], ["Description", "description"], ["Quantity", "quantity"],
+      ["Date", "date"], ["Type", "documentType"], ["Invoice / Receipt No.", "documentNo"],
+      ["Supplier / Merchant", "merchant"], ["Journal Description", "description"], ["Quantity", "quantity"],
       ["Unit", "unit"], ["Unit Price (RM)", "unitPrice"], ["Amount (RM)", "amount"],
-      ["Bookkeeping Category", "category"], ["Confidence %", "confidence"],
-      ["Tax (RM)", "tax"], ["Document Total (RM)", "documentTotal"],
+      ["Bookkeeping Category", "category"], ["Tax (RM)", "tax"],
+      ["Document Total (RM)", "documentTotal"],
     ] as const;
     const escapeXml = (value: unknown) =>
       String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -790,8 +841,18 @@ export default function Home() {
   function exportMonth(month: number) {
     const monthDocuments = documentsForMonth(documents, selectedYear, month);
     const summary = monthlySummary(monthDocuments);
-    const customValues = customMonthlyAmounts[keyForMonth(selectedYear, month)] ?? Array(6).fill(0);
-    const rows = documentRows(monthDocuments);
+    const monthKey = keyForMonth(selectedYear, month);
+    const customValues = customMonthlyAmounts[monthKey] ?? Array(6).fill(0);
+    const totalSpending = summary.spending + customSpendingTotal(customColumns, customValues);
+    const rows = [
+      ...documentRows(monthDocuments),
+      ...customMonthlyRows(
+        customColumns,
+        customMonthlyAmounts,
+        setup?.name ?? "Manual entry",
+        monthKey,
+      ),
+    ];
     const directColumns = directPurchaseColumns(setup?.type ?? "other", summary);
     const commonColumns = commonExpenseColumns(setup?.type ?? "other", summary);
     const escapeXml = (value: unknown) =>
@@ -800,10 +861,12 @@ export default function Home() {
       `<Cell${style ? ` ss:StyleID="${style}"` : ""}><Data ss:Type="${typeof value === "number" ? "Number" : "String"}">${escapeXml(value)}</Data></Cell>`;
 
     const summaryRows: Array<[string, number]> = [
-      ["Total Spending (RM)", summary.spending],
+      ["Total Spending (RM)", totalSpending],
       ...directColumns.map(({ label, value }) => [`${label} (RM)`, value] as [string, number]),
       ...commonColumns.map(({ label, value }) => [`${label} (RM)`, value] as [string, number]),
-      ...customColumns.map((name, index) => [name || `Custom ${index + 1}`, customValues[index] ?? 0] as [string, number]),
+      ...customColumns.flatMap((name, index) =>
+        name.trim() ? [[name.trim(), customValues[index] ?? 0] as [string, number]] : [],
+      ),
     ];
     const summaryXml = [
       `<Row>${cell(`${monthNames[month]} ${selectedYear} — Auditor Cover`, "Title")}</Row>`,
@@ -814,11 +877,11 @@ export default function Home() {
     ].join("");
 
     const columns = [
-      ["Date", "date"], ["Type", "documentType"], ["Document No", "documentNo"],
-      ["Merchant", "merchant"], ["Description", "description"], ["Quantity", "quantity"],
+      ["Date", "date"], ["Type", "documentType"], ["Invoice / Receipt No.", "documentNo"],
+      ["Supplier / Merchant", "merchant"], ["Journal Description", "description"], ["Quantity", "quantity"],
       ["Unit", "unit"], ["Unit Price (RM)", "unitPrice"], ["Amount (RM)", "amount"],
-      ["Bookkeeping Category", "category"], ["Confidence %", "confidence"],
-      ["Tax (RM)", "tax"], ["Document Total (RM)", "documentTotal"],
+      ["Bookkeeping Category", "category"], ["Tax (RM)", "tax"],
+      ["Document Total (RM)", "documentTotal"],
     ] as const;
     const transactionHeading = columns.map(([name]) => cell(name, "Header")).join("");
     const transactionRows = rows.map((row) =>
@@ -1113,13 +1176,17 @@ export default function Home() {
                 const monthDocuments = documentsForMonth(documents, selectedYear, month);
                 const summary = monthlySummary(monthDocuments);
                 const directColumns = directPurchaseColumns(setup.type, summary);
+                const monthCustomValues =
+                  customMonthlyAmounts[keyForMonth(selectedYear, month)] ?? Array(6).fill(0);
+                const totalSpending =
+                  summary.spending + customSpendingTotal(customColumns, monthCustomValues);
                 return (
                   <article className="month-folder" key={monthName}>
                     <button className="folder-cover" onClick={() => setOpenMonth(month)}>
                       <span className="folder-tab">{String(month + 1).padStart(2, "0")}</span>
                       <p>{selectedYear}</p>
                       <h3>{monthName}</h3>
-                      <strong>{money(summary.spending)}</strong>
+                      <strong>{money(totalSpending)}</strong>
                       <small>{monthDocuments.length} document{monthDocuments.length === 1 ? "" : "s"}</small>
                       <div className="folder-mini-totals">
                         <span>{directColumns[0].label} <b>{money(directColumns[0].value)}</b></span>
@@ -1143,6 +1210,8 @@ export default function Home() {
           const summaryColumns = [...directColumns, ...commonColumns];
           const monthKey = keyForMonth(selectedYear, openMonth);
           const customValues = customMonthlyAmounts[monthKey] ?? Array(6).fill(0);
+          const totalSpending =
+            summary.spending + customSpendingTotal(customColumns, customValues);
           return (
             <section className="folder-detail">
               <div className="folder-detail-actions">
@@ -1158,8 +1227,8 @@ export default function Home() {
                   </div>
                   <div className="spending-total">
                     <span>Total spending</span>
-                    <strong>{money(summary.spending)}</strong>
-                    <small>From purchase receipts and invoices</small>
+                    <strong>{money(totalSpending)}</strong>
+                    <small>Purchase documents plus named custom entries</small>
                   </div>
                 </div>
                 <div className="standard-columns">
@@ -1169,28 +1238,32 @@ export default function Home() {
                 </div>
                 <div className="custom-columns-heading">
                   <div><p className="eyebrow">YOUR SIX FREE COLUMNS</p><h3>Name and enter categories we do not cover</h3></div>
-                  <small>Saved separately for this month and included in the auditor file.</small>
+                  <small>Only named columns show an amount. Their values are added to total spending and the auditor file.</small>
                 </div>
                 <div className="custom-columns">
                   {customColumns.map((column, index) => (
-                    <label key={index}>
+                    <label className={column.trim() ? "named" : "unnamed"} key={index}>
                       <input
                         aria-label={`Custom column ${index + 1} name`}
                         className="custom-column-name"
                         value={column}
                         onChange={(event) => updateCustomColumn(index, event.target.value)}
-                        placeholder={`Custom ${index + 1}`}
+                        placeholder={`Name custom category ${index + 1}`}
                       />
-                      <span>RM</span>
-                      <input
-                        aria-label={`${column || `Custom ${index + 1}`} amount`}
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={customValues[index] || ""}
-                        onChange={(event) => updateCustomAmount(openMonth, index, event.target.value)}
-                        placeholder="0.00"
-                      />
+                      {column.trim() && (
+                        <>
+                          <span>RM</span>
+                          <input
+                            aria-label={`${column} amount`}
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={customValues[index] || ""}
+                            onChange={(event) => updateCustomAmount(openMonth, index, event.target.value)}
+                            placeholder="Enter amount"
+                          />
+                        </>
+                      )}
                     </label>
                   ))}
                 </div>
@@ -1478,7 +1551,7 @@ export default function Home() {
             <article className="export-hero">
               <p className="eyebrow">CLEAN BOOKKEEPING OUTPUT</p>
               <h2>Documents isolated.<br />Books ready.</h2>
-              <p>Every recorded line includes its source document, merchant, amount, category and confidence.</p>
+              <p>Every exported line includes its invoice or receipt number, supplier, journal description, amount and bookkeeping category.</p>
               <div className="export-actions">
                 <button className="primary" disabled={!documents.length} onClick={exportExcel}>Download Excel</button>
                 <button className="secondary" disabled={!documents.length} onClick={exportCsv}>Download CSV</button>
