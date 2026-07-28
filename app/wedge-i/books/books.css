@@ -343,6 +343,13 @@
 .wedgebooks td strong { font-size: 10px; }
 .wedgebooks td span { color: var(--muted); font-size: 8px; margin-top: 3px; }
 .wedgebooks td select { min-width: 160px; border: 1px solid var(--line); border-radius: 7px; padding: 7px; background: white; color: var(--ink); font-size: 9px; outline: none; }
+.wedgebooks .amount-editor, .wedgebooks .total-editor {
+  display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 8px;
+}
+.wedgebooks .amount-editor input {
+  width: 85px; padding: 7px; border: 1px solid var(--line); border-radius: 7px;
+  background: white; color: var(--ink); font-size: 9px; outline: none;
+}
 .wedgebooks .line-description { display: flex; align-items: center; gap: 6px; min-width: 190px; }
 .wedgebooks .line-description input {
   min-width: 0; width: 100%; padding: 7px 8px; border: 1px solid transparent;
@@ -361,7 +368,17 @@
 .wedgebooks .confidence.low { background: #fff1e6; color: var(--orange); }
 .wedgebooks .document-total { display: flex; justify-content: flex-end; align-items: baseline; gap: 20px; margin: 18px 6px; }
 .wedgebooks .document-total span { color: var(--muted); font-size: 10px; }
-.wedgebooks .document-total strong { font-size: 22px; }
+.wedgebooks .total-editor input {
+  width: 135px; padding: 8px 9px; border: 1px solid var(--line); border-radius: 8px;
+  color: var(--ink); font-size: 20px; font-weight: 800; text-align: right; outline: none;
+}
+.wedgebooks .total-warning {
+  display: flex; align-items: center; justify-content: space-between; gap: 15px;
+  margin: -4px 0 15px; padding: 10px 12px; border: 1px solid #edc8aa;
+  border-radius: 9px; background: #fff6ee; color: var(--orange);
+}
+.wedgebooks .total-warning strong { font-size: 9px; }
+.wedgebooks .total-warning span { color: #90623f; font-size: 8px; text-align: right; }
 .wedgebooks .save-row { border-top: 1px solid var(--line); padding-top: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .wedgebooks .save-row span { color: var(--muted); font-size: 9px; }
 

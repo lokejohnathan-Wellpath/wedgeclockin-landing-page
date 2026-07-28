@@ -21,6 +21,7 @@ export type BookCategory =
   | "Pet Care Consumables"
   | "Raw Materials"
   | "Production Overhead"
+  | "Medical / Healthcare"
   | "TNB / Electricity"
   | "Water"
   | "Gas"
@@ -123,6 +124,7 @@ export const allCategories: BookCategory[] = [
   "Pet Care Consumables",
   "Raw Materials",
   "Production Overhead",
+  "Medical / Healthcare",
   "TNB / Electricity",
   "Water",
   "Gas",
@@ -253,7 +255,9 @@ const ignoredLine = new RegExp(
     "^(online\\s*transfer|bank\\s*transfer|duitnow|e-wallet|ewallet)",
     "^(net\\s*rm|net\\s*amount|amount\\s*paid)",
     "^(date|time|receipt|resit|invoice|tax\\s*invoice|bill\\s*no|member|cashier)",
+    "^(sales\\s*receipt|official\\s*receipt)",
     "^(qty|quantity|item|description|price|disc|amount|unit\\s*price)",
+    "^(fee\\s*description|service\\s*description)",
     "^(thank|goods\\s*sold|terms|scan|www\\.|tel|phone|fax|address)",
   ].join("|"),
   "i",
@@ -400,15 +404,25 @@ function findDocumentNo(lines: string[]) {
   return explicit || `AUTO-${Date.now().toString().slice(-6)}`;
 }
 
-function findMoneyAtEnd(line: string) {
+function findMoneyAtEnd(line: string, allowOcrCents = false) {
   const values = [...line.matchAll(/(?:RM\s*)?(-?\d[\d,]*\.\d{2})/gi)];
-  return values.length ? parseNumber(values[values.length - 1][1]) : 0;
+  if (values.length) return parseNumber(values[values.length - 1][1]);
+  if (!allowOcrCents) return 0;
+  const standalone = line.match(/^\s*(?:RM\s*)?(\d{3,10})\s*$/i);
+  if (standalone) return parseNumber(standalone[1]) / 100;
+  if (/^\s*\d+\s+/.test(line)) {
+    const trailing = line.match(/\s(\d{3,10})\s*$/);
+    if (trailing) return parseNumber(trailing[1]) / 100;
+  }
+  return 0;
 }
 
 function extractDescription(line: string) {
   return line
     .replace(/\b(?:RM\s*)?-?\d[\d,]*\.\d{2}\b/gi, " ")
+    .replace(/^\s*\d+\s+(.+?)\s+\d{3,10}\s*$/u, "$1")
     .replace(/^\s*\d+\s*[xX*]\s*/, "")
+    .replace(/^\s*\d+\s+(?=[\p{L}])/u, "")
     .replace(/\s{2,}/g, " ")
     .replace(/[-:=|]+$/g, "")
     .trim();
@@ -439,7 +453,7 @@ function extractItemLines(lines: string[]) {
     const current = lines[index].replace(/[|]/g, " ").replace(/\s+/g, " ").trim();
     if (!current || ignoredLine.test(current)) continue;
 
-    const currentAmount = findMoneyAtEnd(current);
+    const currentAmount = findMoneyAtEnd(current, true);
     const hasLetters = /[\p{L}]{2}/u.test(current);
 
     if (currentAmount > 0 && hasLetters) {
@@ -449,7 +463,7 @@ function extractItemLines(lines: string[]) {
     }
 
     const next = lines[index + 1]?.replace(/[|]/g, " ").replace(/\s+/g, " ").trim() ?? "";
-    const nextAmount = findMoneyAtEnd(next);
+    const nextAmount = findMoneyAtEnd(next, true);
     const currentLooksLikeProduct =
       hasLetters &&
       current.length >= 3 &&
@@ -473,15 +487,99 @@ function extractItemLines(lines: string[]) {
 }
 
 function findTotal(lines: string[], itemTotal: number) {
-  const totalLine = [...lines].reverse().find((line) =>
-    /(?:grand\s*)?total|jumlah|amount\s*due|net\s*total/i.test(line),
-  );
-  return findMoneyAtEnd(totalLine ?? "") || itemTotal;
+  const totalLines = lines
+    .map((line, index) => {
+      const amount =
+        findMoneyAtEnd(line, true) ||
+        findMoneyAtEnd(lines[index + 1] ?? "", true) ||
+        findMoneyAtEnd(lines[index + 2] ?? "", true);
+      return {
+        line,
+        amount,
+        score:
+          /total\s*amount|grand\s*total|amount\s*due|net\s*total|jumlah\s*besar/i.test(line)
+          ? 3
+          : /^(?:total|jumlah)\b/i.test(line.trim())
+            ? 2
+            : /\btotal\b/i.test(line)
+              ? 1
+              : 0,
+      };
+    })
+    .filter((candidate) => candidate.score > 0 && candidate.amount > 0)
+    .sort((first, second) => second.score - first.score);
+  return totalLines[0]?.amount || itemTotal;
 }
 
 function findTax(lines: string[]) {
   const taxLine = lines.find((line) => /^(tax|sst|gst|cukai|service\s*tax)/i.test(line.trim()));
   return findMoneyAtEnd(taxLine ?? "");
+}
+
+function reconcileItemsToPrintedTotal<T extends { description: string; amount: number }>(
+  items: T[],
+  total: number,
+  tax: number,
+) {
+  if (items.length < 2 || items.length > 20 || total <= 0) return items;
+  const itemCents = items.map((item) => Math.round(item.amount * 100));
+  const rawCents = itemCents.reduce((sum, amount) => sum + amount, 0);
+  const targets = [...new Set([
+    Math.round(total * 100),
+    tax > 0 ? Math.round((total - tax) * 100) : 0,
+  ].filter((target) => target > 0))];
+  if (targets.includes(rawCents)) return items;
+
+  let bestIndices: number[] | null = null;
+  let bestScore = -Infinity;
+
+  for (const target of targets) {
+    const visit = (index: number, sum: number, chosen: number[]) => {
+      if (sum === target) {
+        const descriptions = new Set(chosen.map((itemIndex) => normalise(items[itemIndex].description)));
+        const duplicateCount = chosen.length - descriptions.size;
+        const score = descriptions.size * 100 + chosen.length - duplicateCount * 50;
+        if (score > bestScore) {
+          bestScore = score;
+          bestIndices = [...chosen];
+        }
+        return;
+      }
+      if (index >= items.length || sum > target) return;
+      visit(index + 1, sum, chosen);
+      if (itemCents[index] > 0 && sum + itemCents[index] <= target) {
+        chosen.push(index);
+        visit(index + 1, sum + itemCents[index], chosen);
+        chosen.pop();
+      }
+    };
+    visit(0, 0, []);
+  }
+
+  return bestIndices ? (bestIndices as number[]).map((index) => items[index]) : items;
+}
+
+function documentContextCategory(text: string): BookCategory | null {
+  const clean = normalise(text);
+  if (/\b(poliklinik|klinik|clinic|hospital|medical centre|medical center|pharmacy|farmasi)\b/.test(clean)) {
+    return "Medical / Healthcare";
+  }
+  if (/\b(tenaga nasional|tnb|bil elektrik|electricity bill)\b/.test(clean)) {
+    return "TNB / Electricity";
+  }
+  if (/\b(air selangor|syabas|bil air|water utility|water bill)\b/.test(clean)) {
+    return "Water";
+  }
+  if (/\b(gas malaysia|gas bill|bil gas|lpg invoice)\b/.test(clean)) {
+    return "Gas";
+  }
+  if (/\b(unifi|telekom malaysia|internet bill|broadband bill|telephone bill)\b/.test(clean)) {
+    return "Utilities";
+  }
+  if (/\b(premise rental|shop rental|rental invoice|sewa premis|sewa kedai)\b/.test(clean)) {
+    return "Rent & Premises";
+  }
+  return null;
 }
 
 export function inferDocumentType(text: string): DocumentType {
@@ -504,15 +602,28 @@ export function parseBookDocument(args: {
     .filter(Boolean);
 
   const extracted = extractItemLines(lines);
-  const items = extracted.map((candidate, index) => {
-    const decision = classifyBookDescription(
-      candidate.description,
-      args.businessType,
-      args.documentType,
-      args.learning,
-    );
+  const contextCategory = documentContextCategory(args.text);
+  const parsedItems = extracted.map((candidate, index) => {
+    const decision =
+      args.documentType === "purchase" && contextCategory
+        ? {
+            category: contextCategory,
+            confidence: 96,
+            source: "rule" as const,
+          }
+        : classifyBookDescription(
+            candidate.description,
+            args.businessType,
+            args.documentType,
+            args.learning,
+          );
     const { quantity, unit } = findQuantity(candidate.raw);
-    const readableDescription = descriptionLooksReadable(candidate.description);
+    const readableDescription =
+      descriptionLooksReadable(candidate.description) ||
+      (
+        contextCategory === "Medical / Healthcare" &&
+        /[a-z0-9]{4,}/i.test(candidate.description.replace(/\s+/g, ""))
+      );
     return {
       id: `${Date.now()}-${index}`,
       description: candidate.description,
@@ -528,9 +639,10 @@ export function parseBookDocument(args: {
     };
   });
 
-  const itemTotal = items.reduce((sum, item) => sum + item.amount, 0);
-  const total = findTotal(lines, itemTotal);
+  const rawItemTotal = parsedItems.reduce((sum, item) => sum + item.amount, 0);
+  const total = findTotal(lines, rawItemTotal);
   const tax = findTax(lines);
+  const items = reconcileItemsToPrintedTotal(parsedItems, total, tax);
   const finalItems =
     items.length > 0
       ? items
@@ -553,9 +665,14 @@ export function parseBookDocument(args: {
 
   const confidenceFloor = args.ocrConfidence ?? 100;
   const merchant = findMerchant(lines, args.ocrConfidence, args.documentType);
+  const finalItemTotal = finalItems.reduce((sum, item) => sum + item.amount, 0);
+  const totalsAgree =
+    Math.abs(finalItemTotal - total) < 0.02 ||
+    Math.abs(finalItemTotal + tax - total) < 0.02;
   const status =
     finalItems.length > 0 &&
     finalItems.every((item) => item.confidence >= 70) &&
+    totalsAgree &&
     confidenceFloor >= 45 &&
     merchant !== merchantNotVisible
       ? "Ready"

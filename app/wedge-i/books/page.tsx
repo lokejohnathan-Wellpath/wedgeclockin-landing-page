@@ -171,6 +171,7 @@ function monthlySummary(documents: BookDocument[]) {
     petConsumables: itemTotals(["Pet Care Consumables"]),
     rawMaterials: itemTotals(["Raw Materials"]),
     productionOverhead: itemTotals(["Production Overhead"]),
+    medical: itemTotals(["Medical / Healthcare"]),
     directPurchases: itemTotals(["Direct Purchases"]),
     packaging: itemTotals(["Packaging"]),
     gas: itemTotals(["Gas"]),
@@ -229,6 +230,7 @@ function commonExpenseColumns(
   summary: ReturnType<typeof monthlySummary>,
 ): FolderColumn[] {
   const columns: FolderColumn[] = [
+    { label: "Medical / Healthcare", value: summary.medical },
     { label: "TNB / Electricity", value: summary.tnb },
     { label: "Water", value: summary.water },
     { label: "Gas", value: summary.gas },
@@ -356,6 +358,11 @@ export default function Home() {
       (item.descriptionConfirmed === undefined && item.confidence < 65) ||
       normalise(item.description).length < 3,
   );
+  const draftItemTotal = draft.items.reduce((sum, item) => sum + item.amount, 0);
+  const draftTotalsMismatch =
+    draft.items.length > 0 &&
+    Math.abs(draftItemTotal - draft.total) >= 0.02 &&
+    Math.abs(draftItemTotal + draft.tax - draft.total) >= 0.02;
 
   function saveSetup() {
     if (!setupDraft.name.trim()) return;
@@ -550,6 +557,23 @@ export default function Home() {
     }));
   }
 
+  function updateItemAmount(itemId: string, value: string) {
+    const amount = Math.max(0, Number(value) || 0);
+    setDraft((current) => ({
+      ...current,
+      items: current.items.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              amount,
+              unitPrice: item.quantity > 0 ? amount / item.quantity : amount,
+            }
+          : item,
+      ),
+      status: "Needs review",
+    }));
+  }
+
   function confirmItemDescription(itemId: string) {
     if (!setup) return;
     setDraft((current) => {
@@ -595,8 +619,28 @@ export default function Home() {
     draft.items.forEach((item) => {
       if (item.source === "learned") additions[normalise(item.description)] = item.category;
     });
+    const savedItemTotal = draft.items.reduce((sum, item) => sum + item.amount, 0);
+    const savedTotalsAgree =
+      Math.abs(savedItemTotal - draft.total) < 0.02 ||
+      Math.abs(savedItemTotal + draft.tax - draft.total) < 0.02;
+    const savedDocument: BookDocument = {
+      ...draft,
+      status:
+        savedTotalsAgree &&
+        draft.items.every(
+          (item) =>
+            item.confidence >= 65 &&
+            item.category !== "Needs Review" &&
+            item.descriptionConfirmed !== false,
+        )
+          ? "Ready"
+          : "Needs review",
+    };
     setLearning((current) => ({ ...current, ...additions }));
-    setDocuments((current) => [draft, ...current.filter((document) => document.id !== draft.id)]);
+    setDocuments((current) => [
+      savedDocument,
+      ...current.filter((document) => document.id !== savedDocument.id),
+    ]);
     setMessage(
       `Saved ${draft.items.length} line item${draft.items.length === 1 ? "" : "s"}. ` +
       `The brain learned ${Object.keys(additions).length} correction${Object.keys(additions).length === 1 ? "" : "s"}.`,
@@ -1192,14 +1236,14 @@ export default function Home() {
                   </div>
                   {merchantNeedsUpdate && (
                     <div className="merchant-warning" role="alert">
-                      <strong>Supplier name is not shown</strong>
-                      <span>This invoice does not identify a confirmed supplier. Please type the supplier name above.</span>
+                      <strong>Supplier / merchant needs confirmation</strong>
+                      <span>The name is missing or not reliable enough. Please type the correct name above.</span>
                     </div>
                   )}
                   {itemsNeedUpdate && (
                     <div className="merchant-warning item-warning" role="alert">
                       <strong>Item wording is not clear</strong>
-                      <span>Edit each unclear line—for example “Pork Loin T100”—then press Confirm text.</span>
+                      <span>Type the exact wording printed on the document, then press Confirm text.</span>
                     </div>
                   )}
                   {typeof draft.ocrConfidence === "number" && (
@@ -1233,7 +1277,19 @@ export default function Home() {
                               </div>
                               <span>{item.quantity} {item.unit}</span>
                             </td>
-                            <td>{money(item.amount)}</td>
+                            <td>
+                              <label className="amount-editor">
+                                <span>RM</span>
+                                <input
+                                  aria-label={`${item.description} amount`}
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={item.amount}
+                                  onChange={(event) => updateItemAmount(item.id, event.target.value)}
+                                />
+                              </label>
+                            </td>
                             <td>
                               <select value={item.category} onChange={(event) => updateItemCategory(item.id, event.target.value as BookCategory)}>
                                 {allCategories.map((category) => <option key={category}>{category}</option>)}
@@ -1245,7 +1301,35 @@ export default function Home() {
                       </tbody>
                     </table>
                   </div>
-                  <div className="document-total"><span>Document total</span><strong>{money(draft.total)}</strong></div>
+                  <div className="document-total">
+                    <span>Document total</span>
+                    <label className="total-editor">
+                      <span>RM</span>
+                      <input
+                        aria-label="Document total"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={draft.total}
+                        onChange={(event) =>
+                          setDraft({
+                            ...draft,
+                            total: Math.max(0, Number(event.target.value) || 0),
+                            status: "Needs review",
+                          })
+                        }
+                      />
+                    </label>
+                  </div>
+                  {draftTotalsMismatch && (
+                    <div className="total-warning">
+                      <strong>Amounts do not balance</strong>
+                      <span>
+                        Lines: {money(draftItemTotal)} · Printed total: {money(draft.total)}.
+                        Correct the unclear line amount or document total.
+                      </span>
+                    </div>
+                  )}
                   <div className="save-row">
                     <span>
                       {merchantNeedsUpdate
