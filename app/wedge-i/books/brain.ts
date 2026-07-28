@@ -42,7 +42,7 @@ export type BookItem = {
   unit: string;
   unitPrice: number;
   amount: number;
-  category: BookCategory;
+  category: string;
   confidence: number;
   descriptionConfirmed?: boolean;
   source: "business-context" | "rule" | "learned" | "review";
@@ -63,7 +63,7 @@ export type BookDocument = {
   createdAt: string;
 };
 
-export type LearningMap = Record<string, BookCategory>;
+export type LearningMap = Record<string, string>;
 
 export const merchantNotVisible = "Merchant not visible";
 
@@ -299,12 +299,12 @@ export function reconcileDocumentCategories(document: BookDocument) {
   });
 
   if (!candidates.length) {
-    return [{ category: "Other Expense" as BookCategory, amount: documentTotal }];
+    return [{ category: "Other Expense", amount: documentTotal }];
   }
 
   const candidateTotal = candidates.reduce((sum, item) => sum + item.amount, 0);
   if (candidateTotal <= 0) {
-    return [{ category: "Other Expense" as BookCategory, amount: documentTotal }];
+    return [{ category: "Other Expense", amount: documentTotal }];
   }
 
   let allocated = 0;

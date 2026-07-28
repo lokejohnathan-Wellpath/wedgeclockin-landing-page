@@ -6,7 +6,6 @@ import "./books.css";
 import { accountingDeskImage, receiptIsolationImage } from "./images";
 import {
   allCategories,
-  BookCategory,
   BookDocument,
   businessProfiles,
   BusinessType,
@@ -27,7 +26,6 @@ type BusinessSetup = {
   type: BusinessType;
 };
 
-type CustomMonthlyAmounts = Record<string, number[]>;
 type FolderColumn = {
   label: string;
   value: number;
@@ -168,45 +166,17 @@ function documentRows(documents: BookDocument[]) {
   );
 }
 
-function customMonthlyRows(
-  columns: string[],
-  monthlyAmounts: CustomMonthlyAmounts,
-  businessName: string,
-  onlyMonthKey?: string,
-) {
-  return Object.entries(monthlyAmounts).flatMap(([monthKey, values]) => {
-    if (onlyMonthKey && monthKey !== onlyMonthKey) return [];
-    return columns.flatMap((column, index) => {
-      const category = column.trim();
-      const amount = values[index] ?? 0;
-      if (!category || amount <= 0) return [];
-      return [{
-        date: `${monthKey}-01`,
-        documentType: "purchase" as const,
-        documentNo: "Manual monthly entry",
-        merchant: businessName,
-        description: `${category} | Monthly custom entry ${monthKey}`,
-        quantity: 1,
-        unit: "month",
-        unitPrice: amount,
-        amount,
-        category,
-        tax: 0,
-        documentTotal: amount,
-      }];
-    });
-  });
-}
-
 function keyForMonth(year: number, month: number) {
   return `${year}-${String(month + 1).padStart(2, "0")}`;
 }
 
-function customSpendingTotal(columns: string[], values: number[]) {
-  return columns.reduce(
-    (sum, column, index) => sum + (column.trim() ? (values[index] ?? 0) : 0),
-    0,
-  );
+function categoryKey(value: string) {
+  return normalise(value).replace(/^repairs and maintenance$/, "repair and maintenance");
+}
+
+function isBuiltInCategoryName(value: string) {
+  const key = categoryKey(value);
+  return allCategories.some((category) => categoryKey(category) === key);
 }
 
 function documentsForMonth(documents: BookDocument[], year: number, month: number) {
@@ -223,7 +193,7 @@ function removeLegacyParking(document: BookDocument) {
 function monthlySummary(documents: BookDocument[]) {
   const purchases = documents.filter((document) => document.documentType === "purchase");
   const reconciledLines = purchases.flatMap(reconcileDocumentCategories);
-  const itemTotals = (categories: BookCategory[]) =>
+  const itemTotals = (categories: string[]) =>
     reconciledLines.reduce(
       (sum, line) => sum + (categories.includes(line.category) ? line.amount : 0),
       0,
@@ -343,7 +313,6 @@ export default function Home() {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [openMonth, setOpenMonth] = useState<number | null>(null);
   const [customColumns, setCustomColumns] = useState<string[]>(defaultCustomColumns);
-  const [customMonthlyAmounts, setCustomMonthlyAmounts] = useState<CustomMonthlyAmounts>({});
   const [searchInput, setSearchInput] = useState("");
   const [activeSearch, setActiveSearch] = useState("");
   const [hydrated, setHydrated] = useState(false);
@@ -355,7 +324,6 @@ export default function Home() {
       const savedLegacy = localStorage.getItem("wedgebooks.receipts");
       const savedLearning = localStorage.getItem("wedgebooks.learning");
       const savedCustomColumns = localStorage.getItem("wedgebooks.customColumns");
-      const savedCustomAmounts = localStorage.getItem("wedgebooks.customMonthlyAmounts");
       if (savedSetup) {
         const value = JSON.parse(savedSetup) as BusinessSetup;
         setSetup({ name: value.name, type: value.type });
@@ -372,10 +340,12 @@ export default function Home() {
         const values = JSON.parse(savedCustomColumns) as string[];
         setCustomColumns(defaultCustomColumns.map((fallback, index) => {
           const value = values[index]?.trim() ?? "";
-          return /^custom\s+\d+$/i.test(value) ? "" : (value || fallback);
+          return /^custom\s+\d+$/i.test(value) || isBuiltInCategoryName(value)
+            ? ""
+            : (value || fallback);
         }));
       }
-      if (savedCustomAmounts) setCustomMonthlyAmounts(JSON.parse(savedCustomAmounts));
+      localStorage.removeItem("wedgebooks.customMonthlyAmounts");
       setHydrated(true);
     }, 0);
     return () => window.clearTimeout(timer);
@@ -387,8 +357,7 @@ export default function Home() {
     localStorage.setItem("wedgebooks.documents", JSON.stringify(documents));
     localStorage.setItem("wedgebooks.learning", JSON.stringify(learning));
     localStorage.setItem("wedgebooks.customColumns", JSON.stringify(customColumns));
-    localStorage.setItem("wedgebooks.customMonthlyAmounts", JSON.stringify(customMonthlyAmounts));
-  }, [setup, documents, learning, customColumns, customMonthlyAmounts, hydrated]);
+  }, [setup, documents, learning, customColumns, hydrated]);
 
   useEffect(() => {
     return () => {
@@ -406,7 +375,7 @@ export default function Home() {
   );
   const needsReview = documents.filter((doc) => doc.status === "Needs review").length;
   const categoryTotals = useMemo(() => {
-    const totals: Partial<Record<BookCategory, number>> = {};
+    const totals: Record<string, number> = {};
     documents.forEach((doc) => {
       const lines = doc.documentType === "purchase"
         ? reconcileDocumentCategories(doc)
@@ -615,7 +584,7 @@ export default function Home() {
     );
   }
 
-  function updateItemCategory(itemId: string, category: BookCategory) {
+  function updateItemCategory(itemId: string, category: string) {
     setDraft((current) => {
       const items = current.items.map((item) =>
         item.id === itemId
@@ -757,10 +726,7 @@ export default function Home() {
   }
 
   function exportCsv() {
-    const rows = [
-      ...documentRows(documents),
-      ...customMonthlyRows(customColumns, customMonthlyAmounts, setup?.name ?? "Manual entry"),
-    ];
+    const rows = documentRows(documents);
     const headers = [
       "Date", "Type", "Invoice / Receipt No.", "Supplier / Merchant", "Journal Description",
       "Quantity", "Unit", "Unit Price (RM)", "Amount (RM)", "Bookkeeping Category",
@@ -781,10 +747,7 @@ export default function Home() {
   }
 
   function exportExcel() {
-    const rows = [
-      ...documentRows(documents),
-      ...customMonthlyRows(customColumns, customMonthlyAmounts, setup?.name ?? "Manual entry"),
-    ];
+    const rows = documentRows(documents);
     const columns = [
       ["Date", "date"], ["Type", "documentType"], ["Invoice / Receipt No.", "documentNo"],
       ["Supplier / Merchant", "merchant"], ["Journal Description", "description"], ["Quantity", "quantity"],
@@ -816,20 +779,6 @@ export default function Home() {
     );
   }
 
-  function updateCustomAmount(month: number, index: number, value: string) {
-    const monthKey = keyForMonth(selectedYear, month);
-    const amount = Number(value);
-    setCustomMonthlyAmounts((current) => {
-      const values = current[monthKey] ?? Array(6).fill(0);
-      return {
-        ...current,
-        [monthKey]: values.map((existing, columnIndex) =>
-          columnIndex === index ? (Number.isFinite(amount) ? amount : 0) : existing,
-        ),
-      };
-    });
-  }
-
   function editSourceDocument(document: BookDocument) {
     setDraft(document);
     setDocumentType(document.documentType);
@@ -843,18 +792,7 @@ export default function Home() {
   function exportMonth(month: number) {
     const monthDocuments = documentsForMonth(documents, selectedYear, month);
     const summary = monthlySummary(monthDocuments);
-    const monthKey = keyForMonth(selectedYear, month);
-    const customValues = customMonthlyAmounts[monthKey] ?? Array(6).fill(0);
-    const totalSpending = summary.spending + customSpendingTotal(customColumns, customValues);
-    const rows = [
-      ...documentRows(monthDocuments),
-      ...customMonthlyRows(
-        customColumns,
-        customMonthlyAmounts,
-        setup?.name ?? "Manual entry",
-        monthKey,
-      ),
-    ];
+    const rows = documentRows(monthDocuments);
     const directColumns = directPurchaseColumns(setup?.type ?? "other", summary);
     const commonColumns = commonExpenseColumns(setup?.type ?? "other", summary);
     const escapeXml = (value: unknown) =>
@@ -863,12 +801,9 @@ export default function Home() {
       `<Cell${style ? ` ss:StyleID="${style}"` : ""}><Data ss:Type="${typeof value === "number" ? "Number" : "String"}">${escapeXml(value)}</Data></Cell>`;
 
     const summaryRows: Array<[string, number]> = [
-      ["Total Spending (RM)", totalSpending],
+      ["Total Spending (RM)", summary.spending],
       ...directColumns.map(({ label, value }) => [`${label} (RM)`, value] as [string, number]),
       ...commonColumns.map(({ label, value }) => [`${label} (RM)`, value] as [string, number]),
-      ...customColumns.flatMap((name, index) =>
-        name.trim() ? [[name.trim(), customValues[index] ?? 0] as [string, number]] : [],
-      ),
     ];
     const summaryXml = [
       `<Row>${cell(`${monthNames[month]} ${selectedYear} — Auditor Cover`, "Title")}</Row>`,
@@ -1178,17 +1113,13 @@ export default function Home() {
                 const monthDocuments = documentsForMonth(documents, selectedYear, month);
                 const summary = monthlySummary(monthDocuments);
                 const directColumns = directPurchaseColumns(setup.type, summary);
-                const monthCustomValues =
-                  customMonthlyAmounts[keyForMonth(selectedYear, month)] ?? Array(6).fill(0);
-                const totalSpending =
-                  summary.spending + customSpendingTotal(customColumns, monthCustomValues);
                 return (
                   <article className="month-folder" key={monthName}>
                     <button className="folder-cover" onClick={() => setOpenMonth(month)}>
                       <span className="folder-tab">{String(month + 1).padStart(2, "0")}</span>
                       <p>{selectedYear}</p>
                       <h3>{monthName}</h3>
-                      <strong>{money(totalSpending)}</strong>
+                      <strong>{money(summary.spending)}</strong>
                       <small>{monthDocuments.length} document{monthDocuments.length === 1 ? "" : "s"}</small>
                       <div className="folder-mini-totals">
                         <span>{directColumns[0].label} <b>{money(directColumns[0].value)}</b></span>
@@ -1210,10 +1141,6 @@ export default function Home() {
           const directColumns = directPurchaseColumns(setup.type, summary);
           const commonColumns = commonExpenseColumns(setup.type, summary);
           const summaryColumns = [...directColumns, ...commonColumns];
-          const monthKey = keyForMonth(selectedYear, openMonth);
-          const customValues = customMonthlyAmounts[monthKey] ?? Array(6).fill(0);
-          const totalSpending =
-            summary.spending + customSpendingTotal(customColumns, customValues);
           return (
             <section className="folder-detail">
               <div className="folder-detail-actions">
@@ -1229,8 +1156,8 @@ export default function Home() {
                   </div>
                   <div className="spending-total">
                     <span>Total spending</span>
-                    <strong>{money(totalSpending)}</strong>
-                    <small>Purchase documents plus named custom entries</small>
+                    <strong>{money(summary.spending)}</strong>
+                    <small>From purchase receipts and invoices</small>
                   </div>
                 </div>
                 <div className="standard-columns">
@@ -1239,33 +1166,19 @@ export default function Home() {
                   ))}
                 </div>
                 <div className="custom-columns-heading">
-                  <div><p className="eyebrow">YOUR SIX FREE COLUMNS</p><h3>Name and enter categories we do not cover</h3></div>
-                  <small>Only named columns show an amount. Their values are added to total spending and the auditor file.</small>
+                  <div><p className="eyebrow">MORE CATEGORIES</p><h3>Please input if required</h3></div>
+                  <small>Add a name here, then select it while reviewing a receipt.</small>
                 </div>
                 <div className="custom-columns">
                   {customColumns.map((column, index) => (
-                    <label className={column.trim() ? "named" : "unnamed"} key={index}>
+                    <label className="unnamed" key={index}>
                       <input
                         aria-label={`Custom column ${index + 1} name`}
                         className="custom-column-name"
                         value={column}
                         onChange={(event) => updateCustomColumn(index, event.target.value)}
-                        placeholder={`Name custom category ${index + 1}`}
+                        placeholder="Enter category name"
                       />
-                      {column.trim() && (
-                        <>
-                          <span>RM</span>
-                          <input
-                            aria-label={`${column} amount`}
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={customValues[index] || ""}
-                            onChange={(event) => updateCustomAmount(openMonth, index, event.target.value)}
-                            placeholder="Enter amount"
-                          />
-                        </>
-                      )}
                     </label>
                   ))}
                 </div>
@@ -1472,8 +1385,12 @@ export default function Home() {
                               </label>
                             </td>
                             <td>
-                              <select value={item.category} onChange={(event) => updateItemCategory(item.id, event.target.value as BookCategory)}>
-                                {allCategories.map((category) => <option key={category}>{category}</option>)}
+                              <select value={item.category} onChange={(event) => updateItemCategory(item.id, event.target.value)}>
+                                {[...new Set([
+                                  ...allCategories,
+                                  ...customColumns.map((category) => category.trim()).filter(Boolean),
+                                  item.category,
+                                ])].map((category) => <option key={category}>{category}</option>)}
                               </select>
                             </td>
                             <td><span className={`confidence ${item.confidence >= 70 ? "high" : "low"}`}>{item.confidence}%</span></td>
