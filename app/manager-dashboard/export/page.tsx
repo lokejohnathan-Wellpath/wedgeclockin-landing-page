@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { calculateMalaysiaStatutory } from "../../lib/malaysiaStatutory";
+import { expireManagerSession } from "../../lib/managerSession";
 
 type Payroll = { employeeId: string; employeeName: string; month: number; year: number; basicSalary: number; allowanceA: number; allowanceB: number; allowanceC: number; otHours: number; otRate: number; taxDeduction: number; otherDeduction: number };
 type Employee = { id: string; epfMemberNumber?: string; icNumber?: string; employeeCode?: string; fullName: string };
@@ -32,6 +33,12 @@ export default function ExportPage() {
       fetch(`${api}/api/payroll?companyId=${encodeURIComponent(companyId)}&month=${month}&year=${year}`, { headers }),
       fetch(`${api}/api/manager/employees`, { headers }),
     ]);
+    if (
+      expireManagerSession(payrollResponse) ||
+      expireManagerSession(employeesResponse)
+    ) {
+      throw new Error("Your manager session has expired.");
+    }
     if (!payrollResponse.ok || !employeesResponse.ok) throw new Error("Payroll or employee records could not be loaded.");
     const payroll: Payroll[] = await payrollResponse.json();
     const employeeData = await employeesResponse.json();

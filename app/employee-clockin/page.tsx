@@ -308,7 +308,7 @@ export default function EmployeeClockInPage() {
         body: JSON.stringify({
           outletShortName: outletShortName.trim().toUpperCase(),
           idNumber: idNumber.trim().toUpperCase(),
-          password: password.trim(),
+          password,
         }),
       });
       const data = await response.json();

@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
+import Link from "next/link";
 
 export default function ManagerLoginPage() {
   const router = useRouter();
@@ -30,7 +31,7 @@ export default function ManagerLoginPage() {
         },
         body: JSON.stringify({
           companyCode: companyCode.trim().toUpperCase(),
-          password: password.trim(),
+          password,
         }),
       });
 
@@ -126,12 +127,12 @@ export default function ManagerLoginPage() {
             payslip data within their own company.
           </div>
 
-          <a
+          <Link
             href="/"
             className="mt-6 block text-center text-sm text-[#d4ad63] hover:underline"
           >
             Back to WedgeCLOCKin
-          </a>
+          </Link>
         </div>
       </section>
     </main>

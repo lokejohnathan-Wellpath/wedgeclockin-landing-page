@@ -2,6 +2,10 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { smartPosRequest } from "./lib/api";
+import {
+  printReceiptSafely,
+  type PrintableReceipt,
+} from "./lib/receiptPrinter";
 
 type Vertical = "beauty" | "pet";
 type Pet = { id: string; name: string; breed: string; species: string };
@@ -693,45 +697,10 @@ export function PosPanel() {
   async function printReceipt() {
     if (!sale) return;
     try {
-      const r = await smartPosRequest<{
-        receipt: {
-          receiptNumber: string;
-          total: number;
-          paymentMethod: string;
-          lines: { quantity: number; name: string; lineTotal: number }[];
-          customer?: { name: string };
-          merchant?: {
-            businessName?: string;
-            registeredCompanyName?: string;
-            companyRegistrationNumber?: string;
-            taxIdentificationNumber?: string;
-            registeredBusinessAddress?: string;
-            businessAddress?: string;
-            sstRegistrationNumber?: string;
-          };
-        };
-      }>(`/api/smartpos/sales/${sale.id}/receipt`);
-      const w = window.open("", "_blank");
-      if (!w) return;
-      const merchant = r.receipt.merchant;
-      const legalDetails = [
-        merchant?.registeredCompanyName,
-        merchant?.companyRegistrationNumber &&
-          `Company No: ${merchant.companyRegistrationNumber}`,
-        merchant?.taxIdentificationNumber &&
-          `TIN: ${merchant.taxIdentificationNumber}`,
-        merchant?.sstRegistrationNumber &&
-          `SST No: ${merchant.sstRegistrationNumber}`,
-        merchant?.registeredBusinessAddress || merchant?.businessAddress,
-      ]
-        .filter(Boolean)
-        .map((value) => `<div>${value}</div>`)
-        .join("");
-      w.document.write(
-        `<html><body style="font-family:Arial;padding:30px"><h2>${merchant?.businessName || "Wedge-SmartPOS"}</h2>${legalDetails}<p>Receipt ${r.receipt.receiptNumber}</p><p>Customer: ${r.receipt.customer?.name || "Walk-in"}</p>${r.receipt.lines.map((x) => `<p>${x.quantity} × ${x.name}<span style="float:right">RM ${x.lineTotal.toFixed(2)}</span></p>`).join("")}<hr><h3>Total <span style="float:right">RM ${r.receipt.total.toFixed(2)}</span></h3><p>Payment: ${r.receipt.paymentMethod.toUpperCase()}</p></body></html>`,
+      const r = await smartPosRequest<{ receipt: PrintableReceipt }>(
+        `/api/smartpos/sales/${sale.id}/receipt`,
       );
-      w.document.close();
-      w.print();
+      printReceiptSafely(r.receipt);
     } catch (x) {
       setMessage(
         x instanceof Error ? x.message : "Receipt could not be printed.",
@@ -904,47 +873,10 @@ export function SalesHistoryPanel() {
   }, []);
   async function printReceipt(saleId: string) {
     try {
-      const r = await smartPosRequest<{
-        receipt: {
-          receiptNumber: string;
-          total: number;
-          paymentMethod: string;
-          completedAt: string;
-          lines: { quantity: number; name: string; lineTotal: number }[];
-          customer?: { name: string };
-          merchant?: {
-            businessName?: string;
-            registeredCompanyName?: string;
-            companyRegistrationNumber?: string;
-            taxIdentificationNumber?: string;
-            registeredBusinessAddress?: string;
-            businessAddress?: string;
-            sstRegistrationNumber?: string;
-          };
-        };
-      }>(`/api/smartpos/sales/${saleId}/receipt`);
-      const receipt = r.receipt,
-        merchant = receipt.merchant;
-      const details = [
-        merchant?.registeredCompanyName,
-        merchant?.companyRegistrationNumber &&
-          `Company No: ${merchant.companyRegistrationNumber}`,
-        merchant?.taxIdentificationNumber &&
-          `TIN: ${merchant.taxIdentificationNumber}`,
-        merchant?.sstRegistrationNumber &&
-          `SST No: ${merchant.sstRegistrationNumber}`,
-        merchant?.registeredBusinessAddress || merchant?.businessAddress,
-      ]
-        .filter(Boolean)
-        .map((value) => `<div>${value}</div>`)
-        .join("");
-      const w = window.open("", "_blank");
-      if (!w) return;
-      w.document.write(
-        `<html><body style="font-family:Arial;padding:30px"><h2>${merchant?.businessName || "Wedge-SmartPOS"}</h2>${details}<p>Receipt ${receipt.receiptNumber}</p><p>Customer: ${receipt.customer?.name || "Walk-in"}</p>${receipt.lines.map((x) => `<p>${x.quantity} × ${x.name}<span style="float:right">RM ${x.lineTotal.toFixed(2)}</span></p>`).join("")}<hr><h3>Total <span style="float:right">RM ${receipt.total.toFixed(2)}</span></h3><p>Payment: ${receipt.paymentMethod.toUpperCase()}</p></body></html>`,
+      const r = await smartPosRequest<{ receipt: PrintableReceipt }>(
+        `/api/smartpos/sales/${saleId}/receipt`,
       );
-      w.document.close();
-      w.print();
+      printReceiptSafely(r.receipt);
     } catch (x) {
       setError(x instanceof Error ? x.message : "Receipt could not be opened.");
     }

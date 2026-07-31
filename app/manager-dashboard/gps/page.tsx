@@ -221,11 +221,12 @@ export default function WorkplaceGpsPage() {
               ? [data.company]
               : [];
 
-        const matchedCompany =
-          companies.find((item) => item.id === companyId) || companies[0];
+        const matchedCompany = companies.find((item) => item.id === companyId);
 
         if (!matchedCompany) {
-          throw new Error("Company record could not be found.");
+          throw new Error(
+            "The authenticated company record could not be found. Please log in again.",
+          );
         }
 
         setCompany(matchedCompany);

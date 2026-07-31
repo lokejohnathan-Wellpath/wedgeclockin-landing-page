@@ -2,6 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import {
+  clearManagerSession,
+  expireManagerSession,
+} from "../lib/managerSession";
 
 type DashboardStats = {
   employees: number;
@@ -133,6 +137,8 @@ export default function ManagerDashboardPage() {
 
         const data = await response.json();
 
+        if (expireManagerSession(response)) return;
+
         if (!response.ok) {
           throw new Error(data?.message || "Dashboard could not be loaded.");
         }
@@ -150,11 +156,7 @@ export default function ManagerDashboardPage() {
   }, [router]);
 
   function handleLogout() {
-    localStorage.removeItem("wc_manager_token");
-    localStorage.removeItem("wc_company_id");
-    localStorage.removeItem("wc_company_code");
-    localStorage.removeItem("wc_company_name");
-    localStorage.removeItem("wc_manager_id");
+    clearManagerSession();
     router.push("/manager-login");
   }
 

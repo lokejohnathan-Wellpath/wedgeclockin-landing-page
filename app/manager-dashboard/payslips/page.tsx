@@ -245,9 +245,9 @@ export default function PayslipsPage() {
                 ? [companyData.company]
                 : [];
 
-          const matchedCompany =
-            companyList.find((item: CompanyProfile) => item.id === companyId) ||
-            companyList[0];
+          const matchedCompany = companyList.find(
+            (item: CompanyProfile) => item.id === companyId,
+          );
 
           if (matchedCompany) {
             setCompany({

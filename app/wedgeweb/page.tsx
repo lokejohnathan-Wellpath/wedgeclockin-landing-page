@@ -1226,7 +1226,7 @@ function PreviewShell({
       <p className="mt-6 max-w-xl text-lg leading-8 opacity-75">{draft.description || words.fallback}</p>
       <div className={`mt-8 flex flex-wrap gap-3 ${draft.heroTextAlign === "center" ? "justify-center" : draft.heroTextAlign === "right" ? "justify-end" : "justify-start"}`}>
         <button onClick={() => setPage("offerings")} className="rounded-full px-6 py-3 font-bold text-white" style={{ backgroundColor: accent }}>{draft.primaryCta || `Explore ${words.page}`}</button>
-        <a href={whatsappUrl} target="_blank" className="rounded-full border border-current/20 px-6 py-3 font-semibold">{draft.secondaryCta || "WhatsApp Us"}</a>
+        <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="rounded-full border border-current/20 px-6 py-3 font-semibold">{draft.secondaryCta || "WhatsApp Us"}</a>
       </div>
       {heroContentOpen && <span className="mt-5 rounded-full bg-black/70 px-3 py-1 text-[10px] text-white">Edit wording in the panel above</span>}
     </div>

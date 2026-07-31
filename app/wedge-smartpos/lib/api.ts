@@ -8,15 +8,23 @@ export function smartPosApiUrl(path: string) {
 
 export async function smartPosRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = typeof window === "undefined" ? "" : localStorage.getItem(SMARTPOS_TOKEN_KEY);
+  const isPublicRequest =
+    path.startsWith("/api/smartpos/auth/") ||
+    path.startsWith("/api/smartpos/public/");
   const response = await fetch(smartPosApiUrl(path), {
     ...init,
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(!isPublicRequest && token ? { Authorization: `Bearer ${token}` } : {}),
       ...init.headers,
     },
   });
   const data = await response.json().catch(() => ({}));
+  if (response.status === 401 && !isPublicRequest && typeof window !== "undefined") {
+    localStorage.removeItem(SMARTPOS_TOKEN_KEY);
+    window.location.replace("/wedge-smartpos/login?reason=expired");
+    throw new Error("Your session has expired. Please log in again.");
+  }
   if (!response.ok) throw new Error(data?.message || "We could not complete that request.");
   return data as T;
 }
