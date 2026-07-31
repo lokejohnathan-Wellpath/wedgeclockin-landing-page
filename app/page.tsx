@@ -8,8 +8,6 @@ export const metadata: Metadata = {
     "WedgeCLOCKin, Wedge-I, WedgeBooks, WedgeWeb, Wedge-SmartPOS and Wedge-Supply ERP bring practical operations into one growing platform.",
 };
 
-const apkUrl = "https://github.com/lokejohnathan-Wellpath/WedgeCLOCKin/releases/download/v1.0.0-beta/Wedge-worksbeta1.01.apk";
-
 const products = [
   { name: "WedgeCLOCKin", eyebrow: "WORKFORCE", text: "Face and GPS attendance, leave, payroll-ready records and secure employee operations.", href: "/employee-clockin", action: "Explore ClockIn" },
   { name: "Wedge-I", eyebrow: "EXECUTIVE AI", text: "Turn operating numbers into forecasts, priorities and clearer management decisions.", href: "/wedge-i", action: "Open Wedge-I" },
@@ -109,7 +107,7 @@ export default function Home() {
         <div className="relative mx-auto grid max-w-7xl items-center gap-14 lg:grid-cols-[.85fr_1.15fr]"><div><p className="text-xs font-bold tracking-[.28em] text-[#d2aa62]">EVERYDAY IMPACT</p><h2 className="mt-6 font-serif text-5xl leading-tight">One platform.<br />Endless possibilities.</h2><p className="mt-6 max-w-lg leading-8 text-white/60">Clock in securely, understand the business, build customer relationships and connect appointments, purchasing and stock with daily operations.</p><div className="mt-9 flex flex-wrap gap-3"><a href="/wedgeweb" className="rounded-md bg-[#d2aa62] px-7 py-4 font-bold text-[#0d1316]">Start Free</a><a href="/manager-login" className="rounded-md border border-[#5e8983]/60 px-7 py-4 font-semibold text-[#b9d7d2]">Open Manager Desk</a></div></div><div className="grid gap-4 sm:grid-cols-2"><div className="rounded-2xl border border-white/10 bg-white/[.035] p-7"><p className="text-sm text-white/40">WedgeCLOCKin</p><p className="mt-3 text-2xl font-bold text-[#f1dfbc]">People and attendance</p></div><div className="rounded-2xl border border-white/10 bg-white/[.035] p-7"><p className="text-sm text-white/40">Wedge-I</p><p className="mt-3 text-2xl font-bold text-[#f1dfbc]">Executive clarity</p></div><div className="rounded-2xl border border-white/10 bg-white/[.035] p-7"><p className="text-sm text-white/40">WedgeWeb</p><p className="mt-3 text-2xl font-bold text-[#f1dfbc]">Customer presence and CRM</p></div><div className="rounded-2xl border border-white/10 bg-white/[.035] p-7"><p className="text-sm text-white/40">Wedge-SmartPOS</p><p className="mt-3 text-2xl font-bold text-[#f1dfbc]">Clients and appointments</p></div><div className="rounded-2xl border border-white/10 bg-white/[.035] p-7 sm:col-span-2"><p className="text-sm text-white/40">Wedge-Supply ERP</p><p className="mt-3 text-2xl font-bold text-[#f1dfbc]">Purchasing, production and distribution</p></div></div></div>
       </section>
 
-      <footer className="border-t border-white/8 bg-[#080c0f] px-6 py-8 text-sm text-white/40"><div className="mx-auto flex max-w-7xl flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><p>© {new Date().getFullYear()} Wedge Works. All rights reserved.</p><div className="flex gap-5"><a href="/privacy">Privacy</a><a href="/manager-login">Manager Login</a><a href={apkUrl}>Android Beta</a></div></div></footer>
+      <footer className="border-t border-white/8 bg-[#080c0f] px-6 py-8 text-sm text-white/40"><div className="mx-auto flex max-w-7xl flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><p>© {new Date().getFullYear()} Wedge Works. All rights reserved.</p><div className="flex gap-5"><a href="/privacy">Privacy</a><a href="/manager-login">Manager Login</a></div></div></footer>
     </main>
   );
 }

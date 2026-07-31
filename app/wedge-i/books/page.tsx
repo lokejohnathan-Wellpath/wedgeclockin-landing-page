@@ -1,6 +1,7 @@
 "use client";
 
 import { ChangeEvent, DragEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import ProductAccessGate from "../../components/ProductAccessGate";
 import Link from "next/link";
 import JSZip from "jszip";
 import "./books.css";
@@ -297,6 +298,14 @@ function directPurchaseColumns(
 }
 
 export default function Home() {
+  return (
+    <ProductAccessGate product="books">
+      <BooksWorkspace />
+    </ProductAccessGate>
+  );
+}
+
+function BooksWorkspace() {
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [setup, setSetup] = useState<BusinessSetup | null>(null);
   const [setupDraft, setSetupDraft] = useState<BusinessSetup>({

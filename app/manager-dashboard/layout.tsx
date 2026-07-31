@@ -2,6 +2,7 @@
 
 import { useEffect, useSyncExternalStore, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import ClockInSubscriptionBanner from "../components/ClockInSubscriptionBanner";
 
 const subscribe = () => () => undefined;
 
@@ -31,5 +32,5 @@ export default function ManagerDashboardLayout({
     );
   }
 
-  return children;
+  return <><ClockInSubscriptionBanner />{children}</>;
 }

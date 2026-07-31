@@ -11,11 +11,20 @@ import {
   saveSupplyState,
 } from "./lib/supplyStore";
 import type { SupplyConfig, SupplyState } from "./lib/types";
+import ProductAccessGate from "../components/ProductAccessGate";
 
 const inputClass =
   "mt-2 w-full rounded-2xl border border-white/10 bg-[#0b1114] px-4 py-3.5 text-base text-white outline-none transition focus:border-[#d6ad62]";
 
 export default function WedgeSupplyEntry() {
+  return (
+    <ProductAccessGate product="erp">
+      <WedgeSupplyWorkspaceEntry />
+    </ProductAccessGate>
+  );
+}
+
+function WedgeSupplyWorkspaceEntry() {
   const [state, setState] = useState<SupplyState>(emptySupplyState);
   const [config, setConfig] = useState<SupplyConfig>(emptySupplyState.config);
   const [ready, setReady] = useState(false);

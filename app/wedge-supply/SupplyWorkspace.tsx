@@ -26,6 +26,7 @@ import type {
   SupplyRole,
   SupplyState,
 } from "./lib/types";
+import ProductAccessGate from "../components/ProductAccessGate";
 import type { DeliveryOrder } from "./lib/types";
 import {
   buildDeliveryLines,
@@ -195,6 +196,14 @@ function Kpi({
 }
 
 export default function SupplyWorkspace({ role }: { role: SupplyRole }) {
+  return (
+    <ProductAccessGate product="erp">
+      <SupplyWorkspaceContent role={role} />
+    </ProductAccessGate>
+  );
+}
+
+function SupplyWorkspaceContent({ role }: { role: SupplyRole }) {
   const router = useRouter();
   const [state, setState] = useState<SupplyState>(emptySupplyState);
   const [ready, setReady] = useState(false);

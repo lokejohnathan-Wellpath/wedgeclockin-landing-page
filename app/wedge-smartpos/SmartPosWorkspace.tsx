@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   SMARTPOS_TOKEN_KEY,
@@ -68,6 +69,7 @@ export default function SmartPosWorkspace({
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [showAppointment, setShowAppointment] = useState(false);
+  const [showTrialReminder, setShowTrialReminder] = useState(false);
   const beauty = vertical === "beauty";
   const nav = [
     "Calendar",
@@ -85,6 +87,13 @@ export default function SmartPosWorkspace({
       `/api/smartpos/dashboard?vertical=${vertical}`,
     );
     setData(result);
+    if (result.subscription.status === "TRIAL_EXPIRING") {
+      const key = `smartpos_trial_reminder_${new Date().toISOString().slice(0, 10)}`;
+      if (!localStorage.getItem(key)) {
+        localStorage.setItem(key, "shown");
+        setShowTrialReminder(true);
+      }
+    }
     setSelected((current) => current || result.appointments[0]?.id || null);
   }, [vertical]);
   useEffect(() => {
@@ -92,13 +101,16 @@ export default function SmartPosWorkspace({
       router.replace("/wedge-smartpos/login");
       return;
     }
-    loadDashboard()
-      .catch((caught) =>
-        setError(
-          caught instanceof Error ? caught.message : "Could not load your POS.",
-        ),
-      )
-      .finally(() => setLoading(false));
+    const timer = window.setTimeout(() => {
+      loadDashboard()
+        .catch((caught) =>
+          setError(
+            caught instanceof Error ? caught.message : "Could not load your POS.",
+          ),
+        )
+        .finally(() => setLoading(false));
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [router, loadDashboard]);
   const appointment = useMemo(
     () => data?.appointments.find((item) => item.id === selected),
@@ -147,9 +159,19 @@ export default function SmartPosWorkspace({
     data.subscription.status === "TRIAL_EXPIRING";
   return (
     <main className="min-h-screen bg-[#eef0ed] text-[#20282c]">
+      {showTrialReminder && (
+        <div className="fixed inset-0 z-[200] grid place-items-center bg-black/65 px-5 backdrop-blur-sm">
+          <section className="max-w-md rounded-[2rem] bg-white p-7 shadow-2xl">
+            <p className="text-xs font-bold tracking-[.2em] text-[#b08745]">TRIAL REMINDER</p>
+            <h2 className="mt-3 font-serif text-3xl">Keep your SmartPOS working without interruption.</h2>
+            <p className="mt-4 leading-7 text-[#657074]">Your trial ends in {data.subscription.daysRemaining ?? 0} day{data.subscription.daysRemaining === 1 ? "" : "s"}. Subscribe now or continue testing until the trial ends.</p>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2"><Link href="/wedge-smartpos/payment" className="rounded-xl bg-[#20282c] px-5 py-3 text-center font-bold text-white">Subscribe now</Link><button onClick={() => setShowTrialReminder(false)} className="rounded-xl border border-[#20282c]/15 px-5 py-3 font-bold">Remind me later</button></div>
+          </section>
+        </div>
+      )}
       <header className="border-b border-[#20282c]/10 bg-[#10191d] text-white">
         <div className="mx-auto flex max-w-[1500px] items-center justify-between px-5 py-4">
-          <a href="/wedge-smartpos" className="flex items-center gap-3">
+          <Link href="/wedge-smartpos" className="flex items-center gap-3">
             <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#d2aa62] font-black text-[#10191d]">
               W
             </span>
@@ -159,7 +181,7 @@ export default function SmartPosWorkspace({
                 {beauty ? "BEAUTY & WELLNESS" : "PET CARE"}
               </p>
             </div>
-          </a>
+          </Link>
           <div className="flex items-center gap-3">
             <span className="hidden text-sm text-white/55 sm:block">
               {data.businessName} · {data.branchName}
@@ -176,17 +198,17 @@ export default function SmartPosWorkspace({
       {trial && (
         <div className="bg-[#d2aa62] px-5 py-2 text-center text-xs font-bold text-[#152024]">
           Free trial: {data.subscription.daysRemaining ?? 0} days remaining ·{" "}
-          <a className="underline" href="/wedge-smartpos/payment">
+          <Link className="underline" href="/wedge-smartpos/payment">
             View subscription
-          </a>
+          </Link>
         </div>
       )}
       {data.subscription.status === "PAYMENT_REQUIRED" && (
         <div className="bg-[#a64f48] px-5 py-3 text-center text-sm font-bold text-white">
           Your free trial has ended.{" "}
-          <a className="underline" href="/wedge-smartpos/payment">
+          <Link className="underline" href="/wedge-smartpos/payment">
             Subscribe to continue using your POS
-          </a>
+          </Link>
         </div>
       )}
       <div className="mx-auto grid max-w-[1500px] lg:grid-cols-[230px_1fr]">
@@ -208,12 +230,12 @@ export default function SmartPosWorkspace({
               </button>
             ))}
           </nav>
-          <a
+          <Link
             href="/wedge-smartpos/payment"
             className="mt-6 block rounded-xl border border-[#20282c]/10 bg-white p-4 text-sm font-bold"
           >
             Subscription & Payment →
-          </a>
+          </Link>
         </aside>
         <section className="p-5 sm:p-7 lg:p-9">
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">

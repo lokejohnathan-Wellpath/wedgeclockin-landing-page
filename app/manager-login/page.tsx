@@ -119,6 +119,10 @@ export default function ManagerLoginPage() {
             >
               {isLoading ? "Logging in..." : "Manager Login"}
             </button>
+            <div className="flex items-center justify-between text-xs">
+              <Link href="/manager-signup" className="font-bold text-[#d4ad63] hover:underline">Start 30-Day Free Trial</Link>
+              <Link href="/manager-forgot-password" className="text-white/55 hover:text-white">Forgot password?</Link>
+            </div>
           </form>
 
           <div className="mt-8 rounded-2xl border border-white/10 bg-white/5 p-5 text-sm text-white/55">
