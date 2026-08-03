@@ -527,10 +527,11 @@ export default function EmployeeClockInPage() {
 
               {activeTab === "leave" && (
                 <div className="space-y-5">
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                     <SummaryCard label="Pending" value={leaves.filter((leave) => leave.status === "pending").length} />
                     <SummaryCard label="Approved" value={leaves.filter((leave) => leave.status === "approved").length} />
                     <SummaryCard label="Annual Left" value={leaveBalance.annualLeaveBalance ?? "—"} />
+                    <SummaryCard label="MC Left" value={leaveBalance.medicalLeaveBalance ?? "—"} />
                   </div>
 
                   <form onSubmit={submitLeave} className="space-y-4 rounded-2xl border border-[#d4ad63]/20 bg-[#30281e] p-5">

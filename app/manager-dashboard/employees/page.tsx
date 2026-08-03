@@ -16,6 +16,16 @@ type Employee = {
   expectedDailyHours: number;
   annualLeaveEntitlement: number;
   annualLeaveUsed: number;
+  leaveBalance?: {
+    annualLeaveBalance: number | null;
+    medicalLeaveBalance: number | null;
+  };
+};
+
+type StoredLeaveBalance = {
+  employeeId: string;
+  annualLeaveBalance: number | null;
+  medicalLeaveBalance: number | null;
 };
 
 export default function ManagerEmployeesPage() {
@@ -54,7 +64,28 @@ export default function ManagerEmployeesPage() {
           throw new Error(data?.message || "Employees could not be loaded.");
         }
 
-        setEmployees(data.employees || []);
+        const loadedEmployees: Employee[] = data.employees || [];
+
+        try {
+          const balanceResponse = await fetch(`${apiBaseUrl}/api/leaves/balances`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const storedBalances: StoredLeaveBalance[] = balanceResponse.ok
+            ? await balanceResponse.json()
+            : [];
+          const balancesByEmployee = new Map(
+            storedBalances.map((balance) => [balance.employeeId, balance]),
+          );
+
+          setEmployees(
+            loadedEmployees.map((employee) => ({
+              ...employee,
+              leaveBalance: balancesByEmployee.get(employee.id),
+            })),
+          );
+        } catch {
+          setEmployees(loadedEmployees);
+        }
       } catch {
         setError("Employees could not be loaded.");
       } finally {
@@ -221,9 +252,14 @@ export default function ManagerEmployeesPage() {
 
                 <tbody>
                   {filteredEmployees.map((employee) => {
-                    const leaveRemaining =
-                      employee.annualLeaveEntitlement -
-                      employee.annualLeaveUsed;
+                    const annualLeaveRemaining =
+                      employee.leaveBalance?.annualLeaveBalance ??
+                      Math.max(
+                        0,
+                        employee.annualLeaveEntitlement - employee.annualLeaveUsed,
+                      );
+                    const medicalLeaveRemaining =
+                      employee.leaveBalance?.medicalLeaveBalance;
 
                     return (
                       <tr key={employee.id} className="border-b border-white/5">
@@ -272,8 +308,13 @@ export default function ManagerEmployeesPage() {
                         <td className="px-5 py-4 text-white/60">
                           {employee.expectedDailyHours}
                         </td>
-                        <td className="px-5 py-4 text-white/60">
-                          {leaveRemaining} left
+                        <td className="min-w-32 px-5 py-4 text-white/60">
+                          <span className="block whitespace-nowrap">
+                            Annual Leave: {annualLeaveRemaining}
+                          </span>
+                          <span className="mt-1 block whitespace-nowrap text-white/45">
+                            MC: {medicalLeaveRemaining ?? "—"}
+                          </span>
                         </td>
                       </tr>
                     );

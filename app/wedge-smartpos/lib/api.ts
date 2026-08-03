@@ -1,3 +1,5 @@
+import { customerSafeMessage } from "../../lib/customerMessages";
+
 export const SMARTPOS_TOKEN_KEY = "wedge_smartpos_token";
 
 export function smartPosApiUrl(path: string) {
@@ -25,7 +27,11 @@ export async function smartPosRequest<T>(path: string, init: RequestInit = {}): 
     window.location.replace("/wedge-smartpos/login?reason=expired");
     throw new Error("Your session has expired. Please log in again.");
   }
-  if (!response.ok) throw new Error(data?.message || "We could not complete that request.");
+  if (!response.ok) {
+    throw new Error(
+      customerSafeMessage(data?.message, "We could not complete that request."),
+    );
+  }
   return data as T;
 }
 

@@ -1,3 +1,5 @@
+import { customerSafeMessage } from "./customerMessages";
+
 export type PaidProduct = "books" | "erp";
 
 export type ProductSubscription = {
@@ -76,7 +78,9 @@ export async function productRequest<T>(
     clearProductToken(product);
   }
   if (!response.ok) {
-    throw new Error(data?.message || "The request could not be completed.");
+    throw new Error(
+      customerSafeMessage(data?.message, "The request could not be completed."),
+    );
   }
   return data as T;
 }
