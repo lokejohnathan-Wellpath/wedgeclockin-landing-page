@@ -5,10 +5,12 @@ Frontend amendment for WedgeCLOCKin:
 - Responsive Employee Management cards remain intact.
 - Mobile/PWA-friendly `Add Employee` workflow with payroll, leave and probation opening values.
 - Immediate camera capture and encrypted AI face registration after employee creation.
-- Separate Payroll, Leave & OT Setup and Employment Letters controls.
+- Payroll, Leave & OT Setup remains inside Employee Management.
+- Employment Intelligence is a separate Manager Module below Payslip, with its own employee-file selector.
 - Employment Intelligence inbox and editable company letter formats.
 - Employee probation profile and automatic offer draft.
-- Draft editing, issue locking, PDF download and receipt acknowledgement.
+- Legacy employee examples are replaced with current employee fields and incomplete documents are flagged for review.
+- Draft editing, issue locking, aligned Word/PDF download and receipt acknowledgement.
 - Safe-copy download and controlled permanent employee deletion.
 - Employee portal `My Letters` view.
 - Employee portal removal of unsubmitted auto-detected OT.

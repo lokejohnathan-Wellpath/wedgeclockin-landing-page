@@ -77,6 +77,11 @@ const modules: ModuleCard[] = [
     text: "Plan optional weekly shifts, detect lateness and approve overtime.",
     href: "/manager-dashboard/roster",
   },
+  {
+    title: "Employment Intelligence",
+    text: "Prepare employee letters, Word/PDF copies and probation decisions.",
+    href: "/manager-dashboard/employment",
+  },
 ];
 
 function formatMalaysiaTime(value: string | null) {

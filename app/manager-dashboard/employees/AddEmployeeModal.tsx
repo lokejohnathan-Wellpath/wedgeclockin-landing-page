@@ -12,6 +12,7 @@ type CreatedEmployee = {
 const initialForm = {
   fullName: "",
   icNumber: "",
+  gender: "",
   phoneNumber: "",
   department: "",
   position: "",
@@ -52,8 +53,8 @@ export default function AddEmployeeModal({
   async function createEmployee() {
     const token = localStorage.getItem("wc_manager_token");
     if (!api || !token) { setError("Manager session is unavailable."); return; }
-    if (!form.fullName.trim() || !form.icNumber.trim() || !form.department.trim() || !form.position.trim() || !form.employmentStartDate) {
-      setError("Name, IC/passport, department, position and employment date are required.");
+    if (!form.fullName.trim() || !form.icNumber.trim() || !form.gender || !form.department.trim() || !form.position.trim() || !form.employmentStartDate) {
+      setError("Name, IC/passport, gender, department, position and employment date are required.");
       return;
     }
     if (form.temporaryPassword.length < 8) {
@@ -88,6 +89,7 @@ export default function AddEmployeeModal({
           reportingManager: form.reportingManager,
           workLocation: form.workLocation,
           residentialAddress: form.residentialAddress,
+          gender: form.gender,
         }),
       });
       const offerData = await offerResponse.json();
@@ -133,6 +135,7 @@ export default function AddEmployeeModal({
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <Input label="Full name *" value={form.fullName} onChange={(value) => update("fullName", value)} />
               <Input label="IC / Passport number *" value={form.icNumber} onChange={(value) => update("icNumber", value)} />
+              <label className="block text-sm font-semibold text-white/65">Gender *<select value={form.gender} onChange={(event) => update("gender", event.target.value)} className={inputClass}><option value="">Select gender</option><option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option></select></label>
               <Input label="Phone number" value={form.phoneNumber} onChange={(value) => update("phoneNumber", value)} />
               <Input label="Department *" value={form.department} onChange={(value) => update("department", value)} />
               <Input label="Position *" value={form.position} onChange={(value) => update("position", value)} />

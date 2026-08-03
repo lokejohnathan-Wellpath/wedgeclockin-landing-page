@@ -3,7 +3,6 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import EmploymentPayrollModal from "./EmploymentPayrollModal";
-import EmploymentIntelligenceModal from "./EmploymentIntelligenceModal";
 import AddEmployeeModal from "./AddEmployeeModal";
 
 type Employee = {
@@ -40,7 +39,6 @@ export default function ManagerEmployeesPage() {
   const [savingEpfId, setSavingEpfId] = useState("");
   const [message, setMessage] = useState("");
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
-  const [employmentEmployee, setEmploymentEmployee] = useState<Employee | null>(null);
   const [addingEmployee, setAddingEmployee] = useState(false);
   const [reloadVersion, setReloadVersion] = useState(0);
 
@@ -192,7 +190,6 @@ export default function ManagerEmployeesPage() {
 
           <div className="flex flex-wrap gap-3">
             <button onClick={() => setAddingEmployee(true)} className="rounded-full bg-emerald-500 px-6 py-3 font-bold text-[#07110c]">+ Add Employee</button>
-            <button onClick={() => router.push("/manager-dashboard/employment")} className="rounded-full bg-[#d4ad63] px-6 py-3 font-bold text-[#101416]">Employment Intelligence</button>
             <button onClick={() => router.push("/manager-dashboard")} className="rounded-full border border-[#d4ad63]/50 px-6 py-3 font-semibold text-[#f0dfbd] hover:bg-white/5">Back to Dashboard</button>
           </div>
         </div>
@@ -280,7 +277,6 @@ export default function ManagerEmployeesPage() {
                       </div>
 
                       <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
-                        <button type="button" onClick={() => setEmploymentEmployee(employee)} className="w-full shrink-0 rounded-xl border border-[#d4ad63]/45 px-5 py-3 text-sm font-bold text-[#e5c584] transition hover:bg-[#d4ad63]/10 lg:w-auto">Employment Letters</button>
                         <button type="button" onClick={() => setSelectedEmployee(employee)} className="w-full shrink-0 rounded-xl bg-[#d4ad63] px-5 py-3 text-sm font-bold text-[#101416] shadow-[0_10px_28px_rgba(212,173,99,0.18)] transition hover:bg-[#e0bd79] lg:w-auto">Payroll, Leave &amp; OT Setup</button>
                       </div>
                     </div>
@@ -347,13 +343,6 @@ export default function ManagerEmployeesPage() {
             setMessage(`Employment and payroll profile saved for ${selectedEmployee.fullName}.`);
             setReloadVersion((value) => value + 1);
           }}
-        />
-      )}
-      {employmentEmployee && (
-        <EmploymentIntelligenceModal
-          employee={employmentEmployee}
-          onClose={() => setEmploymentEmployee(null)}
-          onChanged={() => setReloadVersion((value) => value + 1)}
         />
       )}
       {addingEmployee && (

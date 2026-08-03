@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import EmploymentIntelligenceModal from "../employees/EmploymentIntelligenceModal";
 
 type Template = { type: string; name: string; content: string; version: number };
 type Reminder = { id: string; employeeCode: string; fullName: string; probationEndDate?: string; reminder?: string; retentionDeleteAt?: string };
@@ -14,6 +15,7 @@ export default function EmploymentIntelligencePage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [selectedEmployee, setSelectedEmployee] = useState<Reminder | null>(null);
   const api = process.env.NEXT_PUBLIC_API_BASE_URL;
 
   async function load() {
@@ -47,7 +49,7 @@ export default function EmploymentIntelligencePage() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.message || "Template could not be saved.");
-      setMessage("Company employment template saved. Existing issued letters are unchanged."); await load();
+      setMessage(`${data.message} Existing issued letters are unchanged.`); await load();
     } catch (saveError) { setError(saveError instanceof Error ? saveError.message : "Template could not be saved."); }
     finally { setSaving(false); }
   }
@@ -64,6 +66,11 @@ export default function EmploymentIntelligencePage() {
         <section className="rounded-[1.75rem] border border-white/10 bg-[#1e2428] p-5"><div className="flex items-center justify-between"><h2 className="text-xl font-bold text-[#f0dfbd]">Action inbox</h2><span className="rounded-full bg-red-500 px-3 py-1 text-sm font-bold">{employees.filter((item) => item.reminder).length}</span></div><div className="mt-4 space-y-3">{employees.filter((item) => item.reminder || item.retentionDeleteAt).map((item) => <article key={item.id} className="rounded-xl border border-white/8 bg-[#13181b] p-4"><p className="font-bold text-[#f0dfbd]">{item.fullName} · {item.employeeCode}</p>{item.reminder && <p className="mt-2 text-sm text-amber-200">{item.reminder}</p>}{item.retentionDeleteAt && <p className="mt-2 text-xs text-red-200">Download deadline: {new Date(item.retentionDeleteAt).toLocaleDateString("en-MY")}</p>}</article>)}{!employees.some((item) => item.reminder || item.retentionDeleteAt) && <p className="text-sm text-white/45">No employment actions due.</p>}</div></section>
         <section className="rounded-[1.75rem] border border-[#d4ad63]/25 bg-[#1e2428] p-5"><h2 className="text-xl font-bold text-[#f0dfbd]">Company letter formats</h2><div className="mt-4 flex flex-wrap gap-2">{templates.map((template) => <button key={template.type} onClick={() => setSelectedType(template.type)} className={`rounded-full px-4 py-2 text-sm font-semibold ${selectedType === template.type ? "bg-[#d4ad63] text-[#101416]" : "border border-white/15 text-white/60"}`}>{template.type}</button>)}</div>{selected && <div className="mt-5 space-y-4"><label className="block text-sm font-semibold text-white/60">Template name<input value={selected.name} onChange={(event) => updateSelected("name", event.target.value)} className="mt-2 w-full rounded-xl border border-white/10 bg-[#101416] px-4 py-3 outline-none focus:border-[#d4ad63]" /></label><label className="block text-sm font-semibold text-white/60">Letter format<textarea rows={20} value={selected.content} onChange={(event) => updateSelected("content", event.target.value)} className="mt-2 w-full rounded-xl border border-white/10 bg-[#101416] p-4 font-mono text-sm leading-6 outline-none focus:border-[#d4ad63]" /></label><p className="text-xs leading-5 text-white/40">Placeholders such as {"{{employeeName}}"}, {"{{position}}"}, {"{{startDate}}"}, {"{{basicSalary}}"} and {"{{companyName}}"} are filled automatically.</p><button onClick={() => void saveTemplate()} disabled={saving} className="rounded-xl bg-[#d4ad63] px-5 py-3 font-bold text-[#101416]">{saving ? "Saving…" : "Save Company Format"}</button></div>}</section>
       </div>
+      <section className="mt-6 rounded-[1.75rem] border border-white/10 bg-[#1e2428] p-5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-xs tracking-[.22em] text-[#d4ad63]">EMPLOYEE FILES</p><h2 className="mt-2 text-xl font-bold text-[#f0dfbd]">Prepare letters and manage probation</h2></div><p className="text-sm text-white/40">{employees.length} employee(s)</p></div>
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">{employees.map((item) => <article key={item.id} className="rounded-2xl border border-white/8 bg-[#13181b] p-4"><p className="font-bold text-[#f0dfbd]">{item.fullName}</p><p className="mt-1 text-xs text-white/40">{item.employeeCode} · Probation end {item.probationEndDate || "not set"}</p>{item.reminder && <p className="mt-2 text-xs text-amber-200">{item.reminder}</p>}<button type="button" onClick={() => setSelectedEmployee(item)} className="mt-4 w-full rounded-xl border border-[#d4ad63]/45 px-4 py-2.5 text-sm font-bold text-[#e5c584] hover:bg-[#d4ad63]/10">Open Employment File</button></article>)}</div>
+      </section>
     </section>
+    {selectedEmployee && <EmploymentIntelligenceModal employee={selectedEmployee} onClose={() => setSelectedEmployee(null)} onChanged={() => void load()} />}
   </main>;
 }

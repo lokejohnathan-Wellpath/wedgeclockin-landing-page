@@ -10,8 +10,11 @@ type EmploymentDocument = {
   status: "draft" | "issued" | "acknowledged";
   renderedContent: string;
   issuedAt?: string;
+  snapshot?: { qualityIssues?: string[] };
 };
 type EmploymentProfile = {
+  icNumber?: string;
+  gender?: string;
   employmentStartDate?: string;
   residentialAddress?: string;
   reportingManager?: string;
@@ -92,6 +95,7 @@ export default function EmploymentIntelligenceModal({
         body: JSON.stringify({
           employmentStartDate: profile.employmentStartDate || "",
           residentialAddress: profile.residentialAddress || "",
+          gender: profile.gender || "",
           reportingManager: profile.reportingManager || "",
           workLocation: profile.workLocation || "",
           probationMonths: Number(profile.probationMonths || 3),
@@ -134,6 +138,18 @@ export default function EmploymentIntelligenceModal({
     const url = URL.createObjectURL(await response.blob());
     const anchor = window.document.createElement("a");
     anchor.href = url; anchor.download = `${document.type}-${employee.employeeCode}.pdf`; anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function downloadDocx(document: EmploymentDocument) {
+    if (!api || !token) return;
+    const response = await fetch(`${api}/api/employment-intelligence/documents/${encodeURIComponent(document.id)}/docx`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) { setError("Word document could not be downloaded."); return; }
+    const url = URL.createObjectURL(await response.blob());
+    const anchor = window.document.createElement("a");
+    anchor.href = url; anchor.download = `${document.type}-${employee.employeeCode}.docx`; anchor.click();
     URL.revokeObjectURL(url);
   }
 
@@ -191,6 +207,8 @@ export default function EmploymentIntelligenceModal({
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <Input label="Employment start" type="date" value={profile.employmentStartDate || ""} onChange={(value) => setProfile({ ...profile, employmentStartDate: value })} />
             <Input label="Probation months" type="number" value={String(profile.probationMonths || 3)} onChange={(value) => setProfile({ ...profile, probationMonths: Number(value) })} />
+            <label className="block text-sm font-semibold text-white/65">Gender<select value={profile.gender || ""} onChange={(event) => setProfile({ ...profile, gender: event.target.value })} className="mt-2 w-full rounded-xl border border-white/10 bg-[#0f1315] px-4 py-3 outline-none focus:border-[#d4ad63]"><option value="">Select gender</option><option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option></select></label>
+            <label className="block text-sm font-semibold text-white/65">IC / Passport<input value={profile.icNumber || ""} readOnly className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-white/55" /></label>
             <Input label="Reporting manager" value={profile.reportingManager || ""} onChange={(value) => setProfile({ ...profile, reportingManager: value })} />
             <Input label="Work location" value={profile.workLocation || ""} onChange={(value) => setProfile({ ...profile, workLocation: value })} />
             <label className="sm:col-span-2 block text-sm font-semibold text-white/65">Residential address<textarea rows={3} value={profile.residentialAddress || ""} onChange={(event) => setProfile({ ...profile, residentialAddress: event.target.value })} className="mt-2 w-full rounded-xl border border-white/10 bg-[#0f1315] px-4 py-3 outline-none focus:border-[#d4ad63]" /></label>
@@ -199,12 +217,14 @@ export default function EmploymentIntelligenceModal({
           <button onClick={() => void saveProfile()} disabled={working === "profile"} className="mt-4 rounded-xl bg-[#d4ad63] px-5 py-3 font-bold text-[#101416]">{working === "profile" ? "Saving…" : "Save & Prepare Offer"}</button>
         </Panel>
 
-        <Panel title="Letters and PDF safe copies">
+        <Panel title="Letters, Word documents and PDF safe copies">
           <div className="space-y-4">{documents.length === 0 && <p className="text-sm text-white/45">Save the employment profile to prepare an offer-letter draft.</p>}{documents.map((document) => <article key={document.id} className="rounded-2xl border border-white/8 bg-[#111619] p-4">
             <div className="flex flex-wrap items-center justify-between gap-3"><div><h4 className="font-bold text-[#f0dfbd]">{document.title}</h4><p className="mt-1 text-xs uppercase tracking-wider text-white/40">{document.status}</p></div><div className="flex flex-wrap gap-2">
               {document.status === "draft" && <><button onClick={() => void saveDocument(document)} className="rounded-lg border border-white/15 px-3 py-2 text-sm">Save draft</button><button onClick={() => void saveDocument(document, true)} className="rounded-lg bg-[#d4ad63] px-3 py-2 text-sm font-bold text-[#101416]">Issue</button><button onClick={() => void deleteDraft(document)} className="rounded-lg border border-red-400/30 px-3 py-2 text-sm text-red-200">Delete</button></>}
               <button onClick={() => void downloadPdf(document)} className="rounded-lg border border-[#d4ad63]/40 px-3 py-2 text-sm text-[#e5c584]">Download PDF</button>
+              <button onClick={() => void downloadDocx(document)} className="rounded-lg border border-[#d4ad63]/40 px-3 py-2 text-sm text-[#e5c584]">Download Word</button>
             </div></div>
+            {!!document.snapshot?.qualityIssues?.length && <div className="mt-4 rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-sm text-amber-100"><b>Review before issue:</b><ul className="mt-2 list-disc space-y-1 pl-5">{document.snapshot.qualityIssues.map((issue) => <li key={issue}>{issue}</li>)}</ul></div>}
             {document.status === "draft" && <textarea rows={12} value={document.renderedContent} onChange={(event) => setDocuments((current) => current.map((item) => item.id === document.id ? { ...item, renderedContent: event.target.value } : item))} className="mt-4 w-full rounded-xl border border-white/10 bg-[#0b0f11] p-4 text-sm leading-6 outline-none focus:border-[#d4ad63]" />}
           </article>)}</div>
         </Panel>
