@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { calculateMalaysiaStatutory } from "../../lib/malaysiaStatutory";
 import { expireManagerSession } from "../../lib/managerSession";
 
-type Payroll = { employeeId: string; employeeName: string; month: number; year: number; basicSalary: number; allowanceA: number; allowanceB: number; allowanceC: number; otHours: number; otRate: number; taxDeduction: number; otherDeduction: number };
+type Payroll = { employeeId: string; employeeName: string; month: number; year: number; basicSalary: number; allowanceA: number; allowanceB: number; allowanceC: number; monthlyIncentive?: number; otHours: number; otRate: number; otPay?: number; taxDeduction: number; otherDeduction: number };
 type Employee = { id: string; epfMemberNumber?: string; icNumber?: string; employeeCode?: string; fullName: string };
 
 function csvCell(value: unknown) { return `"${String(value ?? "").replaceAll('"', '""')}"`; }
@@ -52,8 +52,8 @@ export default function ExportPage() {
       const { payroll, employees } = await loadData();
       const people = new Map(employees.map((employee) => [employee.id, employee]));
       const rows = payroll.map((record) => {
-        const epfWages = record.basicSalary + record.allowanceA + record.allowanceB + record.allowanceC;
-        const gross = epfWages + record.otHours * record.otRate;
+        const epfWages = record.basicSalary + record.allowanceA + record.allowanceB + record.allowanceC + Number(record.monthlyIncentive || 0);
+        const gross = epfWages + Number(record.otPay ?? record.otHours * record.otRate);
         return { record, employee: people.get(record.employeeId), gross, statutory: calculateMalaysiaStatutory(epfWages, gross) };
       });
       const period = `${year}-${month.padStart(2, "0")}`;

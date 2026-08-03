@@ -20,6 +20,7 @@ type PayrollRecord = {
   allowanceA: number;
   allowanceB: number;
   allowanceC: number;
+  monthlyIncentive?: number;
   epfDeduction: number;
   socsoDeduction: number;
   eisDeduction: number;
@@ -98,7 +99,8 @@ function calculatePayslip(record: PayrollRecord): PayslipCalculation {
   const otAmount = record.otPay ?? record.otHours * record.otRate;
   const totalAllowances =
     record.allowanceA + record.allowanceB + record.allowanceC;
-  const grossPay = record.basicSalary + totalAllowances + otAmount;
+  const monthlyIncentive = Number(record.monthlyIncentive || 0);
+  const grossPay = record.basicSalary + totalAllowances + monthlyIncentive + otAmount;
   const totalDeductions =
     record.epfDeduction +
     record.socsoDeduction +
@@ -703,6 +705,12 @@ function PayslipDocument({
               )}
               value={record.allowanceC}
             />
+            {Number(record.monthlyIncentive || 0) > 0 && (
+              <PayslipRow
+                label="Monthly Incentive / Commission"
+                value={Number(record.monthlyIncentive || 0)}
+              />
+            )}
             <PayslipRow
               label={`Overtime (${record.otHours.toFixed(2)} hrs × ${money(
                 record.otRate,

@@ -40,6 +40,7 @@ type PayrollRecord = {
   allowanceA: number;
   allowanceB: number;
   allowanceC: number;
+  monthlyIncentive: number;
   epfDeduction: number;
   epfEmployerContribution?: number;
   socsoDeduction: number;
@@ -78,6 +79,7 @@ type PayrollForm = {
   allowanceB: string;
   allowanceCLabel: string;
   allowanceC: string;
+  monthlyIncentive: string;
   epfDeduction: string;
   socsoDeduction: string;
   eisDeduction: string;
@@ -122,6 +124,7 @@ const initialForm: PayrollForm = {
   allowanceB: "0",
   allowanceCLabel: "Allowance C",
   allowanceC: "0",
+  monthlyIncentive: "0",
   epfDeduction: "0",
   socsoDeduction: "0",
   eisDeduction: "0",
@@ -157,7 +160,8 @@ function cleanLabel(value: string, fallback: string) {
 function calculatePayroll(record: PayrollRecord) {
   const otAmount = record.otPay ?? record.otHours * record.otRate;
   const allowances = record.allowanceA + record.allowanceB + record.allowanceC;
-  const grossPay = record.basicSalary + allowances + otAmount;
+  const monthlyIncentive = Number(record.monthlyIncentive || 0);
+  const grossPay = record.basicSalary + allowances + monthlyIncentive + otAmount;
   const totalDeductions =
     record.epfDeduction +
     record.socsoDeduction +
@@ -168,6 +172,7 @@ function calculatePayroll(record: PayrollRecord) {
 
   return {
     allowances,
+    monthlyIncentive,
     otAmount,
     grossPay,
     totalDeductions,
@@ -199,10 +204,12 @@ export default function PayrollPage() {
     const allowanceA = parseAmount(form.allowanceA);
     const allowanceB = parseAmount(form.allowanceB);
     const allowanceC = parseAmount(form.allowanceC);
+    const monthlyIncentive = parseAmount(form.monthlyIncentive);
     const otAmount = parseAmount(form.otHours) * parseAmount(form.otRate);
     const totalAllowances = allowanceA + allowanceB + allowanceC;
-    const grossPay = basicSalary + totalAllowances + otAmount;
-    const statutory = calculateMalaysiaStatutory(basicSalary + totalAllowances, grossPay);
+    const grossPay = basicSalary + totalAllowances + monthlyIncentive + otAmount;
+    const statutoryWages = basicSalary + totalAllowances + monthlyIncentive;
+    const statutory = calculateMalaysiaStatutory(statutoryWages, grossPay);
     const totalDeductions =
       statutory.epfEmployee +
       statutory.socsoEmployee +
@@ -212,6 +219,7 @@ export default function PayrollPage() {
 
     return {
       totalAllowances,
+      monthlyIncentive,
       otAmount,
       grossPay,
       totalDeductions,
@@ -324,6 +332,16 @@ export default function PayrollPage() {
     setError("");
   }
 
+  function updatePayrollPeriod(field: "month" | "year", value: string) {
+    setForm((current) => ({
+      ...current,
+      [field]: value,
+      monthlyIncentive: "0",
+    }));
+    setMessage("");
+    setError("");
+  }
+
   function handleEmployeeChange(employeeId: string) {
     const employee = employees.find((item) => item.id === employeeId);
     const defaults = employee?.payrollDefaults;
@@ -350,6 +368,7 @@ export default function PayrollPage() {
         defaults?.allowanceCAmount !== undefined
           ? String(defaults.allowanceCAmount)
           : "0",
+      monthlyIncentive: "0",
       otRate: defaults?.otRate !== undefined ? String(defaults.otRate) : current.otRate,
     }));
 
@@ -374,6 +393,7 @@ export default function PayrollPage() {
       [form.allowanceALabel || "Allowance A", form.allowanceA],
       [form.allowanceBLabel || "Allowance B", form.allowanceB],
       [form.allowanceCLabel || "Allowance C", form.allowanceC],
+      ["Monthly Incentive / Commission", form.monthlyIncentive],
       ["EPF Deduction", form.epfDeduction],
       ["SOCSO Deduction", form.socsoDeduction],
       ["EIS Deduction", form.eisDeduction],
@@ -468,6 +488,7 @@ export default function PayrollPage() {
       allowanceB: parseAmount(form.allowanceB),
       allowanceCLabel: cleanLabel(form.allowanceCLabel, "Allowance C"),
       allowanceC: parseAmount(form.allowanceC),
+      monthlyIncentive: parseAmount(form.monthlyIncentive),
       epfDeduction: calculations.statutory.epfEmployee,
       epfEmployerContribution: calculations.statutory.epfEmployer,
       socsoDeduction: calculations.statutory.socsoEmployee,
@@ -655,13 +676,13 @@ export default function PayrollPage() {
                 <SelectField
                   label="Month"
                   value={form.month}
-                  onChange={(value) => updateField("month", value)}
+                  onChange={(value) => updatePayrollPeriod("month", value)}
                   options={months}
                 />
                 <SelectField
                   label="Year"
                   value={form.year}
-                  onChange={(value) => updateField("year", value)}
+                  onChange={(value) => updatePayrollPeriod("year", value)}
                   options={years.map((year) => ({ value: String(year), label: String(year) }))}
                 />
               </div>
@@ -695,6 +716,24 @@ export default function PayrollPage() {
                   onLabelChange={(value) => updateField("allowanceCLabel", value)}
                   onAmountChange={(value) => updateField("allowanceC", value)}
                 />
+              </div>
+
+              <div className="mt-5 rounded-2xl border border-[#d4ad63]/30 bg-[#d4ad63]/7 p-4 sm:p-5">
+                <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(220px,0.55fr)] sm:items-end">
+                  <div>
+                    <p className="font-bold text-[#f0dfbd]">
+                      Monthly Incentive / Commission
+                    </p>
+                    <p className="mt-2 text-xs leading-5 text-white/45">
+                      Optional variable payment for this employee and payroll month only. Leave it at RM0 when none.
+                    </p>
+                  </div>
+                  <MoneyField
+                    label="Current month amount"
+                    value={form.monthlyIncentive}
+                    onChange={(value) => updateField("monthlyIncentive", value)}
+                  />
+                </div>
               </div>
 
               <SectionTitle title="Overtime" />
@@ -785,6 +824,7 @@ export default function PayrollPage() {
                 <SummaryRow label={cleanLabel(form.allowanceALabel, "Allowance A")} value={parseAmount(form.allowanceA)} />
                 <SummaryRow label={cleanLabel(form.allowanceBLabel, "Allowance B")} value={parseAmount(form.allowanceB)} />
                 <SummaryRow label={cleanLabel(form.allowanceCLabel, "Allowance C")} value={parseAmount(form.allowanceC)} />
+                <SummaryRow label="Monthly Incentive / Commission" value={parseAmount(form.monthlyIncentive)} />
                 <SummaryRow label="OT Amount" value={calculations.otAmount} />
                 <SummaryRow label="Gross Pay" value={calculations.grossPay} />
                 <SummaryRow label="Total Deductions" value={calculations.totalDeductions} />
@@ -822,7 +862,7 @@ export default function PayrollPage() {
               <div className="flex flex-col gap-3 sm:flex-row">
                 <select
                   value={form.month}
-                  onChange={(event) => updateField("month", event.target.value)}
+                  onChange={(event) => updatePayrollPeriod("month", event.target.value)}
                   className="w-full rounded-xl border border-white/10 bg-[#101416] px-4 py-3 text-white outline-none focus:border-[#d4ad63] sm:w-44"
                   aria-label="Payroll month"
                 >
@@ -832,7 +872,7 @@ export default function PayrollPage() {
                 </select>
                 <select
                   value={form.year}
-                  onChange={(event) => updateField("year", event.target.value)}
+                  onChange={(event) => updatePayrollPeriod("year", event.target.value)}
                   className="w-full rounded-xl border border-white/10 bg-[#101416] px-4 py-3 text-white outline-none focus:border-[#d4ad63] sm:w-32"
                   aria-label="Payroll year"
                 >
@@ -898,6 +938,7 @@ export default function PayrollPage() {
                               <p>{record.allowanceALabel ?? "Allowance A"}: {money(record.allowanceA)}</p>
                               <p className="mt-1">{record.allowanceBLabel ?? "Allowance B"}: {money(record.allowanceB)}</p>
                               <p className="mt-1">{record.allowanceCLabel ?? "Allowance C"}: {money(record.allowanceC)}</p>
+                              <p className="mt-1 text-[#e5c584]">Monthly Incentive: {money(Number(record.monthlyIncentive || 0))}</p>
                             </td>
                             <td className="px-5 py-4 text-white/60">{record.otHours.toFixed(2)}</td>
                             <td className="px-5 py-4 text-white/60">{money(result.otAmount)}</td>
