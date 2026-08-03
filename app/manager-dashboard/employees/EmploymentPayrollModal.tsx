@@ -221,6 +221,23 @@ export default function EmploymentPayrollModal({ employee, onClose, onSaved }: P
       );
       const data = await response.json();
       if (!response.ok) throw new Error(data?.message || "Profile could not be saved.");
+      if (form.employmentStartDate) {
+        const employmentResponse = await fetch(
+          `${api}/api/employment-intelligence/employees/${encodeURIComponent(employee.id)}`,
+          {
+            method: "PUT",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              employmentStartDate: form.employmentStartDate,
+              probationMonths: 3,
+            }),
+          },
+        );
+        const employmentData = await employmentResponse.json();
+        if (!employmentResponse.ok) {
+          throw new Error(employmentData?.message || "Offer letter draft could not be prepared.");
+        }
+      }
       onSaved();
       onClose();
     } catch (saveError) {

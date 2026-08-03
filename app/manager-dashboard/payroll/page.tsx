@@ -41,6 +41,8 @@ type PayrollRecord = {
   allowanceB: number;
   allowanceC: number;
   monthlyIncentive: number;
+  monthlyIncentiveLabel?: string;
+  showMonthlyIncentiveOnPayslip?: boolean;
   epfDeduction: number;
   epfEmployerContribution?: number;
   socsoDeduction: number;
@@ -80,6 +82,8 @@ type PayrollForm = {
   allowanceCLabel: string;
   allowanceC: string;
   monthlyIncentive: string;
+  monthlyIncentiveLabel: string;
+  showMonthlyIncentiveOnPayslip: boolean;
   epfDeduction: string;
   socsoDeduction: string;
   eisDeduction: string;
@@ -125,6 +129,8 @@ const initialForm: PayrollForm = {
   allowanceCLabel: "Allowance C",
   allowanceC: "0",
   monthlyIncentive: "0",
+  monthlyIncentiveLabel: "Commission / Incentive",
+  showMonthlyIncentiveOnPayslip: true,
   epfDeduction: "0",
   socsoDeduction: "0",
   eisDeduction: "0",
@@ -337,6 +343,8 @@ export default function PayrollPage() {
       ...current,
       [field]: value,
       monthlyIncentive: "0",
+      monthlyIncentiveLabel: "Commission / Incentive",
+      showMonthlyIncentiveOnPayslip: true,
     }));
     setMessage("");
     setError("");
@@ -393,7 +401,7 @@ export default function PayrollPage() {
       [form.allowanceALabel || "Allowance A", form.allowanceA],
       [form.allowanceBLabel || "Allowance B", form.allowanceB],
       [form.allowanceCLabel || "Allowance C", form.allowanceC],
-      ["Monthly Incentive / Commission", form.monthlyIncentive],
+      [cleanLabel(form.monthlyIncentiveLabel, "Commission / Incentive"), form.monthlyIncentive],
       ["EPF Deduction", form.epfDeduction],
       ["SOCSO Deduction", form.socsoDeduction],
       ["EIS Deduction", form.eisDeduction],
@@ -489,6 +497,11 @@ export default function PayrollPage() {
       allowanceCLabel: cleanLabel(form.allowanceCLabel, "Allowance C"),
       allowanceC: parseAmount(form.allowanceC),
       monthlyIncentive: parseAmount(form.monthlyIncentive),
+      monthlyIncentiveLabel: cleanLabel(
+        form.monthlyIncentiveLabel,
+        "Commission / Incentive",
+      ),
+      showMonthlyIncentiveOnPayslip: form.showMonthlyIncentiveOnPayslip,
       epfDeduction: calculations.statutory.epfEmployee,
       epfEmployerContribution: calculations.statutory.epfEmployer,
       socsoDeduction: calculations.statutory.socsoEmployee,
@@ -722,7 +735,7 @@ export default function PayrollPage() {
                 <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(220px,0.55fr)] sm:items-end">
                   <div>
                     <p className="font-bold text-[#f0dfbd]">
-                      Monthly Incentive / Commission
+                      Commission / Incentive
                     </p>
                     <p className="mt-2 text-xs leading-5 text-white/45">
                       Optional variable payment for this employee and payroll month only. Leave it at RM0 when none.
@@ -733,6 +746,28 @@ export default function PayrollPage() {
                     value={form.monthlyIncentive}
                     onChange={(value) => updateField("monthlyIncentive", value)}
                   />
+                </div>
+                <div className="mt-4 grid gap-4 border-t border-white/10 pt-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                  <div>
+                    <label className="text-sm text-white/55">Payslip line name</label>
+                    <input
+                      type="text"
+                      maxLength={60}
+                      value={form.monthlyIncentiveLabel}
+                      onChange={(event) => updateField("monthlyIncentiveLabel", event.target.value)}
+                      className={inputClassName}
+                      placeholder="Commission / Incentive"
+                    />
+                  </div>
+                  <label className="flex items-center gap-3 rounded-xl border border-white/10 bg-[#101416] px-4 py-3 text-sm text-white/65">
+                    <input
+                      type="checkbox"
+                      checked={form.showMonthlyIncentiveOnPayslip}
+                      onChange={(event) => updateField("showMonthlyIncentiveOnPayslip", event.target.checked)}
+                      className="accent-[#d4ad63]"
+                    />
+                    Show on payslip
+                  </label>
                 </div>
               </div>
 
@@ -824,7 +859,7 @@ export default function PayrollPage() {
                 <SummaryRow label={cleanLabel(form.allowanceALabel, "Allowance A")} value={parseAmount(form.allowanceA)} />
                 <SummaryRow label={cleanLabel(form.allowanceBLabel, "Allowance B")} value={parseAmount(form.allowanceB)} />
                 <SummaryRow label={cleanLabel(form.allowanceCLabel, "Allowance C")} value={parseAmount(form.allowanceC)} />
-                <SummaryRow label="Monthly Incentive / Commission" value={parseAmount(form.monthlyIncentive)} />
+                <SummaryRow label={cleanLabel(form.monthlyIncentiveLabel, "Commission / Incentive")} value={parseAmount(form.monthlyIncentive)} />
                 <SummaryRow label="OT Amount" value={calculations.otAmount} />
                 <SummaryRow label="Gross Pay" value={calculations.grossPay} />
                 <SummaryRow label="Total Deductions" value={calculations.totalDeductions} />
@@ -938,7 +973,7 @@ export default function PayrollPage() {
                               <p>{record.allowanceALabel ?? "Allowance A"}: {money(record.allowanceA)}</p>
                               <p className="mt-1">{record.allowanceBLabel ?? "Allowance B"}: {money(record.allowanceB)}</p>
                               <p className="mt-1">{record.allowanceCLabel ?? "Allowance C"}: {money(record.allowanceC)}</p>
-                              <p className="mt-1 text-[#e5c584]">Monthly Incentive: {money(Number(record.monthlyIncentive || 0))}</p>
+                              <p className="mt-1 text-[#e5c584]">{record.monthlyIncentiveLabel || "Commission / Incentive"}: {money(Number(record.monthlyIncentive || 0))}</p>
                             </td>
                             <td className="px-5 py-4 text-white/60">{record.otHours.toFixed(2)}</td>
                             <td className="px-5 py-4 text-white/60">{money(result.otAmount)}</td>

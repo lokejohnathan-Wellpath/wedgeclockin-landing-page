@@ -21,6 +21,8 @@ type PayrollRecord = {
   allowanceB: number;
   allowanceC: number;
   monthlyIncentive?: number;
+  monthlyIncentiveLabel?: string;
+  showMonthlyIncentiveOnPayslip?: boolean;
   epfDeduction: number;
   socsoDeduction: number;
   eisDeduction: number;
@@ -705,9 +707,13 @@ function PayslipDocument({
               )}
               value={record.allowanceC}
             />
-            {Number(record.monthlyIncentive || 0) > 0 && (
+            {Number(record.monthlyIncentive || 0) > 0 &&
+              record.showMonthlyIncentiveOnPayslip !== false && (
               <PayslipRow
-                label="Monthly Incentive / Commission"
+                label={cleanLabel(
+                  record.monthlyIncentiveLabel,
+                  "Commission / Incentive",
+                )}
                 value={Number(record.monthlyIncentive || 0)}
               />
             )}

@@ -23,7 +23,7 @@ type AttendanceRecord = {
   clockOut: string | null;
 };
 
-type PortalTab = "attendance" | "leave" | "overtime" | "profile";
+type PortalTab = "attendance" | "leave" | "overtime" | "employment" | "profile";
 
 type LeaveRecord = {
   id: string;
@@ -57,6 +57,9 @@ type ReplacementClaim = {
   reason: string;
   status: "pending" | "approved" | "rejected";
 };
+
+type EmploymentDocument = { id: string; title: string; type: string; status: "issued" | "acknowledged"; issuedAt?: string };
+type EmploymentFile = { employmentStartDate?: string; probationStartDate?: string; probationEndDate?: string; probationStatus?: string };
 
 const LEAVE_TYPES = ["Annual Leave", "Medical Leave", "Emergency Leave", "Unpaid Leave", "Replacement Leave", "Hospitalisation Leave", "Other Leave"];
 
@@ -112,6 +115,8 @@ export default function EmployeeClockInPage() {
   const [claimHours, setClaimHours] = useState("");
   const [claimReason, setClaimReason] = useState("");
   const [claimLoading, setClaimLoading] = useState(false);
+  const [employmentFile, setEmploymentFile] = useState<EmploymentFile>({});
+  const [employmentDocuments, setEmploymentDocuments] = useState<EmploymentDocument[]>([]);
   const [outletShortName, setOutletShortName] = useState("");
   const [idNumber, setIdNumber] = useState("");
   const [password, setPassword] = useState("");
@@ -147,6 +152,7 @@ export default function EmployeeClockInPage() {
     setLeaves([]);
     setOvertime([]);
     setReplacementClaims([]);
+    setEmploymentDocuments([]);
     setActiveTab("attendance");
     setMessage("");
   }, []);
@@ -207,6 +213,17 @@ export default function EmployeeClockInPage() {
     setReplacementClaimMinutes(Number(data.replacementClaimMinutes || 0));
   }, [apiBaseUrl, logout]);
 
+  const loadEmployment = useCallback(async (sessionToken: string) => {
+    if (!apiBaseUrl) throw new Error("API service is not configured.");
+    const response = await fetch(`${apiBaseUrl}/api/employment-intelligence/employee`, {
+      headers: { Authorization: `Bearer ${sessionToken}` }, cache: "no-store",
+    });
+    const data = await response.json();
+    if (response.status === 401 || response.status === 403) { logout(); throw new Error("Your session has expired. Please log in again."); }
+    if (!response.ok) throw new Error(data?.message || "Employment documents could not be loaded.");
+    setEmploymentFile(data.employment || {}); setEmploymentDocuments(data.documents || []);
+  }, [apiBaseUrl, logout]);
+
   useEffect(() => {
     const savedToken = localStorage.getItem(TOKEN_KEY) || "";
     const savedEmployee = localStorage.getItem(EMPLOYEE_KEY);
@@ -225,13 +242,13 @@ export default function EmployeeClockInPage() {
 
       setIsLoading(true);
       loadToday(savedToken)
-        .then(() => Promise.all([loadLeave(savedToken), loadOvertime(savedToken)]))
+        .then(() => Promise.all([loadLeave(savedToken), loadOvertime(savedToken), loadEmployment(savedToken)]))
         .catch((err) => setError(err instanceof Error ? err.message : "Unable to load attendance."))
         .finally(() => setIsLoading(false));
     }, 0);
 
     return () => window.clearTimeout(timer);
-  }, [loadLeave, loadOvertime, loadToday]);
+  }, [loadEmployment, loadLeave, loadOvertime, loadToday]);
 
   useEffect(() => stopCamera, [stopCamera]);
 
@@ -372,6 +389,7 @@ export default function EmployeeClockInPage() {
       await loadToday(data.token);
       await loadLeave(data.token);
       await loadOvertime(data.token);
+      await loadEmployment(data.token);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed.");
     } finally {
@@ -437,6 +455,28 @@ export default function EmployeeClockInPage() {
     }
   }
 
+  async function deleteDetectedOvertime(request: OvertimeRecord) {
+    if (!apiBaseUrl || !token) return;
+    if (!window.confirm("Delete this auto-detected OT record? It will not be submitted to payroll.")) return;
+    setOtLoadingId(request.id);
+    setError("");
+    setMessage("");
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/api/employee-portal/overtime/${encodeURIComponent(request.id)}`,
+        { method: "DELETE", headers: { Authorization: `Bearer ${token}` } },
+      );
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.message || "Detected OT could not be deleted.");
+      setMessage(data.message || "Detected OT deleted.");
+      await loadOvertime(token);
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Detected OT could not be deleted.");
+    } finally {
+      setOtLoadingId("");
+    }
+  }
+
   async function submitReplacementClaim(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!apiBaseUrl || !token) return;
@@ -470,6 +510,22 @@ export default function EmployeeClockInPage() {
     } finally {
       setClaimLoading(false);
     }
+  }
+
+  async function downloadEmploymentDocument(document: EmploymentDocument) {
+    if (!apiBaseUrl || !token) return;
+    const response = await fetch(`${apiBaseUrl}/api/employment-intelligence/documents/${encodeURIComponent(document.id)}/pdf`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!response.ok) { setError("Employment PDF could not be downloaded."); return; }
+    const url = URL.createObjectURL(await response.blob());
+    const anchor = window.document.createElement("a"); anchor.href = url; anchor.download = `${document.type}-${employee?.employeeCode || "employee"}.pdf`; anchor.click(); URL.revokeObjectURL(url);
+  }
+
+  async function acknowledgeEmploymentDocument(document: EmploymentDocument) {
+    if (!apiBaseUrl || !token) return;
+    const response = await fetch(`${apiBaseUrl}/api/employment-intelligence/employee/documents/${encodeURIComponent(document.id)}/acknowledge`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+    const data = await response.json();
+    if (!response.ok) { setError(data?.message || "Document could not be acknowledged."); return; }
+    setMessage(data.message); await loadEmployment(token);
   }
 
   async function recordAction(
@@ -557,15 +613,15 @@ export default function EmployeeClockInPage() {
             </form>
           ) : (
             <div className="p-7">
-              <nav className="mb-6 grid grid-cols-4 rounded-2xl border border-white/8 bg-black/20 p-1" aria-label="Employee portal">
-                {(["attendance", "leave", "overtime", "profile"] as PortalTab[]).map((tab) => (
+              <nav className="mb-6 grid grid-cols-5 rounded-2xl border border-white/8 bg-black/20 p-1" aria-label="Employee portal">
+                {(["attendance", "leave", "overtime", "employment", "profile"] as PortalTab[]).map((tab) => (
                   <button
                     key={tab}
                     type="button"
                     onClick={() => { setActiveTab(tab); setError(""); setMessage(""); stopCamera(); }}
                     className={`rounded-xl px-2 py-3 text-xs font-semibold transition ${activeTab === tab ? "bg-[#d4ad63] text-[#111416]" : "text-white/50"}`}
                   >
-                    {tab === "attendance" ? "Attendance" : tab === "leave" ? "My Leave" : tab === "overtime" ? "My OT" : "Profile"}
+                    {tab === "attendance" ? "Attendance" : tab === "leave" ? "My Leave" : tab === "overtime" ? "My OT" : tab === "employment" ? "My Letters" : "Profile"}
                   </button>
                 ))}
               </nav>
@@ -707,7 +763,10 @@ export default function EmployeeClockInPage() {
                           {item.status === "detected" ? (
                             <div className="mt-4">
                               <textarea value={otReasons[item.id] || ""} onChange={(event) => setOtReasons((current) => ({ ...current, [item.id]: event.target.value }))} rows={2} maxLength={500} placeholder="Reason for overtime" className="w-full resize-none rounded-xl border border-white/10 bg-[#101416] px-4 py-3 text-sm outline-none focus:border-[#d4ad63]" />
-                              <button type="button" disabled={otLoadingId === item.id} onClick={() => void submitOvertime(item)} className="mt-3 w-full rounded-full bg-[#d4ad63] px-5 py-3 font-bold text-[#111416] disabled:opacity-60">{otLoadingId === item.id ? "Submitting…" : "Submit OT Application"}</button>
+                              <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
+                                <button type="button" disabled={otLoadingId === item.id} onClick={() => void submitOvertime(item)} className="rounded-full bg-[#d4ad63] px-5 py-3 font-bold text-[#111416] disabled:opacity-60">{otLoadingId === item.id ? "Working…" : "Submit OT Application"}</button>
+                                <button type="button" disabled={otLoadingId === item.id} onClick={() => void deleteDetectedOvertime(item)} className="rounded-full border border-red-400/35 px-4 py-3 text-sm font-semibold text-red-200 disabled:opacity-60">Delete</button>
+                              </div>
                             </div>
                           ) : (
                             <div className="mt-3 text-sm text-white/55">
@@ -736,6 +795,28 @@ export default function EmployeeClockInPage() {
                     <div className="mt-3 space-y-3">
                       {replacementClaims.length === 0 && <p className="rounded-xl border border-white/8 p-4 text-sm text-white/45">No replacement claims yet.</p>}
                       {replacementClaims.map((claim) => <article key={claim.id} className="rounded-xl border border-white/8 bg-white/[0.035] p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-[#f0dfbd]">{(claim.minutes / 60).toFixed(2)} hours</p><p className="mt-1 text-xs text-white/45">{formatMalaysiaDate(claim.date)}</p></div><StatusBadge status={claim.status} /></div><p className="mt-3 text-sm text-white/55">{claim.reason}</p></article>)}
+                    </div>
+                  </section>
+                  <Notice error={error} message={message} />
+                </div>
+              )}
+
+              {activeTab === "employment" && (
+                <div className="space-y-5">
+                  <section className="rounded-2xl border border-[#d4ad63]/20 bg-[#30281e] p-5">
+                    <p className="text-xs uppercase tracking-[0.2em] text-[#d4ad63]">Employment status</p>
+                    <h2 className="mt-2 text-2xl font-bold text-[#f0dfbd]">{employmentFile.probationStatus || "Not started"}</h2>
+                    <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                      <ProfileRow label="Employment start" value={employmentFile.employmentStartDate || "—"} />
+                      <ProfileRow label="Probation end" value={employmentFile.probationEndDate || "—"} />
+                    </div>
+                  </section>
+                  <section>
+                    <h2 className="text-lg font-bold text-[#f0dfbd]">Employment Letters</h2>
+                    <p className="mt-1 text-xs leading-5 text-white/40">Download issued PDFs for your safe copy. Acknowledging confirms receipt only.</p>
+                    <div className="mt-3 space-y-3">
+                      {employmentDocuments.length === 0 && <p className="rounded-xl border border-white/8 p-4 text-sm text-white/45">No issued employment letters yet.</p>}
+                      {employmentDocuments.map((document) => <article key={document.id} className="rounded-xl border border-white/8 bg-white/[0.035] p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-[#f0dfbd]">{document.title}</p><p className="mt-1 text-xs uppercase tracking-wider text-white/40">{document.status}</p></div></div><div className="mt-4 grid grid-cols-2 gap-2"><button type="button" onClick={() => void downloadEmploymentDocument(document)} className="rounded-full border border-[#d4ad63]/45 px-4 py-3 text-sm font-semibold text-[#e5c584]">Download PDF</button><button type="button" disabled={document.status === "acknowledged"} onClick={() => void acknowledgeEmploymentDocument(document)} className="rounded-full bg-[#d4ad63] px-4 py-3 text-sm font-bold text-[#111416] disabled:opacity-35">{document.status === "acknowledged" ? "Acknowledged" : "Acknowledge"}</button></div></article>)}
                     </div>
                   </section>
                   <Notice error={error} message={message} />
