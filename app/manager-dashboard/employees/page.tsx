@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import EmploymentPayrollModal from "./EmploymentPayrollModal";
 
 type Employee = {
   id: string;
@@ -36,6 +37,8 @@ export default function ManagerEmployeesPage() {
   const [error, setError] = useState("");
   const [savingEpfId, setSavingEpfId] = useState("");
   const [message, setMessage] = useState("");
+  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  const [reloadVersion, setReloadVersion] = useState(0);
 
   useEffect(() => {
     async function loadEmployees() {
@@ -94,7 +97,7 @@ export default function ManagerEmployeesPage() {
     }
 
     loadEmployees();
-  }, [router]);
+  }, [router, reloadVersion]);
 
   const filteredEmployees = useMemo(() => {
     const value = search.trim().toLowerCase();
@@ -247,6 +250,7 @@ export default function ManagerEmployeesPage() {
                     <th className="px-5 py-4">Status</th>
                     <th className="px-5 py-4">Daily Hours</th>
                     <th className="px-5 py-4">Leave</th>
+                    <th className="px-5 py-4">Payroll Setup</th>
                   </tr>
                 </thead>
 
@@ -316,6 +320,15 @@ export default function ManagerEmployeesPage() {
                             MC: {medicalLeaveRemaining ?? "—"}
                           </span>
                         </td>
+                        <td className="px-5 py-4">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedEmployee(employee)}
+                            className="whitespace-nowrap rounded-full border border-[#d4ad63]/45 px-4 py-2 text-xs font-semibold text-[#f0dfbd] hover:bg-[#d4ad63]/10"
+                          >
+                            Edit Pay, Leave & OT
+                          </button>
+                        </td>
                       </tr>
                     );
                   })}
@@ -325,6 +338,16 @@ export default function ManagerEmployeesPage() {
           )}
         </div>
       </section>
+      {selectedEmployee && (
+        <EmploymentPayrollModal
+          employee={selectedEmployee}
+          onClose={() => setSelectedEmployee(null)}
+          onSaved={() => {
+            setMessage(`Employment and payroll profile saved for ${selectedEmployee.fullName}.`);
+            setReloadVersion((value) => value + 1);
+          }}
+        />
+      )}
     </main>
   );
 }

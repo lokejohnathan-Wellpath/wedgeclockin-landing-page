@@ -50,6 +50,14 @@ type PayrollRecord = {
   otherDeduction: number;
   otHours: number;
   otRate: number;
+  otPay?: number;
+  unpaidLeaveDeduction?: number;
+  attendanceDays?: number;
+  paidLeaveDays?: number;
+  unpaidLeaveDays?: number;
+  lateMinutes?: number;
+  replacementOtMinutes?: number;
+  payrollSyncSource?: "manual" | "attendance";
   approvedOtMinutes?: number;
   otSource?: "manual" | "approved-roster";
   useApprovedRosterOt?: boolean;
@@ -147,7 +155,7 @@ function cleanLabel(value: string, fallback: string) {
 }
 
 function calculatePayroll(record: PayrollRecord) {
-  const otAmount = record.otHours * record.otRate;
+  const otAmount = record.otPay ?? record.otHours * record.otRate;
   const allowances = record.allowanceA + record.allowanceB + record.allowanceC;
   const grossPay = record.basicSalary + allowances + otAmount;
   const totalDeductions =
@@ -155,7 +163,8 @@ function calculatePayroll(record: PayrollRecord) {
     record.socsoDeduction +
     record.eisDeduction +
     record.taxDeduction +
-    record.otherDeduction;
+    record.otherDeduction +
+    Number(record.unpaidLeaveDeduction || 0);
 
   return {
     allowances,
@@ -283,19 +292,22 @@ export default function PayrollPage() {
         if (!response.ok) throw new Error();
         const hours = Number(data.hours || 0);
         const managedByRoster = Boolean(data.managedByRoster);
-        setUseApprovedRosterOt(managedByRoster);
-        if (managedByRoster) {
-          setForm((current) => ({ ...current, otHours: hours.toFixed(2) }));
-        }
+        const weightedHourlyAmount = Number(data.weightedHourlyAmount || 0);
+        setUseApprovedRosterOt(true);
+        setForm((current) => ({
+          ...current,
+          otHours: hours.toFixed(2),
+          otRate: weightedHourlyAmount.toFixed(4),
+        }));
         setApprovedOtMessage(
           managedByRoster
             ? hours > 0
-              ? `${hours.toFixed(2)} approved roster OT hour(s) loaded automatically.`
+              ? `${hours.toFixed(2)} approved payable OT hour(s) and RM ${Number(data.otPay || 0).toFixed(2)} loaded. ${Number(data.replacementHours || 0).toFixed(2)} hour(s) were transferred to replacement claims.`
               : "Roster is active; no OT has been approved for this employee and month."
-            : "Roster OT is not active for this employee and month; manual OT remains available."
+            : "No active roster was found. Payroll still synchronises approved attendance records and will not invent OT."
         );
       } catch {
-        setUseApprovedRosterOt(false);
+        setUseApprovedRosterOt(true);
         setApprovedOtMessage("Approved roster OT could not be loaded.");
       }
     }
@@ -492,8 +504,9 @@ export default function PayrollPage() {
         throw new Error(data?.message || "Payroll could not be generated.");
       }
 
+      const savedCalculation = calculatePayroll(data.payroll as PayrollRecord);
       setMessage(
-        `${form.status === "issued" ? "Issued" : "Draft"} payroll generated successfully. Net Pay: ${money(calculations.netPay)}`,
+        `${form.status === "issued" ? "Issued" : "Draft"} payroll synchronised successfully. Net Pay: ${money(savedCalculation.netPay)}`,
       );
       await loadPayrollSummary();
     } catch (saveError) {
@@ -702,11 +715,11 @@ export default function PayrollPage() {
                   <input
                     type="checkbox"
                     checked={useApprovedRosterOt}
-                    onChange={(event) => setUseApprovedRosterOt(event.target.checked)}
+                    disabled
                     className="mt-0.5 accent-[#d4ad63]"
                   />
                   <span>
-                    <b className="text-[#e4c98f]">Use approved roster OT.</b>{" "}
+                    <b className="text-[#e4c98f]">Attendance synchronisation is active.</b>{" "}
                     {approvedOtMessage}
                   </span>
                 </label>

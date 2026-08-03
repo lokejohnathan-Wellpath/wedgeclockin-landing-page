@@ -27,6 +27,13 @@ type PayrollRecord = {
   otherDeduction: number;
   otHours: number;
   otRate: number;
+  otPay?: number;
+  unpaidLeaveDeduction?: number;
+  attendanceDays?: number;
+  paidLeaveDays?: number;
+  unpaidLeaveDays?: number;
+  lateMinutes?: number;
+  replacementOtMinutes?: number;
   status?: PayrollStatus;
   remarks: string;
   createdAt?: string;
@@ -88,7 +95,7 @@ const years = Array.from(
 );
 
 function calculatePayslip(record: PayrollRecord): PayslipCalculation {
-  const otAmount = record.otHours * record.otRate;
+  const otAmount = record.otPay ?? record.otHours * record.otRate;
   const totalAllowances =
     record.allowanceA + record.allowanceB + record.allowanceC;
   const grossPay = record.basicSalary + totalAllowances + otAmount;
@@ -97,7 +104,7 @@ function calculatePayslip(record: PayrollRecord): PayslipCalculation {
     record.socsoDeduction +
     record.eisDeduction +
     record.taxDeduction +
-    record.otherDeduction;
+    record.otherDeduction + Number(record.unpaidLeaveDeduction || 0);
 
   return {
     otAmount,
@@ -720,6 +727,12 @@ function PayslipDocument({
               label="Other Deduction"
               value={record.otherDeduction}
             />
+            {Number(record.unpaidLeaveDeduction || 0) > 0 && (
+              <PayslipRow
+                label={`Unpaid Leave (${Number(record.unpaidLeaveDays || 0).toFixed(2)} day(s))`}
+                value={Number(record.unpaidLeaveDeduction || 0)}
+              />
+            )}
             <PayslipTotalRow
               label="Total Deductions"
               value={calculations.totalDeductions}
