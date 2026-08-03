@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import EmploymentPayrollModal from "./EmploymentPayrollModal";
 import EmploymentIntelligenceModal from "./EmploymentIntelligenceModal";
+import AddEmployeeModal from "./AddEmployeeModal";
 
 type Employee = {
   id: string;
@@ -40,6 +41,7 @@ export default function ManagerEmployeesPage() {
   const [message, setMessage] = useState("");
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [employmentEmployee, setEmploymentEmployee] = useState<Employee | null>(null);
+  const [addingEmployee, setAddingEmployee] = useState(false);
   const [reloadVersion, setReloadVersion] = useState(0);
 
   useEffect(() => {
@@ -189,6 +191,7 @@ export default function ManagerEmployeesPage() {
           </div>
 
           <div className="flex flex-wrap gap-3">
+            <button onClick={() => setAddingEmployee(true)} className="rounded-full bg-emerald-500 px-6 py-3 font-bold text-[#07110c]">+ Add Employee</button>
             <button onClick={() => router.push("/manager-dashboard/employment")} className="rounded-full bg-[#d4ad63] px-6 py-3 font-bold text-[#101416]">Employment Intelligence</button>
             <button onClick={() => router.push("/manager-dashboard")} className="rounded-full border border-[#d4ad63]/50 px-6 py-3 font-semibold text-[#f0dfbd] hover:bg-white/5">Back to Dashboard</button>
           </div>
@@ -351,6 +354,15 @@ export default function ManagerEmployeesPage() {
           employee={employmentEmployee}
           onClose={() => setEmploymentEmployee(null)}
           onChanged={() => setReloadVersion((value) => value + 1)}
+        />
+      )}
+      {addingEmployee && (
+        <AddEmployeeModal
+          onClose={() => setAddingEmployee(false)}
+          onCreated={() => {
+            setMessage("Employee account created and onboarding records synchronised.");
+            setReloadVersion((value) => value + 1);
+          }}
         />
       )}
     </main>
