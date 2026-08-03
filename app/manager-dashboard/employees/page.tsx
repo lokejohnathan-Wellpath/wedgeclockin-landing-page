@@ -225,9 +225,9 @@ export default function ManagerEmployeesPage() {
           </div>
         )}
 
-        <div className="mt-8 overflow-hidden rounded-[2rem] border border-white/10 bg-[#1e2428]">
+        <div className="mt-8">
           {filteredEmployees.length === 0 ? (
-            <div className="p-10 text-center">
+            <div className="rounded-[2rem] border border-white/10 bg-[#1e2428] p-10 text-center">
               <p className="text-lg font-semibold text-[#f0dfbd]">
                 No employees found
               </p>
@@ -236,104 +236,105 @@ export default function ManagerEmployeesPage() {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="border-b border-white/10 text-white/45">
-                  <tr>
-                    <th className="px-5 py-4">Code</th>
-                    <th className="px-5 py-4">EPF No. Ahli</th>
-                    <th className="px-5 py-4">Name</th>
-                    <th className="px-5 py-4">Department</th>
-                    <th className="px-5 py-4">Position</th>
-                    <th className="px-5 py-4">Phone</th>
-                    <th className="px-5 py-4">Face</th>
-                    <th className="px-5 py-4">Status</th>
-                    <th className="px-5 py-4">Daily Hours</th>
-                    <th className="px-5 py-4">Leave</th>
-                    <th className="px-5 py-4">Payroll Setup</th>
-                  </tr>
-                </thead>
+            <div className="space-y-4">
+              {filteredEmployees.map((employee) => {
+                const annualLeaveRemaining =
+                  employee.leaveBalance?.annualLeaveBalance ??
+                  Math.max(
+                    0,
+                    employee.annualLeaveEntitlement - employee.annualLeaveUsed,
+                  );
+                const medicalLeaveRemaining =
+                  employee.leaveBalance?.medicalLeaveBalance;
 
-                <tbody>
-                  {filteredEmployees.map((employee) => {
-                    const annualLeaveRemaining =
-                      employee.leaveBalance?.annualLeaveBalance ??
-                      Math.max(
-                        0,
-                        employee.annualLeaveEntitlement - employee.annualLeaveUsed,
-                      );
-                    const medicalLeaveRemaining =
-                      employee.leaveBalance?.medicalLeaveBalance;
-
-                    return (
-                      <tr key={employee.id} className="border-b border-white/5">
-                        <td className="px-5 py-4 text-[#d4ad63]">
-                          {employee.employeeCode}
-                        </td>
-                        <td className="min-w-56 px-5 py-4">
-                          <div className="flex items-center gap-2">
-                            <input
-                              inputMode="numeric"
-                              value={employee.epfMemberNumber || ""}
-                              onChange={(event) =>
-                                updateEpfMemberNumber(employee.id, event.target.value)
-                              }
-                              placeholder="No. Ahli"
-                              aria-label={`EPF member number for ${employee.fullName}`}
-                              className="w-32 rounded-xl border border-white/10 bg-[#101416] px-3 py-2 text-white outline-none focus:border-[#d4ad63]"
-                            />
-                            <button
-                              onClick={() => saveEpfMemberNumber(employee)}
-                              disabled={savingEpfId === employee.id}
-                              className="rounded-full border border-[#d4ad63]/40 px-3 py-2 text-xs font-semibold text-[#d4ad63] disabled:opacity-40"
-                            >
-                              {savingEpfId === employee.id ? "Saving…" : "Save"}
-                            </button>
-                          </div>
-                        </td>
-                        <td className="px-5 py-4 font-semibold text-[#f0dfbd]">
-                          {employee.fullName}
-                        </td>
-                        <td className="px-5 py-4 text-white/60">
-                          {employee.department || "—"}
-                        </td>
-                        <td className="px-5 py-4 text-white/60">
-                          {employee.position || "—"}
-                        </td>
-                        <td className="px-5 py-4 text-white/60">
-                          {employee.phoneNumber || "—"}
-                        </td>
-                        <td className="px-5 py-4 text-white/60">
-                          {employee.faceRegistered ? "Registered" : "Pending"}
-                        </td>
-                        <td className="px-5 py-4 text-white/60">
-                          {employee.isActive ? "Active" : "Inactive"}
-                        </td>
-                        <td className="px-5 py-4 text-white/60">
-                          {employee.expectedDailyHours}
-                        </td>
-                        <td className="min-w-32 px-5 py-4 text-white/60">
-                          <span className="block whitespace-nowrap">
-                            Annual Leave: {annualLeaveRemaining}
+                return (
+                  <article
+                    key={employee.id}
+                    className="rounded-[1.75rem] border border-white/10 bg-[#1e2428] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.18)] sm:p-6"
+                  >
+                    <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <h2 className="text-xl font-bold text-[#f0dfbd]">
+                            {employee.fullName}
+                          </h2>
+                          <span className="rounded-full border border-[#d4ad63]/35 bg-[#d4ad63]/10 px-3 py-1 text-xs font-semibold text-[#e5c584]">
+                            {employee.employeeCode}
                           </span>
-                          <span className="mt-1 block whitespace-nowrap text-white/45">
-                            MC: {medicalLeaveRemaining ?? "—"}
-                          </span>
-                        </td>
-                        <td className="px-5 py-4">
-                          <button
-                            type="button"
-                            onClick={() => setSelectedEmployee(employee)}
-                            className="whitespace-nowrap rounded-full border border-[#d4ad63]/45 px-4 py-2 text-xs font-semibold text-[#f0dfbd] hover:bg-[#d4ad63]/10"
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                              employee.isActive
+                                ? "bg-emerald-500/10 text-emerald-200"
+                                : "bg-white/5 text-white/45"
+                            }`}
                           >
-                            Edit Pay, Leave & OT
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                            {employee.isActive ? "Active" : "Inactive"}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-sm text-white/45">
+                          {employee.department || "No department"} · {employee.position || "No position"}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setSelectedEmployee(employee)}
+                        className="w-full shrink-0 rounded-xl bg-[#d4ad63] px-5 py-3 text-sm font-bold text-[#101416] shadow-[0_10px_28px_rgba(212,173,99,0.18)] transition hover:bg-[#e0bd79] lg:w-auto"
+                      >
+                        Payroll, Leave &amp; OT Setup
+                      </button>
+                    </div>
+
+                    <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      <EmployeeDetail label="Phone" value={employee.phoneNumber || "—"} />
+                      <EmployeeDetail
+                        label="Face registration"
+                        value={employee.faceRegistered ? "Registered" : "Pending"}
+                      />
+                      <EmployeeDetail
+                        label="Daily hours"
+                        value={`${employee.expectedDailyHours || 0} hours`}
+                      />
+                      <div className="rounded-2xl border border-white/8 bg-[#151a1d] px-4 py-3">
+                        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-white/35">
+                          Leave balance
+                        </p>
+                        <p className="mt-2 text-sm font-semibold text-white/75">
+                          Annual: {annualLeaveRemaining} days
+                        </p>
+                        <p className="mt-1 text-sm text-white/50">
+                          MC: {medicalLeaveRemaining ?? "—"} days
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-white/8 bg-[#151a1d] p-4 sm:flex-row sm:items-end sm:justify-between">
+                      <div className="w-full sm:max-w-sm">
+                        <label className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-white/35">
+                          EPF No. Ahli
+                        </label>
+                        <input
+                          inputMode="numeric"
+                          value={employee.epfMemberNumber || ""}
+                          onChange={(event) =>
+                            updateEpfMemberNumber(employee.id, event.target.value)
+                          }
+                          placeholder="Enter EPF member number"
+                          aria-label={`EPF member number for ${employee.fullName}`}
+                          className="mt-2 w-full rounded-xl border border-white/10 bg-[#0f1315] px-4 py-3 text-white outline-none focus:border-[#d4ad63]"
+                        />
+                      </div>
+                      <button
+                        onClick={() => saveEpfMemberNumber(employee)}
+                        disabled={savingEpfId === employee.id}
+                        className="w-full rounded-xl border border-[#d4ad63]/45 px-5 py-3 text-sm font-semibold text-[#e5c584] transition hover:bg-[#d4ad63]/10 disabled:opacity-40 sm:w-auto"
+                      >
+                        {savingEpfId === employee.id ? "Saving…" : "Save EPF Number"}
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           )}
         </div>
@@ -349,5 +350,16 @@ export default function ManagerEmployeesPage() {
         />
       )}
     </main>
+  );
+}
+
+function EmployeeDetail({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-white/8 bg-[#151a1d] px-4 py-3">
+      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-white/35">
+        {label}
+      </p>
+      <p className="mt-2 text-sm font-semibold text-white/75">{value}</p>
+    </div>
   );
 }
