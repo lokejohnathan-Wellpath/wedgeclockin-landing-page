@@ -226,7 +226,7 @@ export default function ManagerAttendancePage() {
 
   async function voidAttendance() {
     if (!editingRow || !editingRow.clockIn) return;
-    if (!window.confirm(`Void today's attendance for ${editingRow.employeeName}? The original record will remain in the audit history.`)) return;
+    if (!window.confirm(`Delete today's attendance for ${editingRow.employeeName}? It will disappear from attendance and payroll, while a protected audit record is retained.`)) return;
     const token = localStorage.getItem("wc_manager_token");
     const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
     if (!token || !apiBaseUrl) return;
@@ -242,11 +242,11 @@ export default function ManagerAttendancePage() {
         },
       );
       const data = await response.json();
-      if (!response.ok) throw new Error(data?.message || "Attendance could not be voided.");
+      if (!response.ok) throw new Error(data?.message || "Attendance could not be deleted.");
       setEditingRow(null);
       await loadAttendance();
     } catch (voidError) {
-      setError(voidError instanceof Error ? voidError.message : "Attendance could not be voided.");
+      setError(voidError instanceof Error ? voidError.message : "Attendance could not be deleted.");
     } finally {
       setSavingCorrection(false);
     }
@@ -343,8 +343,8 @@ export default function ManagerAttendancePage() {
               </p>
             </div>
           ) : (
-            <div className="w-full">
-              <table className="w-full table-auto text-left text-sm">
+            <div className="w-full overflow-x-auto">
+              <table className="w-full min-w-[1280px] table-auto text-left text-sm">
                 <thead className="border-b border-white/10 text-white/45">
                   <tr>
                     <th className="px-3 py-4">Employee</th>
@@ -359,7 +359,7 @@ export default function ManagerAttendancePage() {
                     <th className="px-3 py-4">OT</th>
                     <th className="px-3 py-4">Status</th>
                     <th className="px-3 py-4">Source</th>
-                    <th className="px-3 py-4">Action</th>
+                    <th className="sticky right-0 z-10 bg-[#1e2428] px-3 py-4">Action</th>
                   </tr>
                 </thead>
 
@@ -374,15 +374,6 @@ export default function ManagerAttendancePage() {
                           {row.employeeCode}
                         </p>
                       </td>
-                      <td className="px-3 py-4 align-middle whitespace-nowrap text-xs text-white/50">
-                        {row.attendanceSource === "employee-face-gps" ? "Face / GPS" : row.attendanceSource === "manager-entered" ? "Manager entered" : row.attendanceSource === "manager-corrected" ? "Manager corrected" : row.attendanceSource === "manager-voided" ? "Voided" : "—"}
-                      </td>
-                      <td className="px-3 py-4 align-middle">
-                        <button type="button" onClick={() => openCorrection(row)} className="whitespace-nowrap rounded-full border border-[#d4ad63]/45 px-4 py-2 text-xs font-semibold text-[#e5c584] hover:bg-[#d4ad63]/10">
-                          {row.clockIn ? "Correct" : "Add Missing Punch"}
-                        </button>
-                      </td>
-
                       <td className="px-3 py-4 align-middle text-white/60">
                         {row.department || "—"}
                       </td>
@@ -471,6 +462,31 @@ export default function ManagerAttendancePage() {
                           {row.todayStatus}
                         </span>
                       </td>
+
+                      <td className="px-3 py-4 align-middle whitespace-nowrap text-xs text-white/50">
+                        {row.attendanceSource === "employee-face-gps"
+                          ? "Face / GPS"
+                          : row.attendanceSource === "manager-entered"
+                            ? "Manager entered"
+                            : row.attendanceSource === "manager-corrected"
+                              ? "Manager corrected"
+                              : row.attendanceSource === "manager-voided"
+                                ? "Deleted"
+                                : "—"}
+                      </td>
+
+                      <td className="sticky right-0 bg-[#1e2428] px-3 py-4 align-middle shadow-[-12px_0_18px_-16px_rgba(0,0,0,0.95)]">
+                        <button
+                          type="button"
+                          onClick={() => openCorrection(row)}
+                          aria-label={`Manage attendance for ${row.employeeName}`}
+                          title={row.clockIn ? "Edit or delete attendance" : "Add missing attendance"}
+                          className="inline-flex items-center gap-2 whitespace-nowrap rounded-full border border-[#d4ad63]/45 px-3.5 py-2 text-xs font-semibold text-[#e5c584] transition hover:bg-[#d4ad63]/10 focus:outline-none focus:ring-2 focus:ring-[#d4ad63]/40"
+                        >
+                          <AttendanceActionIcon hasAttendance={Boolean(row.clockIn)} />
+                          Manage
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -484,7 +500,7 @@ export default function ManagerAttendancePage() {
           <section className="my-6 w-full max-w-3xl rounded-[2rem] border border-[#d4ad63]/35 bg-[#171d20] p-6 shadow-2xl sm:p-8">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs font-semibold tracking-[0.28em] text-[#d4ad63]">ATTENDANCE CORRECTION · {malaysiaDateKey()}</p>
+                <p className="text-xs font-semibold tracking-[0.28em] text-[#d4ad63]">{editingRow.clockIn ? "MANAGE ATTENDANCE" : "ADD MISSING PUNCH"} · {malaysiaDateKey()}</p>
                 <h2 className="mt-2 text-2xl font-bold text-[#f0dfbd]">{editingRow.employeeName}</h2>
                 <p className="mt-1 text-sm text-white/45">{editingRow.employeeCode}</p>
               </div>
@@ -504,14 +520,34 @@ export default function ManagerAttendancePage() {
             <p className="mt-3 text-xs leading-5 text-white/40">The original values, corrected values, manager identity, reason and timestamp are retained. Draft payroll attendance totals refresh automatically.</p>
             {error && <p className="mt-4 rounded-xl bg-red-500/10 p-3 text-sm text-red-200">{error}</p>}
             <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
-              {editingRow.clockIn && <button onClick={voidAttendance} disabled={savingCorrection || correctionReason.trim().length < 4} className="rounded-xl border border-red-400/35 px-5 py-3 font-semibold text-red-200 disabled:opacity-40">Void Attendance</button>}
-              <button onClick={saveCorrection} disabled={savingCorrection || correctionReason.trim().length < 4 || !clockIn} className="rounded-xl bg-[#d4ad63] px-6 py-3 font-bold text-[#101416] disabled:opacity-40">{savingCorrection ? "Saving…" : "Save Correction"}</button>
+              {editingRow.clockIn && <button onClick={voidAttendance} disabled={savingCorrection || correctionReason.trim().length < 4} className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-400/35 px-5 py-3 font-semibold text-red-200 disabled:opacity-40"><TrashIcon />Delete Attendance</button>}
+              <button onClick={saveCorrection} disabled={savingCorrection || correctionReason.trim().length < 4 || !clockIn} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#d4ad63] px-6 py-3 font-bold text-[#101416] disabled:opacity-40"><SaveIcon />{savingCorrection ? "Saving…" : editingRow.clockIn ? "Save Changes" : "Save Missing Punch"}</button>
             </div>
           </section>
         </div>
       )}
     </main>
   );
+}
+
+function AttendanceActionIcon({ hasAttendance }: { hasAttendance: boolean }) {
+  return hasAttendance ? (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8">
+      <path strokeLinecap="round" strokeLinejoin="round" d="m16.9 3.8 3.3 3.3M4 20l4.1-.8L19.4 7.9a2.3 2.3 0 0 0-3.3-3.3L4.8 15.9 4 20Z" />
+    </svg>
+  ) : (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8">
+      <path strokeLinecap="round" d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M9 7V4h6v3m-9 0 1 13h10l1-13M10 11v5m4-5v5" /></svg>;
+}
+
+function SaveIcon() {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="M5 4h12l2 2v14H5V4Zm3 0v6h8V4m-8 16v-6h8v6" /></svg>;
 }
 
 function AttendanceInput({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
