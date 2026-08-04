@@ -14,6 +14,7 @@ type Employee = {
   phoneNumber?: string;
   webFaceRegistered?: boolean;
   faceRegisteredAt?: string | null;
+  mustChangePassword?: boolean;
 };
 
 type AttendanceRecord = {
@@ -120,6 +121,10 @@ export default function EmployeeClockInPage() {
   const [outletShortName, setOutletShortName] = useState("");
   const [idNumber, setIdNumber] = useState("");
   const [password, setPassword] = useState("");
+  const [mustChangePassword, setMustChangePassword] = useState(false);
+  const [currentTemporaryPassword, setCurrentTemporaryPassword] = useState("");
+  const [newEmployeePassword, setNewEmployeePassword] = useState("");
+  const [confirmEmployeePassword, setConfirmEmployeePassword] = useState("");
   const [pdpaConsent, setPdpaConsent] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -148,6 +153,8 @@ export default function EmployeeClockInPage() {
     localStorage.removeItem(EMPLOYEE_KEY);
     setToken("");
     setEmployee(null);
+    setMustChangePassword(false);
+    setCurrentTemporaryPassword("");
     setRecord(null);
     setLeaves([]);
     setOvertime([]);
@@ -234,7 +241,12 @@ export default function EmployeeClockInPage() {
       setToken(savedToken);
       if (savedEmployee) {
         try {
-          setEmployee(JSON.parse(savedEmployee));
+          const parsed = JSON.parse(savedEmployee);
+          setEmployee(parsed);
+          if (parsed?.mustChangePassword) {
+            setMustChangePassword(true);
+            return;
+          }
         } catch {
           localStorage.removeItem(EMPLOYEE_KEY);
         }
@@ -385,13 +397,53 @@ export default function EmployeeClockInPage() {
       localStorage.setItem(EMPLOYEE_KEY, JSON.stringify(data.employee));
       setToken(data.token);
       setEmployee(data.employee);
+      setMustChangePassword(Boolean(data.employee?.mustChangePassword));
+      setCurrentTemporaryPassword(data.employee?.mustChangePassword ? password : "");
       setPassword("");
+      if (data.employee?.mustChangePassword) {
+        setMessage("Create your private password before using WedgeCLOCKin.");
+        return;
+      }
       await loadToday(data.token);
       await loadLeave(data.token);
       await loadOvertime(data.token);
       await loadEmployment(data.token);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed.");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function changeTemporaryPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!apiBaseUrl || !token) return;
+    setError("");
+    setMessage("");
+    if (newEmployeePassword !== confirmEmployeePassword) {
+      setError("New passwords do not match.");
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/auth/employee-change-password`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword: currentTemporaryPassword, newPassword: newEmployeePassword }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.message || "Password could not be changed.");
+      const updatedEmployee = { ...employee, mustChangePassword: false } as Employee;
+      setEmployee(updatedEmployee);
+      localStorage.setItem(EMPLOYEE_KEY, JSON.stringify(updatedEmployee));
+      setMustChangePassword(false);
+      setCurrentTemporaryPassword("");
+      setNewEmployeePassword("");
+      setConfirmEmployeePassword("");
+      setMessage("Password changed successfully.");
+      await Promise.all([loadToday(token), loadLeave(token), loadOvertime(token), loadEmployment(token)]);
+    } catch (changeError) {
+      setError(changeError instanceof Error ? changeError.message : "Password could not be changed.");
     } finally {
       setIsLoading(false);
     }
@@ -609,6 +661,21 @@ export default function EmployeeClockInPage() {
               <Notice error={error} message={message} />
               <button disabled={isLoading} className="w-full rounded-full bg-[#d4ad63] px-6 py-4 font-bold text-[#111416] hover:bg-[#e4bf75] disabled:opacity-60">
                 {isLoading ? "Signing in…" : "Employee Login"}
+              </button>
+            </form>
+          ) : mustChangePassword ? (
+            <form onSubmit={changeTemporaryPassword} className="space-y-5 p-7">
+              <div className="rounded-2xl border border-[#d4ad63]/25 bg-[#30281e] p-5">
+                <p className="text-xs font-semibold tracking-[0.2em] text-[#d4ad63]">FIRST LOGIN SECURITY</p>
+                <h2 className="mt-2 text-xl font-bold text-[#f0dfbd]">Create Your Private Password</h2>
+                <p className="mt-2 text-sm leading-6 text-white/50">The manager-issued password is temporary. Change it before accessing attendance, leave, OT or employment documents.</p>
+              </div>
+              <Field label="Temporary Password" value={currentTemporaryPassword} onChange={setCurrentTemporaryPassword} placeholder="Enter temporary password" type="password" />
+              <Field label="New Password" value={newEmployeePassword} onChange={setNewEmployeePassword} placeholder="Minimum 8 characters" type="password" />
+              <Field label="Confirm New Password" value={confirmEmployeePassword} onChange={setConfirmEmployeePassword} placeholder="Repeat new password" type="password" />
+              <Notice error={error} message={message} />
+              <button disabled={isLoading} className="w-full rounded-full bg-[#d4ad63] px-6 py-4 font-bold text-[#111416] disabled:opacity-60">
+                {isLoading ? "Changing…" : "Change Password & Continue"}
               </button>
             </form>
           ) : (

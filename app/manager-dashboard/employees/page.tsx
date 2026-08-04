@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import EmploymentPayrollModal from "./EmploymentPayrollModal";
 import AddEmployeeModal from "./AddEmployeeModal";
+import ResetEmployeePasswordModal from "./ResetEmployeePasswordModal";
 
 type Employee = {
   id: string;
@@ -40,6 +41,7 @@ export default function ManagerEmployeesPage() {
   const [message, setMessage] = useState("");
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [addingEmployee, setAddingEmployee] = useState(false);
+  const [passwordEmployee, setPasswordEmployee] = useState<Employee | null>(null);
   const [reloadVersion, setReloadVersion] = useState(0);
 
   useEffect(() => {
@@ -278,6 +280,7 @@ export default function ManagerEmployeesPage() {
 
                       <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
                         <button type="button" onClick={() => setSelectedEmployee(employee)} className="w-full shrink-0 rounded-xl bg-[#d4ad63] px-5 py-3 text-sm font-bold text-[#101416] shadow-[0_10px_28px_rgba(212,173,99,0.18)] transition hover:bg-[#e0bd79] lg:w-auto">Payroll, Leave &amp; OT Setup</button>
+                        <button type="button" onClick={() => setPasswordEmployee(employee)} className="w-full shrink-0 rounded-xl border border-[#d4ad63]/45 px-5 py-3 text-sm font-semibold text-[#e5c584] transition hover:bg-[#d4ad63]/10 lg:w-auto">Reset Login Password</button>
                       </div>
                     </div>
 
@@ -352,6 +355,12 @@ export default function ManagerEmployeesPage() {
             setMessage("Employee account created and onboarding records synchronised.");
             setReloadVersion((value) => value + 1);
           }}
+        />
+      )}
+      {passwordEmployee && (
+        <ResetEmployeePasswordModal
+          employee={passwordEmployee}
+          onClose={() => setPasswordEmployee(null)}
         />
       )}
     </main>
