@@ -15,6 +15,7 @@ type Employee = {
   webFaceRegistered?: boolean;
   registeredFacePath?: string | null;
   faceRegisteredAt?: string | null;
+  faceStorageReady?: boolean;
   updatedAt?: string;
 };
 
@@ -145,6 +146,7 @@ export default function FaceStatusPage() {
                 ...item,
                 faceRegistered: true,
                 webFaceRegistered: true,
+                faceStorageReady: true,
                 faceRegisteredAt: data.employee?.faceRegisteredAt,
                 updatedAt: data.employee?.updatedAt,
               }
@@ -166,7 +168,7 @@ export default function FaceStatusPage() {
   const summary = useMemo(() => {
     const total = employees.length;
     const registered = employees.filter(
-      (employee) => employee.webFaceRegistered === true,
+      (employee) => employee.faceStorageReady === true,
     ).length;
 
     return {
@@ -181,7 +183,7 @@ export default function FaceStatusPage() {
     const query = search.trim().toLowerCase();
 
     return employees.filter((employee) => {
-      const registered = employee.webFaceRegistered === true;
+      const registered = employee.faceStorageReady === true;
 
       if (statusFilter === "registered" && !registered) return false;
       if (statusFilter === "pending" && registered) return false;
@@ -339,7 +341,7 @@ export default function FaceStatusPage() {
 
                   <tbody>
                     {filteredEmployees.map((employee) => {
-                      const registered = employee.webFaceRegistered === true;
+                      const registered = employee.faceStorageReady === true;
 
                       return (
                         <tr

@@ -16,6 +16,7 @@ type Employee = {
   phoneNumber: string;
   isActive: boolean;
   faceRegistered: boolean;
+  faceStorageReady?: boolean;
   expectedDailyHours: number;
   annualLeaveEntitlement: number;
   annualLeaveUsed: number;
@@ -288,7 +289,7 @@ export default function ManagerEmployeesPage() {
                       <EmployeeDetail label="Phone" value={employee.phoneNumber || "—"} />
                       <EmployeeDetail
                         label="Face registration"
-                        value={employee.faceRegistered ? "Registered" : "Pending"}
+                        value={employee.faceStorageReady ? "Registered securely" : employee.faceRegistered ? "Re-register securely" : "Pending"}
                       />
                       <EmployeeDetail
                         label="Daily hours"

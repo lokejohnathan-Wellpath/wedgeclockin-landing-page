@@ -24,7 +24,7 @@ type AttendanceRecord = {
   clockOut: string | null;
 };
 
-type PortalTab = "attendance" | "leave" | "overtime" | "employment" | "profile";
+type PortalTab = "attendance" | "leave" | "employment" | "profile";
 
 type LeaveRecord = {
   id: string;
@@ -37,27 +37,6 @@ type LeaveRecord = {
 };
 
 type LeaveBalance = Record<string, number | null>;
-
-type OvertimeRecord = {
-  id: string;
-  date: string;
-  minutes: number;
-  reason: string;
-  status: "detected" | "pending" | "approved" | "rejected";
-  ratio?: number;
-  payableMinutes?: number;
-  replacementMinutes?: number;
-  replacementCreditMinutes?: number;
-  managerNote?: string;
-};
-
-type ReplacementClaim = {
-  id: string;
-  date: string;
-  minutes: number;
-  reason: string;
-  status: "pending" | "approved" | "rejected";
-};
 
 type EmploymentDocument = { id: string; title: string; type: string; status: "issued" | "acknowledged"; issuedAt?: string };
 type EmploymentFile = { employmentStartDate?: string; probationStartDate?: string; probationEndDate?: string; probationStatus?: string };
@@ -107,15 +86,6 @@ export default function EmployeeClockInPage() {
   const [leaveEnd, setLeaveEnd] = useState("");
   const [leaveReason, setLeaveReason] = useState("");
   const [leaveLoading, setLeaveLoading] = useState(false);
-  const [overtime, setOvertime] = useState<OvertimeRecord[]>([]);
-  const [replacementClaims, setReplacementClaims] = useState<ReplacementClaim[]>([]);
-  const [replacementClaimMinutes, setReplacementClaimMinutes] = useState(0);
-  const [otReasons, setOtReasons] = useState<Record<string, string>>({});
-  const [otLoadingId, setOtLoadingId] = useState("");
-  const [claimDate, setClaimDate] = useState("");
-  const [claimHours, setClaimHours] = useState("");
-  const [claimReason, setClaimReason] = useState("");
-  const [claimLoading, setClaimLoading] = useState(false);
   const [employmentFile, setEmploymentFile] = useState<EmploymentFile>({});
   const [employmentDocuments, setEmploymentDocuments] = useState<EmploymentDocument[]>([]);
   const [outletShortName, setOutletShortName] = useState("");
@@ -157,8 +127,6 @@ export default function EmployeeClockInPage() {
     setCurrentTemporaryPassword("");
     setRecord(null);
     setLeaves([]);
-    setOvertime([]);
-    setReplacementClaims([]);
     setEmploymentDocuments([]);
     setActiveTab("attendance");
     setMessage("");
@@ -203,23 +171,6 @@ export default function EmployeeClockInPage() {
     setLeaveBalance(data.balance || {});
   }, [apiBaseUrl, logout]);
 
-  const loadOvertime = useCallback(async (sessionToken: string) => {
-    if (!apiBaseUrl) throw new Error("API service is not configured.");
-    const response = await fetch(`${apiBaseUrl}/api/employee-portal/overtime`, {
-      headers: { Authorization: `Bearer ${sessionToken}` },
-      cache: "no-store",
-    });
-    const data = await response.json();
-    if (response.status === 401 || response.status === 403) {
-      logout();
-      throw new Error("Your session has expired. Please log in again.");
-    }
-    if (!response.ok) throw new Error(data?.message || "Unable to load overtime records.");
-    setOvertime(data.requests || []);
-    setReplacementClaims(data.claims || []);
-    setReplacementClaimMinutes(Number(data.replacementClaimMinutes || 0));
-  }, [apiBaseUrl, logout]);
-
   const loadEmployment = useCallback(async (sessionToken: string) => {
     if (!apiBaseUrl) throw new Error("API service is not configured.");
     const response = await fetch(`${apiBaseUrl}/api/employment-intelligence/employee`, {
@@ -254,13 +205,13 @@ export default function EmployeeClockInPage() {
 
       setIsLoading(true);
       loadToday(savedToken)
-        .then(() => Promise.all([loadLeave(savedToken), loadOvertime(savedToken), loadEmployment(savedToken)]))
+        .then(() => Promise.all([loadLeave(savedToken), loadEmployment(savedToken)]))
         .catch((err) => setError(err instanceof Error ? err.message : "Unable to load attendance."))
         .finally(() => setIsLoading(false));
     }, 0);
 
     return () => window.clearTimeout(timer);
-  }, [loadEmployment, loadLeave, loadOvertime, loadToday]);
+  }, [loadEmployment, loadLeave, loadToday]);
 
   useEffect(() => stopCamera, [stopCamera]);
 
@@ -406,7 +357,6 @@ export default function EmployeeClockInPage() {
       }
       await loadToday(data.token);
       await loadLeave(data.token);
-      await loadOvertime(data.token);
       await loadEmployment(data.token);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed.");
@@ -441,7 +391,7 @@ export default function EmployeeClockInPage() {
       setNewEmployeePassword("");
       setConfirmEmployeePassword("");
       setMessage("Password changed successfully.");
-      await Promise.all([loadToday(token), loadLeave(token), loadOvertime(token), loadEmployment(token)]);
+      await Promise.all([loadToday(token), loadLeave(token), loadEmployment(token)]);
     } catch (changeError) {
       setError(changeError instanceof Error ? changeError.message : "Password could not be changed.");
     } finally {
@@ -476,93 +426,6 @@ export default function EmployeeClockInPage() {
     }
   }
 
-  async function submitOvertime(request: OvertimeRecord) {
-    if (!apiBaseUrl || !token) return;
-    const reason = String(otReasons[request.id] || "").trim();
-    if (!reason) {
-      setError("Enter a reason for the OT application.");
-      return;
-    }
-    setOtLoadingId(request.id);
-    setError("");
-    setMessage("");
-    try {
-      const response = await fetch(
-        `${apiBaseUrl}/api/employee-portal/overtime/${encodeURIComponent(request.id)}/submit`,
-        {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ reason }),
-        },
-      );
-      const data = await response.json();
-      if (!response.ok) throw new Error(data?.message || "OT application could not be submitted.");
-      setMessage(data.message || "OT application submitted.");
-      setOtReasons((current) => ({ ...current, [request.id]: "" }));
-      await loadOvertime(token);
-    } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "OT application could not be submitted.");
-    } finally {
-      setOtLoadingId("");
-    }
-  }
-
-  async function deleteDetectedOvertime(request: OvertimeRecord) {
-    if (!apiBaseUrl || !token) return;
-    if (!window.confirm("Delete this auto-detected OT record? It will not be submitted to payroll.")) return;
-    setOtLoadingId(request.id);
-    setError("");
-    setMessage("");
-    try {
-      const response = await fetch(
-        `${apiBaseUrl}/api/employee-portal/overtime/${encodeURIComponent(request.id)}`,
-        { method: "DELETE", headers: { Authorization: `Bearer ${token}` } },
-      );
-      const data = await response.json();
-      if (!response.ok) throw new Error(data?.message || "Detected OT could not be deleted.");
-      setMessage(data.message || "Detected OT deleted.");
-      await loadOvertime(token);
-    } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "Detected OT could not be deleted.");
-    } finally {
-      setOtLoadingId("");
-    }
-  }
-
-  async function submitReplacementClaim(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!apiBaseUrl || !token) return;
-    const hours = Number(claimHours);
-    if (!Number.isFinite(hours) || hours <= 0) {
-      setError("Enter valid replacement claim hours.");
-      return;
-    }
-    setClaimLoading(true);
-    setError("");
-    setMessage("");
-    try {
-      const response = await fetch(`${apiBaseUrl}/api/employee-portal/replacement-claims`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          date: claimDate,
-          minutes: Math.round(hours * 60),
-          reason: claimReason,
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data?.message || "Replacement-hours claim could not be submitted.");
-      setClaimDate("");
-      setClaimHours("");
-      setClaimReason("");
-      setMessage(data.message || "Replacement-hours claim submitted.");
-      await loadOvertime(token);
-    } catch (claimError) {
-      setError(claimError instanceof Error ? claimError.message : "Replacement-hours claim could not be submitted.");
-    } finally {
-      setClaimLoading(false);
-    }
-  }
 
   async function downloadEmploymentDocument(document: EmploymentDocument) {
     if (!apiBaseUrl || !token) return;
@@ -613,7 +476,6 @@ export default function EmployeeClockInPage() {
 
       setRecord(data.record);
       setMessage(data.message || "Attendance updated.");
-      if (action === "clockOut") await loadOvertime(token);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Attendance could not be recorded.");
     } finally {
@@ -680,15 +542,15 @@ export default function EmployeeClockInPage() {
             </form>
           ) : (
             <div className="p-7">
-              <nav className="mb-6 grid grid-cols-5 rounded-2xl border border-white/8 bg-black/20 p-1" aria-label="Employee portal">
-                {(["attendance", "leave", "overtime", "employment", "profile"] as PortalTab[]).map((tab) => (
+              <nav className="mb-6 grid grid-cols-4 rounded-2xl border border-white/8 bg-black/20 p-1" aria-label="Employee portal">
+                {(["attendance", "leave", "employment", "profile"] as PortalTab[]).map((tab) => (
                   <button
                     key={tab}
                     type="button"
                     onClick={() => { setActiveTab(tab); setError(""); setMessage(""); stopCamera(); }}
                     className={`rounded-xl px-2 py-3 text-xs font-semibold transition ${activeTab === tab ? "bg-[#d4ad63] text-[#111416]" : "text-white/50"}`}
                   >
-                    {tab === "attendance" ? "Attendance" : tab === "leave" ? "My Leave" : tab === "overtime" ? "My OT" : tab === "employment" ? "My Letters" : "Profile"}
+                    {tab === "attendance" ? "Attendance" : tab === "leave" ? "My Leave" : tab === "employment" ? "My Letters" : "Profile"}
                   </button>
                 ))}
               </nav>
@@ -805,69 +667,6 @@ export default function EmployeeClockInPage() {
                 </div>
               )}
 
-              {activeTab === "overtime" && (
-                <div className="space-y-5">
-                  <div className="grid grid-cols-3 gap-2">
-                    <SummaryCard label="Detected" value={overtime.filter((item) => item.status === "detected").length} />
-                    <SummaryCard label="Pending" value={overtime.filter((item) => item.status === "pending").length} />
-                    <SummaryCard label="Claim Hours" value={(replacementClaimMinutes / 60).toFixed(2)} />
-                  </div>
-
-                  <section>
-                    <h2 className="text-lg font-bold text-[#f0dfbd]">Overtime Applications</h2>
-                    <p className="mt-1 text-xs leading-5 text-white/40">The system calculates eligible minutes from your roster and actual clock-out. You only provide the reason.</p>
-                    <div className="mt-3 space-y-3">
-                      {overtime.length === 0 && <p className="rounded-xl border border-white/8 p-4 text-sm text-white/45">No detected overtime yet.</p>}
-                      {overtime.map((item) => (
-                        <article key={item.id} className="rounded-xl border border-white/8 bg-white/[0.035] p-4">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="font-semibold text-[#f0dfbd]">{formatMalaysiaDate(item.date)}</p>
-                              <p className="mt-1 text-xs text-white/45">Detected {(item.minutes / 60).toFixed(2)} hours</p>
-                            </div>
-                            <StatusBadge status={item.status} />
-                          </div>
-                          {item.status === "detected" ? (
-                            <div className="mt-4">
-                              <textarea value={otReasons[item.id] || ""} onChange={(event) => setOtReasons((current) => ({ ...current, [item.id]: event.target.value }))} rows={2} maxLength={500} placeholder="Reason for overtime" className="w-full resize-none rounded-xl border border-white/10 bg-[#101416] px-4 py-3 text-sm outline-none focus:border-[#d4ad63]" />
-                              <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
-                                <button type="button" disabled={otLoadingId === item.id} onClick={() => void submitOvertime(item)} className="rounded-full bg-[#d4ad63] px-5 py-3 font-bold text-[#111416] disabled:opacity-60">{otLoadingId === item.id ? "Working…" : "Submit OT Application"}</button>
-                                <button type="button" disabled={otLoadingId === item.id} onClick={() => void deleteDetectedOvertime(item)} className="rounded-full border border-red-400/35 px-4 py-3 text-sm font-semibold text-red-200 disabled:opacity-60">Delete</button>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="mt-3 text-sm text-white/55">
-                              <p>{item.reason || "No reason recorded."}</p>
-                              {item.status === "approved" && (
-                                <p className="mt-2 text-xs text-emerald-200/80">Paid: {((item.payableMinutes || 0) / 60).toFixed(2)}h · Replacement credit: {((item.replacementCreditMinutes || 0) / 60).toFixed(2)}h · Ratio {Number(item.ratio || 0).toFixed(2)}</p>
-                              )}
-                              {item.managerNote && <p className="mt-2 text-xs text-white/40">Manager: {item.managerNote}</p>}
-                            </div>
-                          )}
-                        </article>
-                      ))}
-                    </div>
-                  </section>
-
-                  <form onSubmit={submitReplacementClaim} className="space-y-4 rounded-2xl border border-[#d4ad63]/20 bg-[#30281e] p-5">
-                    <div><p className="text-xs uppercase tracking-[0.2em] text-[#d4ad63]">Replacement hours</p><h2 className="mt-1 text-xl font-bold text-[#f0dfbd]">Submit Hours Claim</h2></div>
-                    <DateField label="Claim Date" value={claimDate} onChange={setClaimDate} />
-                    <Field label="Hours" value={claimHours} onChange={setClaimHours} placeholder="Example: 2.5" type="number" />
-                    <label className="block text-sm font-semibold text-white/70">Reason<textarea value={claimReason} onChange={(event) => setClaimReason(event.target.value)} maxLength={500} required rows={3} className="mt-2 w-full resize-none rounded-xl border border-white/10 bg-[#101416] px-4 py-3 outline-none focus:border-[#d4ad63]" /></label>
-                    <button disabled={claimLoading || replacementClaimMinutes <= 0} className="w-full rounded-full border border-[#d4ad63]/45 px-5 py-3.5 font-bold text-[#f0dfbd] disabled:opacity-40">{claimLoading ? "Submitting…" : "Submit Replacement Claim"}</button>
-                  </form>
-
-                  <section>
-                    <h2 className="text-lg font-bold text-[#f0dfbd]">Replacement Claim History</h2>
-                    <div className="mt-3 space-y-3">
-                      {replacementClaims.length === 0 && <p className="rounded-xl border border-white/8 p-4 text-sm text-white/45">No replacement claims yet.</p>}
-                      {replacementClaims.map((claim) => <article key={claim.id} className="rounded-xl border border-white/8 bg-white/[0.035] p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-[#f0dfbd]">{(claim.minutes / 60).toFixed(2)} hours</p><p className="mt-1 text-xs text-white/45">{formatMalaysiaDate(claim.date)}</p></div><StatusBadge status={claim.status} /></div><p className="mt-3 text-sm text-white/55">{claim.reason}</p></article>)}
-                    </div>
-                  </section>
-                  <Notice error={error} message={message} />
-                </div>
-              )}
-
               {activeTab === "employment" && (
                 <div className="space-y-5">
                   <section className="rounded-2xl border border-[#d4ad63]/20 bg-[#30281e] p-5">
@@ -952,17 +751,6 @@ function DateField({ label, value, onChange, min }: { label: string; value: stri
 
 function SummaryCard({ label, value }: { label: string; value: string | number }) {
   return <div className="rounded-xl border border-white/8 bg-white/[0.035] p-3 text-center"><p className="text-xl font-bold text-[#f0dfbd]">{value}</p><p className="mt-1 text-[10px] uppercase tracking-wider text-white/35">{label}</p></div>;
-}
-
-function StatusBadge({ status }: { status: "detected" | "pending" | "approved" | "rejected" }) {
-  const style = status === "approved"
-    ? "bg-emerald-500/15 text-emerald-200"
-    : status === "rejected"
-      ? "bg-red-500/15 text-red-200"
-      : status === "detected"
-        ? "bg-sky-500/15 text-sky-200"
-        : "bg-amber-500/15 text-amber-200";
-  return <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${style}`}>{status}</span>;
 }
 
 function LeaveCard({ leave }: { leave: LeaveRecord }) {
