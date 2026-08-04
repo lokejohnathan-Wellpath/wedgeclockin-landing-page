@@ -118,6 +118,27 @@ export default function EmployeeClockInPage() {
     setCameraOpen(false);
   }, []);
 
+  const forcePasswordChange = useCallback(() => {
+    stopCamera();
+    setMustChangePassword(true);
+    setError("");
+    setMessage("Create your private password before using WedgeCLOCKin.");
+    setEmployee((currentEmployee) => {
+      let profile = currentEmployee;
+      if (!profile) {
+        try {
+          profile = JSON.parse(localStorage.getItem(EMPLOYEE_KEY) || "null");
+        } catch {
+          profile = null;
+        }
+      }
+      if (!profile) return null;
+      const updatedEmployee = { ...profile, mustChangePassword: true };
+      localStorage.setItem(EMPLOYEE_KEY, JSON.stringify(updatedEmployee));
+      return updatedEmployee;
+    });
+  }, [stopCamera]);
+
   const logout = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(EMPLOYEE_KEY);
@@ -142,6 +163,10 @@ export default function EmployeeClockInPage() {
       });
       const data = await response.json();
 
+      if (response.status === 428 || data?.code === "PASSWORD_CHANGE_REQUIRED") {
+        forcePasswordChange();
+        return false;
+      }
       if (response.status === 401 || response.status === 403) {
         logout();
         throw new Error("Your session has expired. Please log in again.");
@@ -151,8 +176,9 @@ export default function EmployeeClockInPage() {
       setEmployee(data.employee);
       localStorage.setItem(EMPLOYEE_KEY, JSON.stringify(data.employee));
       setRecord(data.record || null);
+      return true;
     },
-    [apiBaseUrl, logout],
+    [apiBaseUrl, forcePasswordChange, logout],
   );
 
   const loadLeave = useCallback(async (sessionToken: string) => {
@@ -162,6 +188,10 @@ export default function EmployeeClockInPage() {
       cache: "no-store",
     });
     const data = await response.json();
+    if (response.status === 428 || data?.code === "PASSWORD_CHANGE_REQUIRED") {
+      forcePasswordChange();
+      return;
+    }
     if (response.status === 401 || response.status === 403) {
       logout();
       throw new Error("Your session has expired. Please log in again.");
@@ -169,7 +199,7 @@ export default function EmployeeClockInPage() {
     if (!response.ok) throw new Error(data?.message || "Unable to load leave records.");
     setLeaves(data.leaves || []);
     setLeaveBalance(data.balance || {});
-  }, [apiBaseUrl, logout]);
+  }, [apiBaseUrl, forcePasswordChange, logout]);
 
   const loadEmployment = useCallback(async (sessionToken: string) => {
     if (!apiBaseUrl) throw new Error("API service is not configured.");
@@ -177,10 +207,14 @@ export default function EmployeeClockInPage() {
       headers: { Authorization: `Bearer ${sessionToken}` }, cache: "no-store",
     });
     const data = await response.json();
+    if (response.status === 428 || data?.code === "PASSWORD_CHANGE_REQUIRED") {
+      forcePasswordChange();
+      return;
+    }
     if (response.status === 401 || response.status === 403) { logout(); throw new Error("Your session has expired. Please log in again."); }
     if (!response.ok) throw new Error(data?.message || "Employment documents could not be loaded.");
     setEmploymentFile(data.employment || {}); setEmploymentDocuments(data.documents || []);
-  }, [apiBaseUrl, logout]);
+  }, [apiBaseUrl, forcePasswordChange, logout]);
 
   useEffect(() => {
     const savedToken = localStorage.getItem(TOKEN_KEY) || "";
@@ -205,7 +239,7 @@ export default function EmployeeClockInPage() {
 
       setIsLoading(true);
       loadToday(savedToken)
-        .then(() => Promise.all([loadLeave(savedToken), loadEmployment(savedToken)]))
+        .then((ready) => ready ? Promise.all([loadLeave(savedToken), loadEmployment(savedToken)]) : undefined)
         .catch((err) => setError(err instanceof Error ? err.message : "Unable to load attendance."))
         .finally(() => setIsLoading(false));
     }, 0);
@@ -412,6 +446,10 @@ export default function EmployeeClockInPage() {
         body: JSON.stringify({ leaveType, startDate: leaveStart, endDate: leaveEnd, reason: leaveReason }),
       });
       const data = await response.json();
+      if (response.status === 428 || data?.code === "PASSWORD_CHANGE_REQUIRED") {
+        forcePasswordChange();
+        return;
+      }
       if (response.status === 401 || response.status === 403) logout();
       if (!response.ok) throw new Error(data?.message || "Leave request could not be submitted.");
       setLeaveStart("");
@@ -471,6 +509,10 @@ export default function EmployeeClockInPage() {
       });
       const data = await response.json();
 
+      if (response.status === 428 || data?.code === "PASSWORD_CHANGE_REQUIRED") {
+        forcePasswordChange();
+        return;
+      }
       if (response.status === 401) logout();
       if (!response.ok) throw new Error(data?.message || "Attendance could not be recorded.");
 
