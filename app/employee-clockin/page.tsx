@@ -24,7 +24,7 @@ type AttendanceRecord = {
   clockOut: string | null;
 };
 
-type PortalTab = "attendance" | "leave" | "employment" | "profile";
+type PortalTab = "attendance" | "leave" | "time" | "employment" | "profile";
 
 type LeaveRecord = {
   id: string;
@@ -40,6 +40,9 @@ type LeaveBalance = Record<string, number | null>;
 
 type EmploymentDocument = { id: string; title: string; type: string; status: "issued" | "acknowledged"; issuedAt?: string };
 type EmploymentFile = { employmentStartDate?: string; probationStartDate?: string; probationEndDate?: string; probationStatus?: string };
+type OvertimeRecord = { id: string; date: string; minutes: number; reason?: string; status: "detected" | "pending" | "approved" | "rejected"; payableMinutes?: number; replacementMinutes?: number; replacementCreditMinutes?: number; managerNote?: string };
+type ReplacementClaimRecord = { id: string; date: string; minutes: number; reason: string; status: "pending" | "approved" | "rejected"; createdAt?: string };
+type TimeBalance = { month: string; monthlyCapMinutes: number | null; approvedPayableMinutes: number; pendingOtMinutes: number; replacementAvailableMinutes: number; replacementLedgerMinutes: number; pendingClaimMinutes: number; capRemainingMinutes: number | null; capExceededMinutes: number };
 
 const LEAVE_TYPES = ["Annual Leave", "Medical Leave", "Emergency Leave", "Unpaid Leave", "Replacement Leave", "Hospitalisation Leave", "Other Leave"];
 
@@ -88,6 +91,13 @@ export default function EmployeeClockInPage() {
   const [leaveLoading, setLeaveLoading] = useState(false);
   const [employmentFile, setEmploymentFile] = useState<EmploymentFile>({});
   const [employmentDocuments, setEmploymentDocuments] = useState<EmploymentDocument[]>([]);
+  const [overtimeRecords, setOvertimeRecords] = useState<OvertimeRecord[]>([]);
+  const [replacementClaims, setReplacementClaims] = useState<ReplacementClaimRecord[]>([]);
+  const [timeBalance, setTimeBalance] = useState<TimeBalance | null>(null);
+  const [replacementClaimDate, setReplacementClaimDate] = useState("");
+  const [replacementClaimHours, setReplacementClaimHours] = useState("");
+  const [replacementClaimReason, setReplacementClaimReason] = useState("");
+  const [replacementClaimLoading, setReplacementClaimLoading] = useState(false);
   const [outletShortName, setOutletShortName] = useState("");
   const [idNumber, setIdNumber] = useState("");
   const [password, setPassword] = useState("");
@@ -100,6 +110,7 @@ export default function EmployeeClockInPage() {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [activeAction, setActiveAction] = useState("");
+  const [pendingFaceAction, setPendingFaceAction] = useState<"clockIn" | "restOut" | "restIn" | "clockOut" | "">("");
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraStarting, setCameraStarting] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
@@ -116,6 +127,7 @@ export default function EmployeeClockInPage() {
     setCameraReady(false);
     setLocationReady(false);
     setCameraOpen(false);
+    setPendingFaceAction("");
   }, []);
 
   const forcePasswordChange = useCallback(() => {
@@ -216,6 +228,16 @@ export default function EmployeeClockInPage() {
     setEmploymentFile(data.employment || {}); setEmploymentDocuments(data.documents || []);
   }, [apiBaseUrl, forcePasswordChange, logout]);
 
+  const loadTimeBalance = useCallback(async (sessionToken: string) => {
+    if (!apiBaseUrl) throw new Error("API service is not configured.");
+    const response = await fetch(`${apiBaseUrl}/api/employee-portal/overtime`, { headers: { Authorization: `Bearer ${sessionToken}` }, cache: "no-store" });
+    const data = await response.json();
+    if (response.status === 428 || data?.code === "PASSWORD_CHANGE_REQUIRED") { forcePasswordChange(); return; }
+    if (response.status === 401 || response.status === 403) { logout(); throw new Error("Your session has expired. Please log in again."); }
+    if (!response.ok) throw new Error(data?.message || "Time balance could not be loaded.");
+    setOvertimeRecords(data.requests || []); setReplacementClaims(data.claims || []); setTimeBalance(data.timeBalance || null);
+  }, [apiBaseUrl, forcePasswordChange, logout]);
+
   useEffect(() => {
     const savedToken = localStorage.getItem(TOKEN_KEY) || "";
     const savedEmployee = localStorage.getItem(EMPLOYEE_KEY);
@@ -239,13 +261,13 @@ export default function EmployeeClockInPage() {
 
       setIsLoading(true);
       loadToday(savedToken)
-        .then((ready) => ready ? Promise.all([loadLeave(savedToken), loadEmployment(savedToken)]) : undefined)
+        .then((ready) => ready ? Promise.all([loadLeave(savedToken), loadEmployment(savedToken), loadTimeBalance(savedToken)]) : undefined)
         .catch((err) => setError(err instanceof Error ? err.message : "Unable to load attendance."))
         .finally(() => setIsLoading(false));
     }, 0);
 
     return () => window.clearTimeout(timer);
-  }, [loadEmployment, loadLeave, loadToday]);
+  }, [loadEmployment, loadLeave, loadTimeBalance, loadToday]);
 
   useEffect(() => stopCamera, [stopCamera]);
 
@@ -272,7 +294,8 @@ export default function EmployeeClockInPage() {
     return () => video.removeEventListener("loadedmetadata", markCameraReady);
   }, [cameraOpen]);
 
-  async function startCamera() {
+  async function startCamera(action: "clockIn" | "restOut" | "restIn" | "clockOut") {
+    setPendingFaceAction(action);
     setError("");
     setMessage("");
     setCameraStarting(true);
@@ -304,7 +327,7 @@ export default function EmployeeClockInPage() {
         stream.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
         setCameraOpen(false);
-        throw new Error("Allow precise location access as well as camera access to clock in.");
+        throw new Error("Allow precise location access as well as camera access for this attendance action.");
       }
     } catch (cameraError) {
       setError(
@@ -317,36 +340,26 @@ export default function EmployeeClockInPage() {
     }
   }
 
-  async function captureAndClockIn() {
+  async function captureAndRecordAction() {
     const video = videoRef.current;
-
-    if (!cameraReady || !locationReady || !locationRef.current) {
-      setError("Wait until both Camera Ready and GPS Ready are shown.");
-      return;
-    }
-
-    if (!video || video.videoWidth === 0 || video.videoHeight === 0) {
-      setError("The camera is not ready. Wait a moment and try again.");
-      return;
-    }
-
+    const action = pendingFaceAction;
+    if (!action) { setError("Select an attendance action first."); return; }
+    if (!cameraReady || !locationReady || !locationRef.current) { setError("Wait until both Camera Ready and GPS Ready are shown."); return; }
+    if (!video || video.videoWidth === 0 || video.videoHeight === 0) { setError("The camera is not ready. Wait a moment and try again."); return; }
     const maxSize = 1000;
     const scale = Math.min(1, maxSize / Math.max(video.videoWidth, video.videoHeight));
     const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
-    canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+    canvas.width = Math.max(1, Math.round(video.videoWidth * scale)); canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
     const context = canvas.getContext("2d");
-
-    if (!context) {
-      setError("The selfie could not be prepared.");
-      return;
-    }
-
+    if (!context) { setError("The selfie could not be prepared."); return; }
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const clockInSelfieBase64 = canvas.toDataURL("image/jpeg", 0.86);
+    const attendanceSelfieBase64 = canvas.toDataURL("image/jpeg", 0.86);
     const location = locationRef.current;
-    stopCamera();
-    await recordAction("clockIn", clockInSelfieBase64, location);
+    streamRef.current?.getTracks().forEach((track) => track.stop()); streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+    locationRef.current = null; setCameraReady(false); setLocationReady(false); setCameraOpen(false);
+    await recordAction(action, attendanceSelfieBase64, location);
+    setPendingFaceAction("");
   }
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
@@ -392,6 +405,7 @@ export default function EmployeeClockInPage() {
       await loadToday(data.token);
       await loadLeave(data.token);
       await loadEmployment(data.token);
+      await loadTimeBalance(data.token);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed.");
     } finally {
@@ -425,7 +439,7 @@ export default function EmployeeClockInPage() {
       setNewEmployeePassword("");
       setConfirmEmployeePassword("");
       setMessage("Password changed successfully.");
-      await Promise.all([loadToday(token), loadLeave(token), loadEmployment(token)]);
+      await Promise.all([loadToday(token), loadLeave(token), loadEmployment(token), loadTimeBalance(token)]);
     } catch (changeError) {
       setError(changeError instanceof Error ? changeError.message : "Password could not be changed.");
     } finally {
@@ -465,6 +479,22 @@ export default function EmployeeClockInPage() {
   }
 
 
+  async function submitReplacementClaim(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!apiBaseUrl || !token) return;
+    const hours = Number(replacementClaimHours);
+    if (!Number.isFinite(hours) || hours <= 0) { setError("Enter replacement hours greater than 0."); return; }
+    setReplacementClaimLoading(true); setError(""); setMessage("");
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/employee-portal/replacement-claims`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ date: replacementClaimDate, minutes: Math.round(hours * 60), reason: replacementClaimReason }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.message || "Replacement-hours claim could not be submitted.");
+      setReplacementClaimDate(""); setReplacementClaimHours(""); setReplacementClaimReason(""); setMessage(data.message || "Replacement-hours claim submitted.");
+      await loadTimeBalance(token);
+    } catch (claimError) { setError(claimError instanceof Error ? claimError.message : "Replacement-hours claim could not be submitted."); }
+    finally { setReplacementClaimLoading(false); }
+  }
+
   async function downloadEmploymentDocument(document: EmploymentDocument) {
     if (!apiBaseUrl || !token) return;
     const response = await fetch(`${apiBaseUrl}/api/employment-intelligence/documents/${encodeURIComponent(document.id)}/pdf`, { headers: { Authorization: `Bearer ${token}` } });
@@ -483,7 +513,7 @@ export default function EmployeeClockInPage() {
 
   async function recordAction(
     action: "clockIn" | "restOut" | "restIn" | "clockOut",
-    clockInSelfieBase64?: string,
+    attendanceSelfieBase64?: string,
     suppliedLocation?: { latitude: number; longitude: number },
   ) {
     if (!apiBaseUrl || !token) return;
@@ -493,11 +523,8 @@ export default function EmployeeClockInPage() {
     setActiveAction(action);
 
     try {
-      let location: { latitude?: number; longitude?: number } = {};
-      if (action === "clockIn") {
-        if (!suppliedLocation) throw new Error("Camera and precise location are required to clock in.");
-        location = suppliedLocation;
-      }
+      if (!suppliedLocation || !attendanceSelfieBase64) throw new Error("Live face verification and precise GPS are required for every attendance action.");
+      const location = suppliedLocation;
 
       const response = await fetch(`${apiBaseUrl}/api/employee-portal/action`, {
         method: "POST",
@@ -505,7 +532,7 @@ export default function EmployeeClockInPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ action, ...location, clockInSelfieBase64 }),
+        body: JSON.stringify({ action, ...location, attendanceSelfieBase64 }),
       });
       const data = await response.json();
 
@@ -532,6 +559,8 @@ export default function EmployeeClockInPage() {
       : record.restOut && !record.restIn
         ? "On rest"
         : "Working";
+  const nextAttendanceAction: "clockIn" | "restOut" | "restIn" | "clockOut" | "" = !record?.clockIn ? "clockIn" : record.clockOut ? "" : record.restOut && !record.restIn ? "restIn" : !record.restOut ? "restOut" : "clockOut";
+  const nextAttendanceLabel = nextAttendanceAction === "clockIn" ? "Clock In" : nextAttendanceAction === "restOut" ? "Rest Out" : nextAttendanceAction === "restIn" ? "Rest In" : nextAttendanceAction === "clockOut" ? "Clock Out" : "";
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(200,164,103,0.12),transparent_34%),linear-gradient(180deg,#101416,#080b0d)] px-5 py-10 text-[#f4efe6]">
@@ -596,6 +625,9 @@ export default function EmployeeClockInPage() {
                   </button>
                 ))}
               </nav>
+              <button type="button" onClick={() => { setActiveTab("time"); setError(""); setMessage(""); stopCamera(); void loadTimeBalance(token); }} className={`mb-6 flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left transition ${activeTab === "time" ? "border-[#d4ad63] bg-[#d4ad63] text-[#111416]" : "border-[#d4ad63]/25 bg-[#30281e] text-[#f0dfbd]"}`}>
+                <span><span className="block text-sm font-bold">Time Balance</span><span className={`mt-0.5 block text-[11px] ${activeTab === "time" ? "text-black/60" : "text-white/40"}`}>OT, monthly cap & replacement hours</span></span><span className="text-lg">›</span>
+              </button>
 
               {activeTab === "attendance" && <>
               <div className="rounded-2xl border border-[#d4ad63]/20 bg-[#30281e] p-5">
@@ -613,60 +645,20 @@ export default function EmployeeClockInPage() {
               </div>
 
               <div className="mt-6 space-y-3">
-                {!record?.clockIn && !cameraOpen && (
-                  <ActionButton
-                    label="Open Face Camera"
-                    loading={cameraStarting}
-                    onClick={() => void startCamera()}
-                    primary
-                  />
-                )}
-                {!record?.clockIn && cameraOpen && (
+                {nextAttendanceAction && !cameraOpen && <ActionButton label={`${nextAttendanceLabel} · Verify Face + GPS`} loading={cameraStarting} onClick={() => void startCamera(nextAttendanceAction)} primary />}
+                {nextAttendanceAction && cameraOpen && (
                   <div className="overflow-hidden rounded-2xl border border-[#d4ad63]/30 bg-black p-3">
-                    <video
-                      ref={videoRef}
-                      autoPlay
-                      muted
-                      playsInline
-                      className="aspect-[3/4] w-full rounded-xl bg-black object-cover"
-                    />
-                    <p className="mt-3 text-center text-xs text-white/50">
-                      Face the camera alone in good lighting. Remove sunglasses and masks.
-                    </p>
-                    <div className="mt-3 grid grid-cols-2 gap-2 text-center text-xs font-semibold">
-                      <span className={`rounded-full px-3 py-2 ${cameraReady ? "bg-emerald-500/15 text-emerald-200" : "bg-amber-500/15 text-amber-200"}`}>
-                        {cameraReady ? "Camera Ready" : "Starting Camera…"}
-                      </span>
-                      <span className={`rounded-full px-3 py-2 ${locationReady ? "bg-emerald-500/15 text-emerald-200" : "bg-amber-500/15 text-amber-200"}`}>
-                        {locationReady ? "GPS Ready" : "Waiting for GPS…"}
-                      </span>
-                    </div>
-                    <div className="mt-3 grid grid-cols-2 gap-3">
-                      <button
-                        type="button"
-                        onClick={stopCamera}
-                        className="rounded-full border border-white/20 px-4 py-3 text-sm font-semibold text-white/70"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        disabled={activeAction === "clockIn" || !cameraReady || !locationReady}
-                        onClick={() => void captureAndClockIn()}
-                        className="rounded-full bg-[#d4ad63] px-4 py-3 text-sm font-bold text-[#111416] disabled:opacity-60"
-                      >
-                        {activeAction === "clockIn" ? "Verifying…" : "Capture & Clock In"}
-                      </button>
-                    </div>
+                    <div className="mb-3 rounded-xl bg-[#30281e] px-4 py-3 text-center"><p className="text-xs tracking-[0.18em] text-[#d4ad63]">VERIFY BEFORE {nextAttendanceLabel.toUpperCase()}</p></div>
+                    <video ref={videoRef} autoPlay muted playsInline className="aspect-[3/4] w-full rounded-xl bg-black object-cover" />
+                    <p className="mt-3 text-center text-xs text-white/50">Face the camera alone in good lighting. Every punch also checks fresh GPS against the workplace radius.</p>
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-center text-xs font-semibold"><span className={`rounded-full px-3 py-2 ${cameraReady ? "bg-emerald-500/15 text-emerald-200" : "bg-amber-500/15 text-amber-200"}`}>{cameraReady ? "Camera Ready" : "Starting Camera…"}</span><span className={`rounded-full px-3 py-2 ${locationReady ? "bg-emerald-500/15 text-emerald-200" : "bg-amber-500/15 text-amber-200"}`}>{locationReady ? "GPS Ready" : "Waiting for GPS…"}</span></div>
+                    <div className="mt-3 grid grid-cols-2 gap-3"><button type="button" onClick={stopCamera} className="rounded-full border border-white/20 px-4 py-3 text-sm font-semibold text-white/70">Cancel</button><button type="button" disabled={activeAction === pendingFaceAction || !cameraReady || !locationReady} onClick={() => void captureAndRecordAction()} className="rounded-full bg-[#d4ad63] px-4 py-3 text-sm font-bold text-[#111416] disabled:opacity-60">{activeAction === pendingFaceAction ? "Verifying…" : `Capture & ${nextAttendanceLabel}`}</button></div>
                   </div>
                 )}
-                {record?.clockIn && !record.restOut && !record.clockOut && <ActionButton label="Rest Out" loading={activeAction === "restOut"} onClick={() => recordAction("restOut")} />}
-                {record?.restOut && !record.restIn && !record.clockOut && <ActionButton label="Rest In" loading={activeAction === "restIn"} onClick={() => recordAction("restIn")} primary />}
-                {record?.clockIn && !record.clockOut && !(record.restOut && !record.restIn) && <ActionButton label="Clock Out" loading={activeAction === "clockOut"} onClick={() => recordAction("clockOut")} />}
               </div>
 
               <div className="mt-5"><Notice error={error} message={message} /></div>
-              <p className="mt-5 text-center text-xs leading-5 text-white/35">Clock In requires a live face match, precise GPS permission and the company&apos;s approved workplace radius.</p>
+              <p className="mt-5 text-center text-xs leading-5 text-white/35">Clock In, Rest Out, Rest In and Clock Out each require a fresh live face match, precise GPS permission and the company&apos;s approved workplace radius.</p>
               </>}
 
               {activeTab === "leave" && (
@@ -706,6 +698,18 @@ export default function EmployeeClockInPage() {
                       {leaves.map((leave) => <LeaveCard key={leave.id} leave={leave} />)}
                     </div>
                   </div>
+                </div>
+              )}
+
+              {activeTab === "time" && (
+                <div className="space-y-5">
+                  <div><p className="text-xs uppercase tracking-[0.2em] text-[#d4ad63]">Current month</p><h2 className="mt-1 text-2xl font-bold text-[#f0dfbd]">Time Balance</h2><p className="mt-1 text-xs text-white/40">Actual worked OT stays recorded. Manager allocation decides payroll OT versus replacement hours.</p></div>
+                  <div className="grid grid-cols-2 gap-2"><SummaryCard label="Approved OT" value={timeBalance ? `${(timeBalance.approvedPayableMinutes / 60).toFixed(2)}h` : "—"} /><SummaryCard label="Monthly OT Cap" value={timeBalance?.monthlyCapMinutes == null ? "No cap" : `${(timeBalance.monthlyCapMinutes / 60).toFixed(2)}h`} /><SummaryCard label="Replacement Available" value={timeBalance ? `${(timeBalance.replacementAvailableMinutes / 60).toFixed(2)}h` : "—"} /><SummaryCard label="Pending / Detected OT" value={timeBalance ? `${(timeBalance.pendingOtMinutes / 60).toFixed(2)}h` : "—"} /></div>
+                  {timeBalance?.monthlyCapMinutes != null && <div className={`rounded-xl border p-4 text-sm ${timeBalance.capExceededMinutes > 0 ? "border-red-400/30 bg-red-500/10 text-red-100" : timeBalance.capRemainingMinutes === 0 ? "border-amber-400/30 bg-amber-500/10 text-amber-100" : "border-white/10 bg-white/[0.035] text-white/55"}`}>{timeBalance.capExceededMinutes > 0 ? `Manager-approved OT is ${(timeBalance.capExceededMinutes / 60).toFixed(2)}h above the configured monthly cap.` : timeBalance.capRemainingMinutes === 0 ? "Your approved OT has reached the monthly maximum." : `${(Number(timeBalance.capRemainingMinutes) / 60).toFixed(2)}h payable OT remains before the monthly cap.`}</div>}
+                  <form onSubmit={submitReplacementClaim} className="space-y-4 rounded-2xl border border-[#d4ad63]/20 bg-[#30281e] p-5"><div><p className="text-xs uppercase tracking-[0.2em] text-[#d4ad63]">Use replacement balance</p><h3 className="mt-1 text-lg font-bold text-[#f0dfbd]">Claim Replacement Hours</h3></div><DateField label="Date to use" value={replacementClaimDate} onChange={setReplacementClaimDate} /><Field label="Hours" value={replacementClaimHours} onChange={setReplacementClaimHours} placeholder="Example: 1 or 1.5" type="number" /><label className="block text-sm font-semibold text-white/70">Reason<textarea value={replacementClaimReason} onChange={(event) => setReplacementClaimReason(event.target.value)} maxLength={500} required rows={3} placeholder="Reason for using replacement hours" className="mt-2 w-full resize-none rounded-xl border border-white/10 bg-[#101416] px-4 py-3 text-white outline-none focus:border-[#d4ad63]" /></label><button disabled={replacementClaimLoading || !timeBalance || timeBalance.replacementAvailableMinutes <= 0} className="w-full rounded-full bg-[#d4ad63] px-5 py-3.5 font-bold text-[#111416] disabled:opacity-40">{replacementClaimLoading ? "Submitting…" : "Submit Replacement Claim"}</button></form>
+                  <section><h3 className="text-lg font-bold text-[#f0dfbd]">OT History</h3><div className="mt-3 space-y-3">{overtimeRecords.length === 0 ? <p className="rounded-xl border border-white/8 p-4 text-sm text-white/45">No OT records yet.</p> : overtimeRecords.slice(0, 12).map((item) => <article key={item.id} className="rounded-xl border border-white/8 bg-white/[0.035] p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-[#f0dfbd]">{formatMalaysiaDate(item.date)}</p><p className="mt-1 text-xs text-white/45">Detected {(item.minutes / 60).toFixed(2)}h · Payroll {((item.payableMinutes || 0) / 60).toFixed(2)}h · Replacement {((item.replacementCreditMinutes || 0) / 60).toFixed(2)}h</p></div><span className="rounded-full bg-white/5 px-2.5 py-1 text-[10px] font-bold uppercase text-white/60">{item.status}</span></div>{item.managerNote && <p className="mt-2 text-xs text-white/40">Manager: {item.managerNote}</p>}</article>)}</div></section>
+                  <section><h3 className="text-lg font-bold text-[#f0dfbd]">Replacement Claims</h3><div className="mt-3 space-y-3">{replacementClaims.length === 0 ? <p className="rounded-xl border border-white/8 p-4 text-sm text-white/45">No replacement claims yet.</p> : replacementClaims.slice(0, 12).map((claim) => <article key={claim.id} className="rounded-xl border border-white/8 bg-white/[0.035] p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-[#f0dfbd]">{formatMalaysiaDate(claim.date)}</p><p className="mt-1 text-xs text-white/45">{(claim.minutes / 60).toFixed(2)}h · {claim.reason}</p></div><span className="rounded-full bg-white/5 px-2.5 py-1 text-[10px] font-bold uppercase text-white/60">{claim.status}</span></div></article>)}</div></section>
+                  <Notice error={error} message={message} />
                 </div>
               )}
 

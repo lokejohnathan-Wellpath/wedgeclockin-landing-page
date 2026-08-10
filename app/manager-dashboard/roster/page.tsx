@@ -34,6 +34,8 @@ type OvertimeRequest = {
   replacementMinutes?: number;
   replacementCreditMinutes?: number;
   managerNote?: string;
+  monthlyCapMinutes?: number | null;
+  approvedPayableMinutesMonth?: number;
   status: "detected" | "pending" | "approved" | "rejected";
 };
 
@@ -54,6 +56,7 @@ type OvertimeDecisionPayload = {
   replacementCreditMinutes: number;
   conversionMethod: "actual" | "ratio" | "manager";
   managerNote: string;
+  capOverride?: boolean;
 };
 
 const dayNames = [
@@ -568,7 +571,11 @@ function OvertimeDecisionCard({ request, onDecision }: { request: OvertimeReques
   const [conversionMethod, setConversionMethod] = useState<OvertimeDecisionPayload["conversionMethod"]>("actual");
   const [category, setCategory] = useState(request.category || "normal");
   const [managerNote, setManagerNote] = useState(request.managerNote || "");
+  const [capOverride, setCapOverride] = useState(false);
   const [localError, setLocalError] = useState("");
+  const capHours = request.monthlyCapMinutes == null ? null : request.monthlyCapMinutes / 60;
+  const usedPayableHours = Number(request.approvedPayableMinutesMonth || 0) / 60;
+  const remainingPayableHours = capHours == null ? null : Math.max(0, capHours - usedPayableHours);
 
   async function approve() {
     const payable = Number(payableHours);
@@ -578,10 +585,10 @@ function OvertimeDecisionCard({ request, onDecision }: { request: OvertimeReques
       setLocalError("Enter valid OT hours and ratio.");
       return;
     }
-    if (payable + replacement > detectedHours + 0.001) {
-      setLocalError("Paid and replacement hours cannot exceed detected OT.");
-      return;
-    }
+    if (payable + replacement > detectedHours + 0.001) { setLocalError("Paid and replacement hours cannot exceed detected OT."); return; }
+    const overCap = remainingPayableHours != null && payable > remainingPayableHours + 0.001;
+    if (overCap && !capOverride) { setLocalError("Payable OT exceeds the employee remaining monthly cap. Park the excess as replacement hours or select manager override."); return; }
+    if (overCap && capOverride && managerNote.trim().length < 4) { setLocalError("Enter a manager reason before approving payable OT above the monthly cap."); return; }
     await onDecision(request.id, "approved", {
       ratio: cleanRatio,
       category,
@@ -590,12 +597,14 @@ function OvertimeDecisionCard({ request, onDecision }: { request: OvertimeReques
       replacementCreditMinutes: Math.round(Number(creditHours || 0) * 60),
       conversionMethod,
       managerNote,
+      capOverride,
     });
   }
 
   return <article className="rounded-2xl border border-white/10 bg-black/10 p-5">
     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><p className="font-semibold text-[#f0dfbd]">{request.employeeName}</p><p className="mt-1 text-sm text-white/50">{malaysiaDate(request.date)} · {detectedHours.toFixed(2)} detected hours</p>{request.reason && <p className="mt-2 text-xs text-white/40">Staff reason: {request.reason}</p>}</div><span className={`rounded-full px-4 py-2 text-xs font-semibold ${request.status === "approved" ? "bg-emerald-500/10 text-emerald-200" : request.status === "rejected" ? "bg-red-500/10 text-red-200" : request.status === "detected" ? "bg-sky-500/10 text-sky-200" : "bg-amber-500/10 text-amber-200"}`}>{request.status}</span></div>
     {request.status === "pending" && <div className="mt-4 space-y-4 border-t border-white/8 pt-4">
+      {capHours != null && <div className="rounded-xl border border-amber-400/25 bg-amber-500/10 p-4 text-sm text-amber-100"><div className="flex flex-wrap items-center justify-between gap-2"><span>Monthly payable OT: <b>{usedPayableHours.toFixed(2)} / {capHours.toFixed(2)}h</b></span><span>{Number(remainingPayableHours || 0).toFixed(2)}h remaining</span></div>{Number(remainingPayableHours || 0) < detectedHours && <button type="button" onClick={() => { const within = Math.max(0, Number(remainingPayableHours || 0)); setPayableHours(within.toFixed(2)); setReplacementHours(Math.max(0, detectedHours - within).toFixed(2)); setConversionMethod("actual"); setCapOverride(false); setLocalError(""); }} className="mt-3 rounded-full border border-amber-300/35 px-4 py-2 text-xs font-bold">Use remaining cap + park excess as replacement</button>}</div>}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <MiniField label="OT ratio" value={ratio} onChange={setRatio} />
         <MiniField label="Pay through payroll (hours)" value={payableHours} onChange={setPayableHours} />
@@ -604,6 +613,8 @@ function OvertimeDecisionCard({ request, onDecision }: { request: OvertimeReques
       </div>
       <div className="grid gap-3 sm:grid-cols-2"><label className="text-xs text-white/50">Replacement conversion<select value={conversionMethod} onChange={(event) => setConversionMethod(event.target.value as OvertimeDecisionPayload["conversionMethod"])} className="mt-2 w-full rounded-xl border border-white/10 bg-[#101416] px-3 py-2 text-white"><option value="actual">1:1 actual hours</option><option value="ratio">Apply OT ratio</option><option value="manager">Manager final credit</option></select></label>{conversionMethod === "manager" && <MiniField label="Final replacement credit (hours)" value={creditHours} onChange={setCreditHours} />}</div>
       <textarea value={managerNote} onChange={(event) => setManagerNote(event.target.value)} rows={2} maxLength={500} placeholder="Manager allocation note" className="w-full rounded-xl border border-white/10 bg-[#101416] px-4 py-3 text-sm outline-none focus:border-[#d4ad63]" />
+      {remainingPayableHours != null && Number(payableHours || 0) > remainingPayableHours + 0.001 && <label className="flex items-start gap-3 rounded-xl border border-red-400/30 bg-red-500/10 p-4 text-sm text-red-100"><input type="checkbox" checked={capOverride} onChange={(event) => setCapOverride(event.target.checked)} className="mt-1 accent-[#d4ad63]" /><span><b>Manager override:</b> approve payable OT above the employee monthly maximum. A manager reason is required and the employee Time Balance will show that the cap was exceeded.</span></label>}
+      {remainingPayableHours != null && Number(payableHours || 0) <= remainingPayableHours + 0.001 && Number(payableHours || 0) >= remainingPayableHours - 0.001 && <p className="rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 text-sm text-amber-100">This approval will reach the employee monthly OT maximum.</p>}
       {localError && <p className="text-sm text-red-200">{localError}</p>}
       <div className="flex gap-3"><button onClick={() => void approve()} className="rounded-full bg-emerald-500 px-5 py-2 font-bold text-[#07130d]">Approve Allocation</button><button onClick={() => void onDecision(request.id, "rejected")} className="rounded-full border border-red-400/40 px-5 py-2 font-semibold text-red-200">Reject</button></div>
     </div>}
