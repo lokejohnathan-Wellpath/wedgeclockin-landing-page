@@ -26,13 +26,42 @@ type AttendanceRow = {
   voidedAt?: string | null;
 };
 
-function malaysiaDateKey() {
+type AttendanceHistoryRow = {
+  id?: string;
+  employeeId?: string;
+  employeeName?: string;
+  employeeCode?: string;
+  department?: string;
+  date?: string;
+  clockIn?: string | null;
+  restOut?: string | null;
+  restIn?: string | null;
+  clockOut?: string | null;
+  clockInLatitude?: number | null;
+  clockInLongitude?: number | null;
+  rosterEnabled?: boolean;
+  scheduledStart?: string | null;
+  scheduledEnd?: string | null;
+  lateMinutes?: number;
+  overtimeMinutes?: number;
+  overtimeStatus?: string;
+  source?: string;
+  voidedAt?: string | null;
+};
+
+function malaysiaDateKey(value: Date | string = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Kuala_Lumpur",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(new Date());
+  }).format(date);
+}
+
+function malaysiaMonthKey(value: Date | string = new Date()) {
+  return malaysiaDateKey(value).slice(0, 7);
 }
 
 function malaysiaLocalInput(value: string | null) {
@@ -46,7 +75,7 @@ function malaysiaLocalInput(value: string | null) {
   return `${part("year")}-${part("month")}-${part("day")}T${part("hour")}:${part("minute")}`;
 }
 
-function formatMalaysiaTime(value: string | null) {
+function formatMalaysiaTime(value: string | null | undefined) {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
@@ -59,7 +88,7 @@ function formatMalaysiaTime(value: string | null) {
   }).format(date);
 }
 
-function sourceLabel(source: AttendanceRow["attendanceSource"]) {
+function sourceLabel(source?: string) {
   return source === "employee-face-gps"
     ? "Face / GPS"
     : source === "manager-entered"
@@ -68,7 +97,7 @@ function sourceLabel(source: AttendanceRow["attendanceSource"]) {
         ? "Manager corrected"
         : source === "manager-voided"
           ? "Deleted"
-          : "—";
+          : source || "—";
 }
 
 function safeFilePart(value: string) {
@@ -148,40 +177,69 @@ export default function ManagerAttendancePage() {
   }
 
   async function exportEmployeeAttendance(row: AttendanceRow) {
+    const token = localStorage.getItem("wc_manager_token");
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+    if (!token || !apiBaseUrl) {
+      setError("Manager session is not ready.");
+      return;
+    }
+
     setExportingEmployeeId(row.employeeId);
     setError("");
+
     try {
-      const date = malaysiaDateKey();
+      const response = await fetch(
+        `${apiBaseUrl}/api/attendance?employeeId=${encodeURIComponent(row.employeeId)}`,
+        { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" },
+      );
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.message || "Attendance history could not be loaded.");
+
+      const month = malaysiaMonthKey();
+      const history = (Array.isArray(data) ? data : []) as AttendanceHistoryRow[];
+      const monthRows = history
+        .filter((record) => !record.voidedAt)
+        .filter((record) => malaysiaMonthKey(record.date || record.clockIn || "") === month)
+        .sort((a, b) => malaysiaDateKey(a.date || a.clockIn || "").localeCompare(malaysiaDateKey(b.date || b.clockIn || "")));
+
+      const presentDays = monthRows.filter((record) => Boolean(record.clockIn)).length;
+      const lateDays = monthRows.filter((record) => Number(record.lateMinutes || 0) > 0).length;
+      const totalLateMinutes = monthRows.reduce((sum, record) => sum + Number(record.lateMinutes || 0), 0);
+      const totalOtMinutes = monthRows.reduce((sum, record) => sum + Number(record.overtimeMinutes || 0), 0);
+
       await downloadSimpleXlsx(
-        `wedge-attendance-${safeFilePart(row.employeeCode || row.employeeName)}-${date}.xlsx`,
-        "Attendance Report",
+        `wedge-attendance-${safeFilePart(row.employeeCode || row.employeeName)}-${month}.xlsx`,
+        "Monthly Attendance",
         [
-          ["Wedge CLOCKin - Individual Attendance Report"],
-          ["Report Date", date],
+          ["Wedge CLOCKin - Individual Monthly Attendance Report"],
+          ["Month", month],
           ["Employee Name", row.employeeName],
           ["Employee Code", row.employeeCode],
           ["Department", row.department || "—"],
+          ["Present Days Recorded", presentDays],
+          ["Late Days", lateDays],
+          ["Total Late Minutes", totalLateMinutes],
+          ["Total OT Minutes", totalOtMinutes],
           [],
-          ["Date", "Clock In", "Rest Out", "Rest In", "Clock Out", "GPS", "Roster Start", "Roster End", "Late Minutes", "OT Minutes", "OT Status", "Status", "Source"],
-          [
-            date,
-            formatMalaysiaTime(row.clockIn),
-            formatMalaysiaTime(row.restOut),
-            formatMalaysiaTime(row.restIn),
-            formatMalaysiaTime(row.clockOut),
-            row.gpsStatus || "—",
-            formatMalaysiaTime(row.scheduledStart || null),
-            formatMalaysiaTime(row.scheduledEnd || null),
-            row.lateMinutes || 0,
-            row.overtimeMinutes || 0,
-            row.overtimeStatus || "none",
-            row.todayStatus || "—",
-            sourceLabel(row.attendanceSource),
-          ],
+          ["Date", "Clock In", "Rest Out", "Rest In", "Clock Out", "GPS", "Roster Start", "Roster End", "Late Minutes", "OT Minutes", "OT Status", "Source"],
+          ...monthRows.map((record) => [
+            malaysiaDateKey(record.date || record.clockIn || ""),
+            formatMalaysiaTime(record.clockIn),
+            formatMalaysiaTime(record.restOut),
+            formatMalaysiaTime(record.restIn),
+            formatMalaysiaTime(record.clockOut),
+            record.clockInLatitude && record.clockInLongitude ? "Recorded" : "Not recorded",
+            formatMalaysiaTime(record.scheduledStart),
+            formatMalaysiaTime(record.scheduledEnd),
+            Number(record.lateMinutes || 0),
+            Number(record.overtimeMinutes || 0),
+            record.overtimeStatus || "none",
+            sourceLabel(record.source),
+          ]),
         ],
       );
-    } catch {
-      setError("Employee attendance Excel report could not be prepared.");
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : "Employee monthly attendance Excel report could not be prepared.");
     } finally {
       setExportingEmployeeId("");
     }
@@ -237,7 +295,7 @@ export default function ManagerAttendancePage() {
           <div>
             <p className="text-sm tracking-[0.35em] text-[#d4ad63]">WEDGECLOCKIN</p>
             <h1 className="mt-2 text-4xl font-bold text-[#f0dfbd]">Live Attendance</h1>
-            <p className="mt-2 text-white/55">View today&apos;s face clock-in, rest and clock-out status.</p>
+            <p className="mt-2 text-white/55">View today&apos;s face clock-in, rest and clock-out status. Individual Excel reports cover the current calendar month.</p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
             <button type="button" onClick={loadAttendance} className="rounded-full border border-[#d4ad63]/50 px-6 py-3 font-semibold text-[#f0dfbd] hover:bg-white/5">Refresh</button>
@@ -272,11 +330,11 @@ export default function ManagerAttendancePage() {
             </div>
           ) : (
             <div className="w-full overflow-x-auto">
-              <table className="w-full min-w-[1380px] table-auto text-left text-sm">
+              <table className="w-full min-w-[1360px] table-auto text-left text-sm">
                 <thead className="border-b border-white/10 text-white/45">
                   <tr>
                     {["Employee","Department","Face","Clock In","Rest Out","Rest In","Clock Out","GPS","Roster / Late","OT","Status","Source"].map((head) => <th key={head} className="px-3 py-4 whitespace-nowrap">{head}</th>)}
-                    <th className="sticky right-0 z-10 bg-[#1e2428] px-3 py-4">Action</th>
+                    <th className="sticky right-0 z-10 w-[132px] bg-[#1e2428] px-3 py-4 text-center">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -298,12 +356,12 @@ export default function ManagerAttendancePage() {
                       </td>
                       <td className="px-3 py-4"><span className={badge(row.todayStatus)}>{row.todayStatus}</span></td>
                       <td className="px-3 py-4 whitespace-nowrap text-xs text-white/50">{sourceLabel(row.attendanceSource)}</td>
-                      <td className="sticky right-0 bg-[#1e2428] px-3 py-4 shadow-[-12px_0_18px_-16px_rgba(0,0,0,0.95)]">
-                        <div className="flex flex-col gap-2">
-                          <button type="button" onClick={() => void exportEmployeeAttendance(row)} disabled={exportingEmployeeId === row.employeeId} className="inline-flex items-center justify-center whitespace-nowrap rounded-full bg-[#d4ad63] px-3.5 py-2 text-xs font-bold text-[#101416] disabled:opacity-50">
+                      <td className="sticky right-0 w-[132px] bg-[#1e2428] px-3 py-4 shadow-[-12px_0_18px_-16px_rgba(0,0,0,0.95)]">
+                        <div className="flex flex-col items-center gap-2">
+                          <button type="button" onClick={() => void exportEmployeeAttendance(row)} disabled={exportingEmployeeId === row.employeeId} className="h-9 w-28 rounded-full bg-[#d4ad63] px-3 text-xs font-bold text-[#101416] transition hover:bg-[#e2be73] disabled:opacity-50">
                             {exportingEmployeeId === row.employeeId ? "Preparing…" : "Excel Report"}
                           </button>
-                          <button type="button" onClick={() => openCorrection(row)} aria-label={`Manage attendance for ${row.employeeName}`} title={row.clockIn ? "Edit or delete attendance" : "Add missing attendance"} className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full border border-[#d4ad63]/45 px-3.5 py-2 text-xs font-semibold text-[#e5c584] hover:bg-[#d4ad63]/10">
+                          <button type="button" onClick={() => openCorrection(row)} aria-label={`Manage attendance for ${row.employeeName}`} title={row.clockIn ? "Edit or delete attendance" : "Add missing attendance"} className="inline-flex h-9 w-28 items-center justify-center gap-1.5 rounded-full border border-[#d4ad63]/45 px-3 text-xs font-semibold text-[#e5c584] transition hover:bg-[#d4ad63]/10">
                             <AttendanceActionIcon hasAttendance={Boolean(row.clockIn)} />Manage
                           </button>
                         </div>
