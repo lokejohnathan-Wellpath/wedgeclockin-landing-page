@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -24,7 +24,7 @@ type AttendanceRecord = {
   clockOut: string | null;
 };
 
-type PortalTab = "attendance" | "leave" | "time" | "employment" | "profile";
+type PortalTab = "attendance" | "leave" | "time" | "profile";
 
 type LeaveRecord = {
   id: string;
@@ -38,8 +38,6 @@ type LeaveRecord = {
 
 type LeaveBalance = Record<string, number | null>;
 
-type EmploymentDocument = { id: string; title: string; type: string; status: "issued" | "acknowledged"; issuedAt?: string };
-type EmploymentFile = { employmentStartDate?: string; probationStartDate?: string; probationEndDate?: string; probationStatus?: string };
 type OvertimeRecord = { id: string; date: string; minutes: number; reason?: string; status: "detected" | "pending" | "approved" | "rejected"; payableMinutes?: number; replacementMinutes?: number; replacementCreditMinutes?: number; managerNote?: string };
 type ReplacementClaimRecord = { id: string; date: string; minutes: number; reason: string; status: "pending" | "approved" | "rejected"; createdAt?: string };
 type TimeBalance = { month: string; monthlyCapMinutes: number | null; approvedPayableMinutes: number; pendingOtMinutes: number; replacementAvailableMinutes: number; replacementLedgerMinutes: number; pendingClaimMinutes: number; capRemainingMinutes: number | null; capExceededMinutes: number };
@@ -50,7 +48,7 @@ const TOKEN_KEY = "wc_employee_token";
 const EMPLOYEE_KEY = "wc_employee_profile";
 
 function formatMalaysiaTime(value: string | null | undefined) {
-  if (!value) return "—";
+  if (!value) return "â€”";
 
   return new Intl.DateTimeFormat("en-MY", {
     timeZone: "Asia/Kuala_Lumpur",
@@ -89,8 +87,6 @@ export default function EmployeeClockInPage() {
   const [leaveEnd, setLeaveEnd] = useState("");
   const [leaveReason, setLeaveReason] = useState("");
   const [leaveLoading, setLeaveLoading] = useState(false);
-  const [employmentFile, setEmploymentFile] = useState<EmploymentFile>({});
-  const [employmentDocuments, setEmploymentDocuments] = useState<EmploymentDocument[]>([]);
   const [overtimeRecords, setOvertimeRecords] = useState<OvertimeRecord[]>([]);
   const [replacementClaims, setReplacementClaims] = useState<ReplacementClaimRecord[]>([]);
   const [timeBalance, setTimeBalance] = useState<TimeBalance | null>(null);
@@ -160,7 +156,6 @@ export default function EmployeeClockInPage() {
     setCurrentTemporaryPassword("");
     setRecord(null);
     setLeaves([]);
-    setEmploymentDocuments([]);
     setActiveTab("attendance");
     setMessage("");
   }, []);
@@ -213,21 +208,6 @@ export default function EmployeeClockInPage() {
     setLeaveBalance(data.balance || {});
   }, [apiBaseUrl, forcePasswordChange, logout]);
 
-  const loadEmployment = useCallback(async (sessionToken: string) => {
-    if (!apiBaseUrl) throw new Error("API service is not configured.");
-    const response = await fetch(`${apiBaseUrl}/api/employment-intelligence/employee`, {
-      headers: { Authorization: `Bearer ${sessionToken}` }, cache: "no-store",
-    });
-    const data = await response.json();
-    if (response.status === 428 || data?.code === "PASSWORD_CHANGE_REQUIRED") {
-      forcePasswordChange();
-      return;
-    }
-    if (response.status === 401 || response.status === 403) { logout(); throw new Error("Your session has expired. Please log in again."); }
-    if (!response.ok) throw new Error(data?.message || "Employment documents could not be loaded.");
-    setEmploymentFile(data.employment || {}); setEmploymentDocuments(data.documents || []);
-  }, [apiBaseUrl, forcePasswordChange, logout]);
-
   const loadTimeBalance = useCallback(async (sessionToken: string) => {
     if (!apiBaseUrl) throw new Error("API service is not configured.");
     const response = await fetch(`${apiBaseUrl}/api/employee-portal/overtime`, { headers: { Authorization: `Bearer ${sessionToken}` }, cache: "no-store" });
@@ -261,13 +241,13 @@ export default function EmployeeClockInPage() {
 
       setIsLoading(true);
       loadToday(savedToken)
-        .then((ready) => ready ? Promise.all([loadLeave(savedToken), loadEmployment(savedToken), loadTimeBalance(savedToken)]) : undefined)
+        .then(() => undefined)
         .catch((err) => setError(err instanceof Error ? err.message : "Unable to load attendance."))
         .finally(() => setIsLoading(false));
     }, 0);
 
     return () => window.clearTimeout(timer);
-  }, [loadEmployment, loadLeave, loadTimeBalance, loadToday]);
+  }, [loadToday]);
 
   useEffect(() => stopCamera, [stopCamera]);
 
@@ -403,9 +383,6 @@ export default function EmployeeClockInPage() {
         return;
       }
       await loadToday(data.token);
-      await loadLeave(data.token);
-      await loadEmployment(data.token);
-      await loadTimeBalance(data.token);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed.");
     } finally {
@@ -439,7 +416,7 @@ export default function EmployeeClockInPage() {
       setNewEmployeePassword("");
       setConfirmEmployeePassword("");
       setMessage("Password changed successfully.");
-      await Promise.all([loadToday(token), loadLeave(token), loadEmployment(token), loadTimeBalance(token)]);
+      await loadToday(token);
     } catch (changeError) {
       setError(changeError instanceof Error ? changeError.message : "Password could not be changed.");
     } finally {
@@ -493,22 +470,6 @@ export default function EmployeeClockInPage() {
       await loadTimeBalance(token);
     } catch (claimError) { setError(claimError instanceof Error ? claimError.message : "Replacement-hours claim could not be submitted."); }
     finally { setReplacementClaimLoading(false); }
-  }
-
-  async function downloadEmploymentDocument(document: EmploymentDocument) {
-    if (!apiBaseUrl || !token) return;
-    const response = await fetch(`${apiBaseUrl}/api/employment-intelligence/documents/${encodeURIComponent(document.id)}/pdf`, { headers: { Authorization: `Bearer ${token}` } });
-    if (!response.ok) { setError("Employment PDF could not be downloaded."); return; }
-    const url = URL.createObjectURL(await response.blob());
-    const anchor = window.document.createElement("a"); anchor.href = url; anchor.download = `${document.type}-${employee?.employeeCode || "employee"}.pdf`; anchor.click(); URL.revokeObjectURL(url);
-  }
-
-  async function acknowledgeEmploymentDocument(document: EmploymentDocument) {
-    if (!apiBaseUrl || !token) return;
-    const response = await fetch(`${apiBaseUrl}/api/employment-intelligence/employee/documents/${encodeURIComponent(document.id)}/acknowledge`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
-    const data = await response.json();
-    if (!response.ok) { setError(data?.message || "Document could not be acknowledged."); return; }
-    setMessage(data.message); await loadEmployment(token);
   }
 
   async function recordAction(
@@ -566,7 +527,7 @@ export default function EmployeeClockInPage() {
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(200,164,103,0.12),transparent_34%),linear-gradient(180deg,#101416,#080b0d)] px-5 py-10 text-[#f4efe6]">
       <div className="mx-auto max-w-md">
         <header className="mb-7 flex items-center justify-between">
-          <Link href="/" className="text-sm text-[#d4ad63] hover:underline">← Wedge Works</Link>
+          <Link href="/" className="text-sm text-[#d4ad63] hover:underline">â† Wedge Works</Link>
           {token && (
             <button onClick={logout} className="text-sm text-white/55 hover:text-white">Log out</button>
           )}
@@ -574,7 +535,7 @@ export default function EmployeeClockInPage() {
 
         <section className="overflow-hidden rounded-[2rem] border border-[#d4ad63]/35 bg-[#1a2024]/95 shadow-2xl">
           <div className="border-b border-white/8 px-7 py-7 text-center">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#d4ad63] text-2xl font-bold text-[#111416]">◷</div>
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#d4ad63] text-2xl font-bold text-[#111416]">â—·</div>
             <p className="mt-4 text-xs font-semibold tracking-[0.3em] text-[#d4ad63]">WEDGECLOCKIN</p>
             <h1 className="mt-2 text-3xl font-bold text-[#f0dfbd]">Employee Clock In</h1>
             <p className="mt-2 text-sm text-white/50">Secure browser attendance in Malaysia time</p>
@@ -593,7 +554,7 @@ export default function EmployeeClockInPage() {
 
               <Notice error={error} message={message} />
               <button disabled={isLoading} className="w-full rounded-full bg-[#d4ad63] px-6 py-4 font-bold text-[#111416] hover:bg-[#e4bf75] disabled:opacity-60">
-                {isLoading ? "Signing in…" : "Employee Login"}
+                {isLoading ? "Signing inâ€¦" : "Employee Login"}
               </button>
             </form>
           ) : mustChangePassword ? (
@@ -601,39 +562,39 @@ export default function EmployeeClockInPage() {
               <div className="rounded-2xl border border-[#d4ad63]/25 bg-[#30281e] p-5">
                 <p className="text-xs font-semibold tracking-[0.2em] text-[#d4ad63]">FIRST LOGIN SECURITY</p>
                 <h2 className="mt-2 text-xl font-bold text-[#f0dfbd]">Create Your Private Password</h2>
-                <p className="mt-2 text-sm leading-6 text-white/50">The manager-issued password is temporary. Change it before accessing attendance, leave, OT or employment documents.</p>
+                <p className="mt-2 text-sm leading-6 text-white/50">The manager-issued password is temporary. Change it before accessing attendance, leave, OT or your employee profile.</p>
               </div>
               <Field label="Temporary Password" value={currentTemporaryPassword} onChange={setCurrentTemporaryPassword} placeholder="Enter temporary password" type="password" />
               <Field label="New Password" value={newEmployeePassword} onChange={setNewEmployeePassword} placeholder="Minimum 8 characters" type="password" />
               <Field label="Confirm New Password" value={confirmEmployeePassword} onChange={setConfirmEmployeePassword} placeholder="Repeat new password" type="password" />
               <Notice error={error} message={message} />
               <button disabled={isLoading} className="w-full rounded-full bg-[#d4ad63] px-6 py-4 font-bold text-[#111416] disabled:opacity-60">
-                {isLoading ? "Changing…" : "Change Password & Continue"}
+                {isLoading ? "Changingâ€¦" : "Change Password & Continue"}
               </button>
             </form>
           ) : (
             <div className="p-7">
-              <nav className="mb-6 grid grid-cols-4 rounded-2xl border border-white/8 bg-black/20 p-1" aria-label="Employee portal">
-                {(["attendance", "leave", "employment", "profile"] as PortalTab[]).map((tab) => (
+              <nav className="mb-6 grid grid-cols-3 rounded-2xl border border-white/8 bg-black/20 p-1" aria-label="Employee portal">
+                {(["attendance", "leave", "profile"] as PortalTab[]).map((tab) => (
                   <button
                     key={tab}
                     type="button"
-                    onClick={() => { setActiveTab(tab); setError(""); setMessage(""); stopCamera(); }}
+                    onClick={() => { setActiveTab(tab); setError(""); setMessage(""); stopCamera(); if (tab === "leave") void loadLeave(token); }}
                     className={`rounded-xl px-2 py-3 text-xs font-semibold transition ${activeTab === tab ? "bg-[#d4ad63] text-[#111416]" : "text-white/50"}`}
                   >
-                    {tab === "attendance" ? "Attendance" : tab === "leave" ? "My Leave" : tab === "employment" ? "My Letters" : "Profile"}
+                    {tab === "attendance" ? "Attendance" : tab === "leave" ? "My Leave" : "Profile"}
                   </button>
                 ))}
               </nav>
               <button type="button" onClick={() => { setActiveTab("time"); setError(""); setMessage(""); stopCamera(); void loadTimeBalance(token); }} className={`mb-6 flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left transition ${activeTab === "time" ? "border-[#d4ad63] bg-[#d4ad63] text-[#111416]" : "border-[#d4ad63]/25 bg-[#30281e] text-[#f0dfbd]"}`}>
-                <span><span className="block text-sm font-bold">Time Balance</span><span className={`mt-0.5 block text-[11px] ${activeTab === "time" ? "text-black/60" : "text-white/40"}`}>OT, monthly cap & replacement hours</span></span><span className="text-lg">›</span>
+                <span><span className="block text-sm font-bold">Time Balance</span><span className={`mt-0.5 block text-[11px] ${activeTab === "time" ? "text-black/60" : "text-white/40"}`}>OT, monthly cap & replacement hours</span></span><span className="text-lg">â€º</span>
               </button>
 
               {activeTab === "attendance" && <>
               <div className="rounded-2xl border border-[#d4ad63]/20 bg-[#30281e] p-5">
                 <p className="text-xs uppercase tracking-[0.2em] text-white/40">Today&apos;s status</p>
                 <p className="mt-2 text-2xl font-bold text-[#f0dfbd]">{status}</p>
-                <p className="mt-2 text-sm text-white/55">{employee?.fullName} · {employee?.employeeCode}</p>
+                <p className="mt-2 text-sm text-white/55">{employee?.fullName} Â· {employee?.employeeCode}</p>
                 {employee?.companyName && <p className="mt-1 text-xs text-white/35">{employee.companyName}</p>}
               </div>
 
@@ -645,14 +606,14 @@ export default function EmployeeClockInPage() {
               </div>
 
               <div className="mt-6 space-y-3">
-                {nextAttendanceAction && !cameraOpen && <ActionButton label={`${nextAttendanceLabel} · Verify Face + GPS`} loading={cameraStarting} onClick={() => void startCamera(nextAttendanceAction)} primary />}
+                {nextAttendanceAction && !cameraOpen && <ActionButton label={`${nextAttendanceLabel} Â· Verify Face + GPS`} loading={cameraStarting} onClick={() => void startCamera(nextAttendanceAction)} primary />}
                 {nextAttendanceAction && cameraOpen && (
                   <div className="overflow-hidden rounded-2xl border border-[#d4ad63]/30 bg-black p-3">
                     <div className="mb-3 rounded-xl bg-[#30281e] px-4 py-3 text-center"><p className="text-xs tracking-[0.18em] text-[#d4ad63]">VERIFY BEFORE {nextAttendanceLabel.toUpperCase()}</p></div>
                     <video ref={videoRef} autoPlay muted playsInline className="aspect-[3/4] w-full rounded-xl bg-black object-cover" />
                     <p className="mt-3 text-center text-xs text-white/50">Face the camera alone in good lighting. Every punch also checks fresh GPS against the workplace radius.</p>
-                    <div className="mt-3 grid grid-cols-2 gap-2 text-center text-xs font-semibold"><span className={`rounded-full px-3 py-2 ${cameraReady ? "bg-emerald-500/15 text-emerald-200" : "bg-amber-500/15 text-amber-200"}`}>{cameraReady ? "Camera Ready" : "Starting Camera…"}</span><span className={`rounded-full px-3 py-2 ${locationReady ? "bg-emerald-500/15 text-emerald-200" : "bg-amber-500/15 text-amber-200"}`}>{locationReady ? "GPS Ready" : "Waiting for GPS…"}</span></div>
-                    <div className="mt-3 grid grid-cols-2 gap-3"><button type="button" onClick={stopCamera} className="rounded-full border border-white/20 px-4 py-3 text-sm font-semibold text-white/70">Cancel</button><button type="button" disabled={activeAction === pendingFaceAction || !cameraReady || !locationReady} onClick={() => void captureAndRecordAction()} className="rounded-full bg-[#d4ad63] px-4 py-3 text-sm font-bold text-[#111416] disabled:opacity-60">{activeAction === pendingFaceAction ? "Verifying…" : `Capture & ${nextAttendanceLabel}`}</button></div>
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-center text-xs font-semibold"><span className={`rounded-full px-3 py-2 ${cameraReady ? "bg-emerald-500/15 text-emerald-200" : "bg-amber-500/15 text-amber-200"}`}>{cameraReady ? "Camera Ready" : "Starting Cameraâ€¦"}</span><span className={`rounded-full px-3 py-2 ${locationReady ? "bg-emerald-500/15 text-emerald-200" : "bg-amber-500/15 text-amber-200"}`}>{locationReady ? "GPS Ready" : "Waiting for GPSâ€¦"}</span></div>
+                    <div className="mt-3 grid grid-cols-2 gap-3"><button type="button" onClick={stopCamera} className="rounded-full border border-white/20 px-4 py-3 text-sm font-semibold text-white/70">Cancel</button><button type="button" disabled={activeAction === pendingFaceAction || !cameraReady || !locationReady} onClick={() => void captureAndRecordAction()} className="rounded-full bg-[#d4ad63] px-4 py-3 text-sm font-bold text-[#111416] disabled:opacity-60">{activeAction === pendingFaceAction ? "Verifyingâ€¦" : `Capture & ${nextAttendanceLabel}`}</button></div>
                   </div>
                 )}
               </div>
@@ -666,8 +627,8 @@ export default function EmployeeClockInPage() {
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                     <SummaryCard label="Pending" value={leaves.filter((leave) => leave.status === "pending").length} />
                     <SummaryCard label="Approved" value={leaves.filter((leave) => leave.status === "approved").length} />
-                    <SummaryCard label="Annual Left" value={leaveBalance.annualLeaveBalance ?? "—"} />
-                    <SummaryCard label="MC Left" value={leaveBalance.medicalLeaveBalance ?? "—"} />
+                    <SummaryCard label="Annual Left" value={leaveBalance.annualLeaveBalance ?? "â€”"} />
+                    <SummaryCard label="MC Left" value={leaveBalance.medicalLeaveBalance ?? "â€”"} />
                   </div>
 
                   <form onSubmit={submitLeave} className="space-y-4 rounded-2xl border border-[#d4ad63]/20 bg-[#30281e] p-5">
@@ -688,7 +649,7 @@ export default function EmployeeClockInPage() {
                       <textarea value={leaveReason} onChange={(event) => setLeaveReason(event.target.value)} maxLength={500} required rows={3} placeholder="Brief reason for leave" className="mt-2 w-full resize-none rounded-xl border border-white/10 bg-[#101416] px-4 py-3 text-white outline-none focus:border-[#d4ad63]" />
                     </label>
                     <Notice error={error} message={message} />
-                    <button disabled={leaveLoading} className="w-full rounded-full bg-[#d4ad63] px-5 py-3.5 font-bold text-[#111416] disabled:opacity-60">{leaveLoading ? "Submitting…" : "Submit for Approval"}</button>
+                    <button disabled={leaveLoading} className="w-full rounded-full bg-[#d4ad63] px-5 py-3.5 font-bold text-[#111416] disabled:opacity-60">{leaveLoading ? "Submittingâ€¦" : "Submit for Approval"}</button>
                   </form>
 
                   <div>
@@ -704,33 +665,11 @@ export default function EmployeeClockInPage() {
               {activeTab === "time" && (
                 <div className="space-y-5">
                   <div><p className="text-xs uppercase tracking-[0.2em] text-[#d4ad63]">Current month</p><h2 className="mt-1 text-2xl font-bold text-[#f0dfbd]">Time Balance</h2><p className="mt-1 text-xs text-white/40">Actual worked OT stays recorded. Manager allocation decides payroll OT versus replacement hours.</p></div>
-                  <div className="grid grid-cols-2 gap-2"><SummaryCard label="Approved OT" value={timeBalance ? `${(timeBalance.approvedPayableMinutes / 60).toFixed(2)}h` : "—"} /><SummaryCard label="Monthly OT Cap" value={timeBalance?.monthlyCapMinutes == null ? "No cap" : `${(timeBalance.monthlyCapMinutes / 60).toFixed(2)}h`} /><SummaryCard label="Replacement Available" value={timeBalance ? `${(timeBalance.replacementAvailableMinutes / 60).toFixed(2)}h` : "—"} /><SummaryCard label="Pending / Detected OT" value={timeBalance ? `${(timeBalance.pendingOtMinutes / 60).toFixed(2)}h` : "—"} /></div>
+                  <div className="grid grid-cols-2 gap-2"><SummaryCard label="Approved OT" value={timeBalance ? `${(timeBalance.approvedPayableMinutes / 60).toFixed(2)}h` : "â€”"} /><SummaryCard label="Monthly OT Cap" value={timeBalance?.monthlyCapMinutes == null ? "No cap" : `${(timeBalance.monthlyCapMinutes / 60).toFixed(2)}h`} /><SummaryCard label="Replacement Available" value={timeBalance ? `${(timeBalance.replacementAvailableMinutes / 60).toFixed(2)}h` : "â€”"} /><SummaryCard label="Pending / Detected OT" value={timeBalance ? `${(timeBalance.pendingOtMinutes / 60).toFixed(2)}h` : "â€”"} /></div>
                   {timeBalance?.monthlyCapMinutes != null && <div className={`rounded-xl border p-4 text-sm ${timeBalance.capExceededMinutes > 0 ? "border-red-400/30 bg-red-500/10 text-red-100" : timeBalance.capRemainingMinutes === 0 ? "border-amber-400/30 bg-amber-500/10 text-amber-100" : "border-white/10 bg-white/[0.035] text-white/55"}`}>{timeBalance.capExceededMinutes > 0 ? `Manager-approved OT is ${(timeBalance.capExceededMinutes / 60).toFixed(2)}h above the configured monthly cap.` : timeBalance.capRemainingMinutes === 0 ? "Your approved OT has reached the monthly maximum." : `${(Number(timeBalance.capRemainingMinutes) / 60).toFixed(2)}h payable OT remains before the monthly cap.`}</div>}
-                  <form onSubmit={submitReplacementClaim} className="space-y-4 rounded-2xl border border-[#d4ad63]/20 bg-[#30281e] p-5"><div><p className="text-xs uppercase tracking-[0.2em] text-[#d4ad63]">Use replacement balance</p><h3 className="mt-1 text-lg font-bold text-[#f0dfbd]">Claim Replacement Hours</h3></div><DateField label="Date to use" value={replacementClaimDate} onChange={setReplacementClaimDate} /><Field label="Hours" value={replacementClaimHours} onChange={setReplacementClaimHours} placeholder="Example: 1 or 1.5" type="number" /><label className="block text-sm font-semibold text-white/70">Reason<textarea value={replacementClaimReason} onChange={(event) => setReplacementClaimReason(event.target.value)} maxLength={500} required rows={3} placeholder="Reason for using replacement hours" className="mt-2 w-full resize-none rounded-xl border border-white/10 bg-[#101416] px-4 py-3 text-white outline-none focus:border-[#d4ad63]" /></label><button disabled={replacementClaimLoading || !timeBalance || timeBalance.replacementAvailableMinutes <= 0} className="w-full rounded-full bg-[#d4ad63] px-5 py-3.5 font-bold text-[#111416] disabled:opacity-40">{replacementClaimLoading ? "Submitting…" : "Submit Replacement Claim"}</button></form>
-                  <section><h3 className="text-lg font-bold text-[#f0dfbd]">OT History</h3><div className="mt-3 space-y-3">{overtimeRecords.length === 0 ? <p className="rounded-xl border border-white/8 p-4 text-sm text-white/45">No OT records yet.</p> : overtimeRecords.slice(0, 12).map((item) => <article key={item.id} className="rounded-xl border border-white/8 bg-white/[0.035] p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-[#f0dfbd]">{formatMalaysiaDate(item.date)}</p><p className="mt-1 text-xs text-white/45">Detected {(item.minutes / 60).toFixed(2)}h · Payroll {((item.payableMinutes || 0) / 60).toFixed(2)}h · Replacement {((item.replacementCreditMinutes || 0) / 60).toFixed(2)}h</p></div><span className="rounded-full bg-white/5 px-2.5 py-1 text-[10px] font-bold uppercase text-white/60">{item.status}</span></div>{item.managerNote && <p className="mt-2 text-xs text-white/40">Manager: {item.managerNote}</p>}</article>)}</div></section>
-                  <section><h3 className="text-lg font-bold text-[#f0dfbd]">Replacement Claims</h3><div className="mt-3 space-y-3">{replacementClaims.length === 0 ? <p className="rounded-xl border border-white/8 p-4 text-sm text-white/45">No replacement claims yet.</p> : replacementClaims.slice(0, 12).map((claim) => <article key={claim.id} className="rounded-xl border border-white/8 bg-white/[0.035] p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-[#f0dfbd]">{formatMalaysiaDate(claim.date)}</p><p className="mt-1 text-xs text-white/45">{(claim.minutes / 60).toFixed(2)}h · {claim.reason}</p></div><span className="rounded-full bg-white/5 px-2.5 py-1 text-[10px] font-bold uppercase text-white/60">{claim.status}</span></div></article>)}</div></section>
-                  <Notice error={error} message={message} />
-                </div>
-              )}
-
-              {activeTab === "employment" && (
-                <div className="space-y-5">
-                  <section className="rounded-2xl border border-[#d4ad63]/20 bg-[#30281e] p-5">
-                    <p className="text-xs uppercase tracking-[0.2em] text-[#d4ad63]">Employment status</p>
-                    <h2 className="mt-2 text-2xl font-bold text-[#f0dfbd]">{employmentFile.probationStatus || "Not started"}</h2>
-                    <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                      <ProfileRow label="Employment start" value={employmentFile.employmentStartDate || "—"} />
-                      <ProfileRow label="Probation end" value={employmentFile.probationEndDate || "—"} />
-                    </div>
-                  </section>
-                  <section>
-                    <h2 className="text-lg font-bold text-[#f0dfbd]">Employment Letters</h2>
-                    <p className="mt-1 text-xs leading-5 text-white/40">Download issued PDFs for your safe copy. Acknowledging confirms receipt only.</p>
-                    <div className="mt-3 space-y-3">
-                      {employmentDocuments.length === 0 && <p className="rounded-xl border border-white/8 p-4 text-sm text-white/45">No issued employment letters yet.</p>}
-                      {employmentDocuments.map((document) => <article key={document.id} className="rounded-xl border border-white/8 bg-white/[0.035] p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-[#f0dfbd]">{document.title}</p><p className="mt-1 text-xs uppercase tracking-wider text-white/40">{document.status}</p></div></div><div className="mt-4 grid grid-cols-2 gap-2"><button type="button" onClick={() => void downloadEmploymentDocument(document)} className="rounded-full border border-[#d4ad63]/45 px-4 py-3 text-sm font-semibold text-[#e5c584]">Download PDF</button><button type="button" disabled={document.status === "acknowledged"} onClick={() => void acknowledgeEmploymentDocument(document)} className="rounded-full bg-[#d4ad63] px-4 py-3 text-sm font-bold text-[#111416] disabled:opacity-35">{document.status === "acknowledged" ? "Acknowledged" : "Acknowledge"}</button></div></article>)}
-                    </div>
-                  </section>
+                  <form onSubmit={submitReplacementClaim} className="space-y-4 rounded-2xl border border-[#d4ad63]/20 bg-[#30281e] p-5"><div><p className="text-xs uppercase tracking-[0.2em] text-[#d4ad63]">Use replacement balance</p><h3 className="mt-1 text-lg font-bold text-[#f0dfbd]">Claim Replacement Hours</h3></div><DateField label="Date to use" value={replacementClaimDate} onChange={setReplacementClaimDate} /><Field label="Hours" value={replacementClaimHours} onChange={setReplacementClaimHours} placeholder="Example: 1 or 1.5" type="number" /><label className="block text-sm font-semibold text-white/70">Reason<textarea value={replacementClaimReason} onChange={(event) => setReplacementClaimReason(event.target.value)} maxLength={500} required rows={3} placeholder="Reason for using replacement hours" className="mt-2 w-full resize-none rounded-xl border border-white/10 bg-[#101416] px-4 py-3 text-white outline-none focus:border-[#d4ad63]" /></label><button disabled={replacementClaimLoading || !timeBalance || timeBalance.replacementAvailableMinutes <= 0} className="w-full rounded-full bg-[#d4ad63] px-5 py-3.5 font-bold text-[#111416] disabled:opacity-40">{replacementClaimLoading ? "Submittingâ€¦" : "Submit Replacement Claim"}</button></form>
+                  <section><h3 className="text-lg font-bold text-[#f0dfbd]">OT History</h3><div className="mt-3 space-y-3">{overtimeRecords.length === 0 ? <p className="rounded-xl border border-white/8 p-4 text-sm text-white/45">No OT records yet.</p> : overtimeRecords.slice(0, 12).map((item) => <article key={item.id} className="rounded-xl border border-white/8 bg-white/[0.035] p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-[#f0dfbd]">{formatMalaysiaDate(item.date)}</p><p className="mt-1 text-xs text-white/45">Detected {(item.minutes / 60).toFixed(2)}h Â· Payroll {((item.payableMinutes || 0) / 60).toFixed(2)}h Â· Replacement {((item.replacementCreditMinutes || 0) / 60).toFixed(2)}h</p></div><span className="rounded-full bg-white/5 px-2.5 py-1 text-[10px] font-bold uppercase text-white/60">{item.status}</span></div>{item.managerNote && <p className="mt-2 text-xs text-white/40">Manager: {item.managerNote}</p>}</article>)}</div></section>
+                  <section><h3 className="text-lg font-bold text-[#f0dfbd]">Replacement Claims</h3><div className="mt-3 space-y-3">{replacementClaims.length === 0 ? <p className="rounded-xl border border-white/8 p-4 text-sm text-white/45">No replacement claims yet.</p> : replacementClaims.slice(0, 12).map((claim) => <article key={claim.id} className="rounded-xl border border-white/8 bg-white/[0.035] p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-[#f0dfbd]">{formatMalaysiaDate(claim.date)}</p><p className="mt-1 text-xs text-white/45">{(claim.minutes / 60).toFixed(2)}h Â· {claim.reason}</p></div><span className="rounded-full bg-white/5 px-2.5 py-1 text-[10px] font-bold uppercase text-white/60">{claim.status}</span></div></article>)}</div></section>
                   <Notice error={error} message={message} />
                 </div>
               )}
@@ -750,11 +689,11 @@ export default function EmployeeClockInPage() {
                   </div>
                   <div className={`rounded-2xl border p-5 ${employee?.webFaceRegistered ? "border-emerald-400/25 bg-emerald-500/10" : "border-amber-400/30 bg-amber-500/10"}`}>
                     <p className="text-xs uppercase tracking-[0.2em] text-white/45">Web face verification</p>
-                    <p className="mt-2 text-xl font-bold">{employee?.webFaceRegistered ? "Registered ✓" : "Registration required"}</p>
+                    <p className="mt-2 text-xl font-bold">{employee?.webFaceRegistered ? "Registered âœ“" : "Registration required"}</p>
                     <p className="mt-2 text-sm leading-6 text-white/60">
                       {employee?.webFaceRegistered
                         ? `Your encrypted web face profile is ready${employee.faceRegisteredAt ? ` since ${formatMalaysiaDate(employee.faceRegisteredAt)}` : ""}.`
-                        : "Ask your manager to open Manager Dashboard → Face Registration and register your face for web clock-in."}
+                        : "Ask your manager to open Manager Dashboard â†’ Face Registration and register your face for web clock-in."}
                     </p>
                   </div>
                   <p className="text-center text-xs leading-5 text-white/35">Employees can view their status here. Face enrollment stays manager-controlled to prevent another person registering on an employee&apos;s behalf.</p>
@@ -777,7 +716,7 @@ function TimeCard({ label, value }: { label: string; value?: string | null }) {
 }
 
 function ActionButton({ label, loading, onClick, primary = false }: { label: string; loading: boolean; onClick: () => void; primary?: boolean }) {
-  return <button type="button" disabled={loading} onClick={onClick} className={`w-full rounded-full px-6 py-4 font-bold transition disabled:opacity-60 ${primary ? "bg-[#d4ad63] text-[#111416] hover:bg-[#e4bf75]" : "border border-[#d4ad63]/45 bg-black/10 text-[#f0dfbd] hover:bg-[#d4ad63]/10"}`}>{loading ? "Recording…" : label}</button>;
+  return <button type="button" disabled={loading} onClick={onClick} className={`w-full rounded-full px-6 py-4 font-bold transition disabled:opacity-60 ${primary ? "bg-[#d4ad63] text-[#111416] hover:bg-[#e4bf75]" : "border border-[#d4ad63]/45 bg-black/10 text-[#f0dfbd] hover:bg-[#d4ad63]/10"}`}>{loading ? "Recordingâ€¦" : label}</button>;
 }
 
 function Notice({ error, message }: { error: string; message: string }) {
@@ -801,9 +740,10 @@ function SummaryCard({ label, value }: { label: string; value: string | number }
 
 function LeaveCard({ leave }: { leave: LeaveRecord }) {
   const statusStyle = leave.status === "approved" ? "bg-emerald-500/15 text-emerald-200" : leave.status === "rejected" ? "bg-red-500/15 text-red-200" : "bg-amber-500/15 text-amber-200";
-  return <article className="rounded-xl border border-white/8 bg-white/[0.035] p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-[#f0dfbd]">{leave.leaveType}</p><p className="mt-1 text-xs text-white/45">{formatMalaysiaDate(leave.startDate)} – {formatMalaysiaDate(leave.endDate)}</p></div><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${statusStyle}`}>{leave.status}</span></div><p className="mt-3 text-sm leading-5 text-white/55">{leave.reason}</p></article>;
+  return <article className="rounded-xl border border-white/8 bg-white/[0.035] p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-[#f0dfbd]">{leave.leaveType}</p><p className="mt-1 text-xs text-white/45">{formatMalaysiaDate(leave.startDate)} â€“ {formatMalaysiaDate(leave.endDate)}</p></div><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${statusStyle}`}>{leave.status}</span></div><p className="mt-3 text-sm leading-5 text-white/55">{leave.reason}</p></article>;
 }
 
 function ProfileRow({ label, value }: { label: string; value?: string }) {
-  return <div className="flex items-center justify-between gap-4 py-3"><span className="text-white/40">{label}</span><span className="text-right font-medium text-white/75">{value || "—"}</span></div>;
+  return <div className="flex items-center justify-between gap-4 py-3"><span className="text-white/40">{label}</span><span className="text-right font-medium text-white/75">{value || "â€”"}</span></div>;
 }
+
