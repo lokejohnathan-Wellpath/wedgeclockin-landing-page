@@ -64,6 +64,15 @@ function malaysiaMonthKey(value: Date | string = new Date()) {
   return malaysiaDateKey(value).slice(0, 7);
 }
 
+function currentMalaysiaMonthDates() {
+  const key = malaysiaDateKey();
+  const [year, month] = key.split("-").map(Number);
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return Array.from({ length: daysInMonth }, (_, index) =>
+    `${year}-${String(month).padStart(2, "0")}-${String(index + 1).padStart(2, "0")}`,
+  );
+}
+
 function malaysiaLocalInput(value: string | null) {
   if (!value) return "";
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -199,8 +208,12 @@ export default function ManagerAttendancePage() {
       const history = (Array.isArray(data) ? data : []) as AttendanceHistoryRow[];
       const monthRows = history
         .filter((record) => !record.voidedAt)
-        .filter((record) => malaysiaMonthKey(record.date || record.clockIn || "") === month)
-        .sort((a, b) => malaysiaDateKey(a.date || a.clockIn || "").localeCompare(malaysiaDateKey(b.date || b.clockIn || "")));
+        .filter((record) => malaysiaMonthKey(record.date || record.clockIn || "") === month);
+
+      const recordByDate = new Map(
+        monthRows.map((record) => [malaysiaDateKey(record.date || record.clockIn || ""), record]),
+      );
+      const calendarDates = currentMalaysiaMonthDates();
 
       const presentDays = monthRows.filter((record) => Boolean(record.clockIn)).length;
       const lateDays = monthRows.filter((record) => Number(record.lateMinutes || 0) > 0).length;
@@ -222,20 +235,27 @@ export default function ManagerAttendancePage() {
           ["Total OT Minutes", totalOtMinutes],
           [],
           ["Date", "Clock In", "Rest Out", "Rest In", "Clock Out", "GPS", "Roster Start", "Roster End", "Late Minutes", "OT Minutes", "OT Status", "Source"],
-          ...monthRows.map((record) => [
-            malaysiaDateKey(record.date || record.clockIn || ""),
-            formatMalaysiaTime(record.clockIn),
-            formatMalaysiaTime(record.restOut),
-            formatMalaysiaTime(record.restIn),
-            formatMalaysiaTime(record.clockOut),
-            record.clockInLatitude && record.clockInLongitude ? "Recorded" : "Not recorded",
-            formatMalaysiaTime(record.scheduledStart),
-            formatMalaysiaTime(record.scheduledEnd),
-            Number(record.lateMinutes || 0),
-            Number(record.overtimeMinutes || 0),
-            record.overtimeStatus || "none",
-            sourceLabel(record.source),
-          ]),
+          ...calendarDates.map((date) => {
+            const record = recordByDate.get(date);
+            return [
+              date,
+              record ? formatMalaysiaTime(record.clockIn) : "—",
+              record ? formatMalaysiaTime(record.restOut) : "—",
+              record ? formatMalaysiaTime(record.restIn) : "—",
+              record ? formatMalaysiaTime(record.clockOut) : "—",
+              record
+                ? record.clockInLatitude && record.clockInLongitude
+                  ? "Recorded"
+                  : "Not recorded"
+                : "—",
+              record ? formatMalaysiaTime(record.scheduledStart) : "—",
+              record ? formatMalaysiaTime(record.scheduledEnd) : "—",
+              record ? Number(record.lateMinutes || 0) : 0,
+              record ? Number(record.overtimeMinutes || 0) : 0,
+              record ? record.overtimeStatus || "none" : "—",
+              record ? sourceLabel(record.source) : "—",
+            ];
+          }),
         ],
       );
     } catch (exportError) {
@@ -297,9 +317,10 @@ export default function ManagerAttendancePage() {
             <h1 className="mt-2 text-4xl font-bold text-[#f0dfbd]">Live Attendance</h1>
             <p className="mt-2 text-white/55">View today&apos;s face clock-in, rest and clock-out status. Individual Excel reports cover the current calendar month.</p>
           </div>
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <button type="button" onClick={loadAttendance} className="rounded-full border border-[#d4ad63]/50 px-6 py-3 font-semibold text-[#f0dfbd] hover:bg-white/5">Refresh</button>
-            <button type="button" onClick={() => router.push("/manager-dashboard")} className="rounded-full border border-white/15 px-6 py-3 font-semibold text-white/70 hover:bg-white/5">Back</button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button type="button" onClick={() => router.push("/manager-dashboard/ot-limits")} className="h-10 rounded-full bg-[#d4ad63] px-4 text-sm font-bold text-[#101416] transition hover:bg-[#e2be73]">OT Limits</button>
+            <button type="button" onClick={loadAttendance} className="h-10 rounded-full border border-[#d4ad63]/50 px-4 text-sm font-semibold text-[#f0dfbd] hover:bg-white/5">Refresh</button>
+            <button type="button" onClick={() => router.push("/manager-dashboard")} className="h-10 rounded-full border border-white/15 px-4 text-sm font-semibold text-white/70 hover:bg-white/5">Back</button>
           </div>
         </div>
 
@@ -334,7 +355,7 @@ export default function ManagerAttendancePage() {
                 <thead className="border-b border-white/10 text-white/45">
                   <tr>
                     {["Employee","Department","Face","Clock In","Rest Out","Rest In","Clock Out","GPS","Roster / Late","OT","Status","Source"].map((head) => <th key={head} className="px-3 py-4 whitespace-nowrap">{head}</th>)}
-                    <th className="sticky right-0 z-10 w-[132px] bg-[#1e2428] px-3 py-4 text-center">Action</th>
+                    <th className="sticky right-0 z-10 w-[116px] bg-[#1e2428] px-3 py-4 text-center">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -356,12 +377,12 @@ export default function ManagerAttendancePage() {
                       </td>
                       <td className="px-3 py-4"><span className={badge(row.todayStatus)}>{row.todayStatus}</span></td>
                       <td className="px-3 py-4 whitespace-nowrap text-xs text-white/50">{sourceLabel(row.attendanceSource)}</td>
-                      <td className="sticky right-0 w-[132px] bg-[#1e2428] px-3 py-4 shadow-[-12px_0_18px_-16px_rgba(0,0,0,0.95)]">
-                        <div className="flex flex-col items-center gap-2">
-                          <button type="button" onClick={() => void exportEmployeeAttendance(row)} disabled={exportingEmployeeId === row.employeeId} className="h-9 w-28 rounded-full bg-[#d4ad63] px-3 text-xs font-bold text-[#101416] transition hover:bg-[#e2be73] disabled:opacity-50">
+                      <td className="sticky right-0 w-[116px] bg-[#1e2428] px-3 py-4 shadow-[-12px_0_18px_-16px_rgba(0,0,0,0.95)]">
+                        <div className="flex flex-col items-center gap-1.5">
+                          <button type="button" onClick={() => void exportEmployeeAttendance(row)} disabled={exportingEmployeeId === row.employeeId} className="h-8 w-24 rounded-full bg-[#d4ad63] px-3 text-xs font-bold text-[#101416] transition hover:bg-[#e2be73] disabled:opacity-50">
                             {exportingEmployeeId === row.employeeId ? "Preparing…" : "Excel Report"}
                           </button>
-                          <button type="button" onClick={() => openCorrection(row)} aria-label={`Manage attendance for ${row.employeeName}`} title={row.clockIn ? "Edit or delete attendance" : "Add missing attendance"} className="inline-flex h-9 w-28 items-center justify-center gap-1.5 rounded-full border border-[#d4ad63]/45 px-3 text-xs font-semibold text-[#e5c584] transition hover:bg-[#d4ad63]/10">
+                          <button type="button" onClick={() => openCorrection(row)} aria-label={`Manage attendance for ${row.employeeName}`} title={row.clockIn ? "Edit or delete attendance" : "Add missing attendance"} className="inline-flex h-8 w-24 items-center justify-center gap-1.5 rounded-full border border-[#d4ad63]/45 px-3 text-xs font-semibold text-[#e5c584] transition hover:bg-[#d4ad63]/10">
                             <AttendanceActionIcon hasAttendance={Boolean(row.clockIn)} />Manage
                           </button>
                         </div>
