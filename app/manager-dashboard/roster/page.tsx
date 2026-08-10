@@ -57,6 +57,17 @@ type OvertimeDecisionPayload = {
   capOverride?: boolean;
 };
 
+type OtRatioPolicy = {
+  normalRatio: number;
+  gazettedPublicHolidayRatio: number;
+};
+
+type HolidayDate = {
+  date: string;
+  name: string;
+  type: string;
+};
+
 const dayNames = [
   "Monday",
   "Tuesday",
@@ -134,6 +145,14 @@ export default function DutyRosterPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  // WEDGE_V48_OT_RATIO_POLICY
+  const [ratioPolicy, setRatioPolicy] = useState<OtRatioPolicy>({
+    normalRatio: 1.5,
+    gazettedPublicHolidayRatio: 3.0,
+  });
+  const [holidayDates, setHolidayDates] = useState<HolidayDate[]>([]);
+  const [showRatioPolicy, setShowRatioPolicy] = useState(false);
+  const [policySaving, setPolicySaving] = useState(false);
 
   const dates = useMemo(
     () => dayNames.map((_, index) => dateKey(addDays(weekStart, index))),
@@ -157,7 +176,8 @@ export default function DutyRosterPage() {
     setError("");
     try {
       const headers = { Authorization: `Bearer ${token}` };
-      const [employeeResponse, rosterResponse] = await Promise.all([
+      const policyYear = weekStart.getFullYear();
+      const [employeeResponse, rosterResponse, policyResponse] = await Promise.all([
         fetch(`${api}/api/manager/employees`, { headers }),
         fetch(
           `${api}/api/manager/duty-roster?weekStart=${encodeURIComponent(
@@ -165,9 +185,11 @@ export default function DutyRosterPage() {
           )}`,
           { headers }
         ),
+        fetch(`${api}/api/manager/overtime-ratio-policy?year=${policyYear}`, { headers }),
       ]);
       const employeeData = await employeeResponse.json();
       const rosterData = await rosterResponse.json();
+      const policyData = await policyResponse.json();
       if (!employeeResponse.ok) {
         throw new Error(employeeData?.message || "Employees could not be loaded.");
       }
@@ -177,6 +199,14 @@ export default function DutyRosterPage() {
             "Duty roster API is not deployed yet. Deploy the matching WedgeCLOCKin API update."
         );
       }
+      if (!policyResponse.ok) {
+        throw new Error(policyData?.message || "Default OT ratio policy could not be loaded.");
+      }
+      setRatioPolicy({
+        normalRatio: Number(policyData?.policy?.normalRatio || 1.5),
+        gazettedPublicHolidayRatio: Number(policyData?.policy?.gazettedPublicHolidayRatio || 3.0),
+      });
+      setHolidayDates(Array.isArray(policyData?.holidays) ? policyData.holidays : []);
 
       const activeEmployees = (employeeData.employees || []).filter(
         (employee: Employee) => employee.isActive !== false
@@ -259,6 +289,33 @@ export default function DutyRosterPage() {
     }
   }
 
+  async function saveRatioPolicy() {
+    const token = localStorage.getItem("wc_manager_token");
+    const api = process.env.NEXT_PUBLIC_API_BASE_URL;
+    if (!token || !api) return;
+    setPolicySaving(true);
+    setError("");
+    try {
+      const response = await fetch(`${api}/api/manager/overtime-ratio-policy`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify(ratioPolicy),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.message || "Default OT ratio policy could not be saved.");
+      setRatioPolicy({
+        normalRatio: Number(data.policy.normalRatio),
+        gazettedPublicHolidayRatio: Number(data.policy.gazettedPublicHolidayRatio),
+      });
+      setMessage("Default OT ratio policy saved.");
+      setShowRatioPolicy(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Default OT ratio policy could not be saved.");
+    } finally {
+      setPolicySaving(false);
+    }
+  }
+
   async function decideOvertime(id: string, decision: "approved" | "rejected", allocation?: OvertimeDecisionPayload) {
     const token = localStorage.getItem("wc_manager_token");
     const api = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -333,13 +390,44 @@ export default function DutyRosterPage() {
               until a manager approves or rejects it.
             </p>
           </div>
-          <button
-            onClick={() => router.push("/manager-dashboard")}
-            className="rounded-full border border-[#d4ad63]/50 px-6 py-3 font-semibold text-[#f0dfbd]"
-          >
-            Back to Dashboard
-          </button>
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => setShowRatioPolicy((current) => !current)}
+              className="rounded-full bg-[#d4ad63] px-6 py-3 font-bold text-[#101416]"
+            >
+              Default OT Ratio Policy
+            </button>
+            <button
+              onClick={() => router.push("/manager-dashboard")}
+              className="rounded-full border border-[#d4ad63]/50 px-6 py-3 font-semibold text-[#f0dfbd]"
+            >
+              Back to Dashboard
+            </button>
+          </div>
         </header>
+
+        {showRatioPolicy && (
+          <section className="mt-7 rounded-[2rem] border border-[#d4ad63]/35 bg-[#1e2428] p-6">
+            <p className="text-sm tracking-[0.25em] text-[#d4ad63]">COMPANY DEFAULT</p>
+            <h2 className="mt-2 text-2xl font-bold text-[#f0dfbd]">Default OT Ratio Policy</h2>
+            <p className="mt-2 text-sm text-white/45">Two defaults only. Pending OT auto-fills from the Malaysian holiday calendar, while an individual request can still be overridden by the manager.</p>
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              <label className="rounded-2xl border border-white/10 bg-black/10 p-5 text-sm text-white/60">
+                <span className="font-semibold text-[#f0dfbd]">Normal Day</span>
+                <input type="number" min="0.01" max="10" step="0.01" value={ratioPolicy.normalRatio} onChange={(event) => setRatioPolicy((current) => ({ ...current, normalRatio: Number(event.target.value) }))} className="mt-3 w-full rounded-xl border border-white/10 bg-[#101416] px-4 py-3 text-lg font-bold text-white" />
+              </label>
+              <label className="rounded-2xl border border-white/10 bg-black/10 p-5 text-sm text-white/60">
+                <span className="font-semibold text-[#f0dfbd]">Gazetted Public Holiday</span>
+                <input type="number" min="0.01" max="10" step="0.01" value={ratioPolicy.gazettedPublicHolidayRatio} onChange={(event) => setRatioPolicy((current) => ({ ...current, gazettedPublicHolidayRatio: Number(event.target.value) }))} className="mt-3 w-full rounded-xl border border-white/10 bg-[#101416] px-4 py-3 text-lg font-bold text-white" />
+              </label>
+            </div>
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs text-white/40">Calendar classification is a convenience safeguard. Gazettes and manager review remain authoritative.</p>
+              <button type="button" disabled={policySaving} onClick={() => void saveRatioPolicy()} className="rounded-full bg-[#d4ad63] px-6 py-3 font-bold text-[#101416] disabled:opacity-40">{policySaving ? "Saving..." : "Save Default Policy"}</button>
+            </div>
+          </section>
+        )}
 
         <section className="mt-7 rounded-[2rem] border border-[#d4ad63]/25 bg-[#1e2428] p-6">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
@@ -535,7 +623,7 @@ export default function DutyRosterPage() {
               </p>
             ) : (
               overtime.map((request) => (
-                <OvertimeDecisionCard key={request.id} request={request} onDecision={decideOvertime} />
+                <OvertimeDecisionCard key={request.id} request={request} ratioPolicy={ratioPolicy} holidayDates={holidayDates} onDecision={decideOvertime} />
               ))
             )}
           </div>
@@ -560,12 +648,15 @@ export default function DutyRosterPage() {
   );
 }
 
-function OvertimeDecisionCard({ request, onDecision }: { request: OvertimeRequest; onDecision: (id: string, decision: "approved" | "rejected", allocation?: OvertimeDecisionPayload) => Promise<void> }) {
+function OvertimeDecisionCard({ request, ratioPolicy, holidayDates, onDecision }: { request: OvertimeRequest; ratioPolicy: OtRatioPolicy; holidayDates: HolidayDate[]; onDecision: (id: string, decision: "approved" | "rejected", allocation?: OvertimeDecisionPayload) => Promise<void> }) {
   const detectedHours = request.minutes / 60;
-  const [ratio, setRatio] = useState(String(request.ratio || 1.5));
+  const detectedHoliday = holidayDates.find((holiday) => holiday.date === request.date);
+  const initialCategory = detectedHoliday ? "public-holiday" : (request.category || "normal");
+  const defaultRatio = initialCategory === "public-holiday" ? ratioPolicy.gazettedPublicHolidayRatio : ratioPolicy.normalRatio;
+  const [ratio, setRatio] = useState(String(request.status === "approved" && request.ratio ? request.ratio : defaultRatio));
   const [payableHours, setPayableHours] = useState(String(request.payableMinutes ? request.payableMinutes / 60 : detectedHours));
   const [replacementHours, setReplacementHours] = useState(String((request.replacementMinutes || 0) / 60));
-  const [category, setCategory] = useState(request.category || "normal");
+  const [category, setCategory] = useState(initialCategory);
   const [managerNote, setManagerNote] = useState(request.managerNote || "");
   const [capOverride, setCapOverride] = useState(false);
   const [localError, setLocalError] = useState("");
@@ -596,14 +687,14 @@ function OvertimeDecisionCard({ request, onDecision }: { request: OvertimeReques
   }
 
   return <article className="rounded-2xl border border-white/10 bg-black/10 p-5">
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><p className="font-semibold text-[#f0dfbd]">{request.employeeName}</p><p className="mt-1 text-sm text-white/50">{malaysiaDate(request.date)} · {detectedHours.toFixed(2)} detected hours</p>{request.reason && <p className="mt-2 text-xs text-white/40">Staff reason: {request.reason}</p>}</div><span className={`rounded-full px-4 py-2 text-xs font-semibold ${request.status === "approved" ? "bg-emerald-500/10 text-emerald-200" : request.status === "rejected" ? "bg-red-500/10 text-red-200" : request.status === "detected" ? "bg-sky-500/10 text-sky-200" : "bg-amber-500/10 text-amber-200"}`}>{request.status}</span></div>
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><p className="font-semibold text-[#f0dfbd]">{request.employeeName}</p><p className="mt-1 text-sm text-white/50">{malaysiaDate(request.date)} · {detectedHours.toFixed(2)} detected hours</p>{detectedHoliday && <p className="mt-2 inline-flex rounded-full border border-[#d4ad63]/30 bg-[#d4ad63]/10 px-3 py-1 text-xs font-semibold text-[#f0dfbd]">Gazetted holiday detected: {detectedHoliday.name}</p>}{request.reason && <p className="mt-2 text-xs text-white/40">Staff reason: {request.reason}</p>}</div><span className={`rounded-full px-4 py-2 text-xs font-semibold ${request.status === "approved" ? "bg-emerald-500/10 text-emerald-200" : request.status === "rejected" ? "bg-red-500/10 text-red-200" : request.status === "detected" ? "bg-sky-500/10 text-sky-200" : "bg-amber-500/10 text-amber-200"}`}>{request.status}</span></div>
     {request.status === "pending" && <div className="mt-4 space-y-4 border-t border-white/8 pt-4">
       {capHours != null && <div className="rounded-xl border border-amber-400/25 bg-amber-500/10 p-4 text-sm text-amber-100"><div className="flex flex-wrap items-center justify-between gap-2"><span>Monthly payable OT: <b>{usedPayableHours.toFixed(2)} / {capHours.toFixed(2)}h</b></span><span>{Number(remainingPayableHours || 0).toFixed(2)}h remaining</span></div>{Number(remainingPayableHours || 0) < detectedHours && <button type="button" onClick={() => { const within = Math.max(0, Number(remainingPayableHours || 0)); setPayableHours(within.toFixed(2)); setReplacementHours(Math.max(0, detectedHours - within).toFixed(2)); setCapOverride(false); setLocalError(""); }} className="mt-3 rounded-full border border-amber-300/35 px-4 py-2 text-xs font-bold">Use remaining cap + park excess as replacement</button>}</div>}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <MiniField label="OT ratio" value={ratio} onChange={setRatio} />
         <MiniField label="Pay through payroll (hours)" value={payableHours} onChange={setPayableHours} />
         <MiniField label="Transfer actual hours" value={replacementHours} onChange={setReplacementHours} />
-        <label className="text-xs text-white/50">Category<select value={category} onChange={(event) => setCategory(event.target.value)} className="mt-2 w-full rounded-xl border border-white/10 bg-[#101416] px-3 py-2 text-white"><option value="normal">Normal day</option><option value="rest-day">Rest day</option><option value="public-holiday">Public holiday</option><option value="custom">Custom</option></select></label>
+        <label className="text-xs text-white/50">Category<select value={category} onChange={(event) => { const next = event.target.value; setCategory(next); setRatio(String(next === "public-holiday" ? ratioPolicy.gazettedPublicHolidayRatio : ratioPolicy.normalRatio)); }} className="mt-2 w-full rounded-xl border border-white/10 bg-[#101416] px-3 py-2 text-white"><option value="normal">Normal day</option><option value="public-holiday">Gazetted Public Holiday</option></select></label>
       </div>
       <textarea value={managerNote} onChange={(event) => setManagerNote(event.target.value)} rows={2} maxLength={500} placeholder="Manager allocation note" className="w-full rounded-xl border border-white/10 bg-[#101416] px-4 py-3 text-sm outline-none focus:border-[#d4ad63]" />
       {remainingPayableHours != null && Number(payableHours || 0) > remainingPayableHours + 0.001 && <label className="flex items-start gap-3 rounded-xl border border-red-400/30 bg-red-500/10 p-4 text-sm text-red-100"><input type="checkbox" checked={capOverride} onChange={(event) => setCapOverride(event.target.checked)} className="mt-1 accent-[#d4ad63]" /><span><b>Manager override:</b> approve payable OT above the employee monthly maximum. A manager reason is required and the employee Time Balance will show that the cap was exceeded.</span></label>}
