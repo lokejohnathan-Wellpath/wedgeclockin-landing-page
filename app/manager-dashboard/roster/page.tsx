@@ -103,11 +103,14 @@ function shiftKey(employeeId: string, date: string) {
   return `${employeeId}:${date}`;
 }
 
-function defaultShift(employeeId: string, date: string, dayIndex: number): Shift {
+// WEDGE_V414_ADJUSTABLE_OFF_DAYS:
+function defaultShift(employeeId: string, date: string, _dayIndex: number): Shift {
   return {
     employeeId,
     date,
-    isWorkingDay: dayIndex < 5,
+    // Do not assume Monday-Friday work or Saturday/Sunday rest.
+    // Every employee/day is explicitly controlled by the manager.
+    isWorkingDay: false,
     startTime: "09:00",
     endTime: "18:00",
     breakMinutes: 60,
@@ -459,9 +462,10 @@ export default function DutyRosterPage() {
             </div>
           </div>
           <p className="mt-4 text-xs leading-5 text-white/40">
-            Malaysian safeguard: the dashboard highlights rosters above 45 scheduled
-            hours per week. Actual entitlement and OT rates still follow the employee&apos;s
-            contract and applicable law; approval creates the payable OT record.
+            No weekday or weekend is assumed as an off day. Set each employee&apos;s
+            Working Day / Off Day individually, then save the weekly roster. The dashboard
+            highlights rosters above 45 scheduled hours per week; actual entitlement and
+            OT rates still follow the employee&apos;s contract and applicable law.
           </p>
         </section>
 
@@ -506,7 +510,7 @@ export default function DutyRosterPage() {
                 <thead className="border-b border-white/10 text-white/45">
                   <tr>
                     <th className="px-5 py-4">Employee</th>
-                    <th className="px-5 py-4">Working day</th>
+                    <th className="px-5 py-4">Day status</th>
                     <th className="px-5 py-4">Start</th>
                     <th className="px-5 py-4">End</th>
                     <th className="px-5 py-4">Unpaid break</th>
@@ -527,19 +531,21 @@ export default function DutyRosterPage() {
                           </p>
                         </td>
                         <td className="px-5 py-4">
-                          <label className="inline-flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={shift.isWorkingDay}
-                              onChange={(event) =>
-                                updateShift(employee.id, selectedDate, {
-                                  isWorkingDay: event.target.checked,
-                                })
-                              }
-                              className="accent-[#d4ad63]"
-                            />
-                            {shift.isWorkingDay ? "Scheduled" : "Rest day"}
-                          </label>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateShift(employee.id, selectedDate, {
+                                isWorkingDay: !shift.isWorkingDay,
+                              })
+                            }
+                            className={`rounded-full border px-4 py-2 text-xs font-bold transition ${
+                              shift.isWorkingDay
+                                ? "border-[#d4ad63] bg-[#d4ad63] text-[#101416]"
+                                : "border-white/15 bg-white/5 text-white/65"
+                            }`}
+                          >
+                            {shift.isWorkingDay ? "Working Day" : "Off Day"}
+                          </button>
                         </td>
                         <td className="px-5 py-4">
                           <input
