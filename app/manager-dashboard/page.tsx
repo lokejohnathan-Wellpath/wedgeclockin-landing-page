@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   clearManagerSession,
   expireManagerSession,
@@ -17,12 +17,25 @@ type DashboardStats = {
 };
 
 type AttendanceRecord = {
-  id: string;
+  id?: string;
+  employeeId: string;
   employeeName: string;
   clockIn: string | null;
   restOut: string | null;
   restIn: string | null;
   clockOut: string | null;
+  lateMinutes?: number;
+  todayStatus?: string;
+};
+
+type LeaveItem = {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  leaveType: string;
+  startDate: string;
+  endDate: string;
+  status: string;
 };
 
 type ModuleCard = {
@@ -84,6 +97,18 @@ const modules: ModuleCard[] = [
   },
 ];
 
+// WEDGE_V412_LIVE_STATUS: manager dashboard shows real-time leave, absence and late warnings.
+function malaysiaDateKey(value: Date | string = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kuala_Lumpur",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
 function formatMalaysiaTime(value: string | null) {
   if (!value) return "—";
 
@@ -109,6 +134,7 @@ export default function ManagerDashboardPage() {
   const [companyName, setCompanyName] = useState("");
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
+  const [leaves, setLeaves] = useState<LeaveItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -134,22 +160,28 @@ export default function ManagerDashboardPage() {
       }
 
       try {
-        const response = await fetch(`${apiBaseUrl}/api/manager/dashboard`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
+        const headers = { Authorization: `Bearer ${token}` };
+        const [dashboardResponse, attendanceResponse, leaveResponse] = await Promise.all([
+          fetch(`${apiBaseUrl}/api/manager/dashboard`, { headers, cache: "no-store" }),
+          fetch(`${apiBaseUrl}/api/manager/attendance`, { headers, cache: "no-store" }),
+          fetch(`${apiBaseUrl}/api/manager/leaves`, { headers, cache: "no-store" }),
+        ]);
 
-        const data = await response.json();
+        const [dashboardData, attendanceData, leaveData] = await Promise.all([
+          dashboardResponse.json(),
+          attendanceResponse.json(),
+          leaveResponse.json(),
+        ]);
 
-        if (expireManagerSession(response)) return;
+        if (expireManagerSession(dashboardResponse)) return;
 
-        if (!response.ok) {
-          throw new Error(data?.message || "Dashboard could not be loaded.");
+        if (!dashboardResponse.ok || !attendanceResponse.ok || !leaveResponse.ok) {
+          throw new Error(dashboardData?.message || "Dashboard could not be loaded.");
         }
 
-        setStats(data.stats);
-        setAttendance(data.attendance || []);
+        setStats(dashboardData.stats);
+        setAttendance(attendanceData.attendance || []);
+        setLeaves(leaveData.leaves || []);
       } catch {
         setError("Dashboard could not be loaded.");
       } finally {
@@ -157,7 +189,12 @@ export default function ManagerDashboardPage() {
       }
     }
 
-    loadDashboard();
+    void loadDashboard();
+    const refreshTimer = window.setInterval(() => {
+      void loadDashboard();
+    }, 30000);
+
+    return () => window.clearInterval(refreshTimer);
   }, [router]);
 
   function handleLogout() {
@@ -170,15 +207,84 @@ export default function ManagerDashboardPage() {
   }
 
   const companyDisplayName = companyName || companyCode || "Company";
+  const todayKey = malaysiaDateKey();
+
+  const approvedLeaveByEmployee = useMemo(() => {
+    const map = new Map<string, LeaveItem>();
+    for (const leave of leaves) {
+      if (String(leave.status || "").toLowerCase() !== "approved") continue;
+      const start = malaysiaDateKey(leave.startDate);
+      const end = malaysiaDateKey(leave.endDate);
+      if (!start || !end || todayKey < start || todayKey > end) continue;
+      if (!map.has(leave.employeeId)) map.set(leave.employeeId, leave);
+    }
+    return map;
+  }, [leaves, todayKey]);
+
+  const liveStats = useMemo(() => {
+    const present = attendance.filter((row) => Boolean(row.clockIn)).length;
+    const onLeave = attendance.filter(
+      (row) =>
+        !row.clockIn &&
+        (approvedLeaveByEmployee.has(row.employeeId) ||
+          row.todayStatus === "On Leave" ||
+          row.todayStatus === "Approved Leave"),
+    ).length;
+    const absent = attendance.filter(
+      (row) =>
+        !row.clockIn &&
+        !approvedLeaveByEmployee.has(row.employeeId) &&
+        row.todayStatus === "Absent",
+    ).length;
+
+    return {
+      employees: stats?.employees ?? attendance.length,
+      present,
+      onLeave,
+      absent,
+      faceRegistered: stats?.faceRegistered ?? "—",
+      pendingFace: stats?.pendingFace ?? "—",
+    };
+  }, [attendance, approvedLeaveByEmployee, stats]);
 
   const statCards = [
-    ["Employees", stats?.employees ?? "—"],
-    ["Present", stats?.present ?? "—"],
-    ["On Leave", stats?.onLeave ?? "—"],
-    ["Absent", stats?.absent ?? "—"],
-    ["Face Registered", stats?.faceRegistered ?? "—"],
-    ["Pending Face", stats?.pendingFace ?? "—"],
+    { label: "Employees", value: liveStats.employees, href: "/manager-dashboard/employees" },
+    { label: "Present", value: liveStats.present, href: "/manager-dashboard/attendance" },
+    { label: "On Leave", value: liveStats.onLeave, href: "/manager-dashboard/leaves", pulse: liveStats.onLeave > 0 },
+    { label: "Absent", value: liveStats.absent, href: "/manager-dashboard/attendance", pulse: liveStats.absent > 0 },
+    { label: "Face Registered", value: liveStats.faceRegistered, href: "/manager-dashboard/faces" },
+    { label: "Pending Face", value: liveStats.pendingFace, href: "/manager-dashboard/faces" },
   ];
+
+  function liveStatus(record: AttendanceRecord) {
+    const approvedLeave = approvedLeaveByEmployee.get(record.employeeId);
+    if (!record.clockIn && approvedLeave) {
+      return {
+        text: approvedLeave.leaveType || "Approved Leave",
+        className: "animate-pulse border-purple-400/50 bg-purple-500/15 text-purple-100",
+      };
+    }
+
+    const lateMinutes = Math.max(0, Math.floor(Number(record.lateMinutes || 0)));
+    if (record.clockIn && lateMinutes > 0) {
+      return {
+        text: `LATE • ${lateMinutes} min`,
+        className: "animate-pulse border-red-400/60 bg-red-500/15 text-red-100",
+      };
+    }
+
+    if (record.todayStatus === "Absent") {
+      return {
+        text: "ABSENT",
+        className: "border-red-400/50 bg-red-500/10 text-red-200",
+      };
+    }
+
+    return {
+      text: record.todayStatus || (record.clockIn ? "Present" : "—"),
+      className: "border-emerald-400/30 bg-emerald-500/10 text-emerald-100",
+    };
+  }
 
   return (
     <main className="min-h-screen bg-[#101416] text-[#f4efe6]">
@@ -267,14 +373,17 @@ export default function ManagerDashboardPage() {
         </section>
 
         <div className="mt-8 grid gap-4 md:grid-cols-3 xl:grid-cols-6">
-          {statCards.map(([label, value]) => (
-            <div
-              key={label}
-              className="rounded-2xl border border-[#d4ad63]/25 bg-white/5 p-5"
+          {statCards.map((card) => (
+            <button
+              key={card.label}
+              type="button"
+              onClick={() => router.push(card.href)}
+              className={`rounded-2xl border border-[#d4ad63]/25 bg-white/5 p-5 text-left transition hover:border-[#d4ad63]/60 hover:bg-white/10 ${card.pulse ? "animate-pulse" : ""}`}
             >
-              <p className="text-sm text-white/45">{label}</p>
-              <p className="mt-2 text-3xl font-bold text-[#d4ad63]">{value}</p>
-            </div>
+              <p className="text-sm text-white/45">{card.label}</p>
+              <p className="mt-2 text-3xl font-bold text-[#d4ad63]">{card.value}</p>
+              <p className="mt-2 text-xs text-white/30">Open</p>
+            </button>
           ))}
         </div>
 
@@ -322,12 +431,15 @@ export default function ManagerDashboardPage() {
                         <th className="px-5 py-4">Rest Out</th>
                         <th className="px-5 py-4">Rest In</th>
                         <th className="px-5 py-4">Clock Out</th>
+                        <th className="px-5 py-4">Status</th>
                       </tr>
                     </thead>
 
                     <tbody>
-                      {attendance.map((record) => (
-                        <tr key={record.id} className="border-b border-white/5">
+                      {attendance.map((record) => {
+                        const status = liveStatus(record);
+                        return (
+                        <tr key={record.id || record.employeeId} className="border-b border-white/5">
                           <td className="px-5 py-4 text-[#f0dfbd]">
                             {record.employeeName}
                           </td>
@@ -347,8 +459,15 @@ export default function ManagerDashboardPage() {
                           <td className="px-5 py-4 text-white/60">
                             {formatMalaysiaTime(record.clockOut)}
                           </td>
+
+                          <td className="px-5 py-4">
+                            <span className={`inline-flex whitespace-nowrap rounded-full border px-3 py-1 text-xs font-bold ${status.className}`}>
+                              {status.text}
+                            </span>
+                          </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
