@@ -186,6 +186,8 @@ function issueDate(record: PayrollRecord) {
 export default function PayslipsPage() {
   const router = useRouter();
 
+  // WEDGE_V4102_LATEST_PAYSLIP
+  const [requestedPayrollId, setRequestedPayrollId] = useState("");
   const [month, setMonth] = useState(String(today.getMonth() + 1));
   const [year, setYear] = useState(String(today.getFullYear()));
   const [records, setRecords] = useState<PayrollRecord[]>([]);
@@ -222,6 +224,25 @@ export default function PayslipsPage() {
     () => (selectedRecord ? calculatePayslip(selectedRecord) : null),
     [selectedRecord],
   );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    const linkedPayrollId = params.get("payrollId") || "";
+    const linkedMonth = Number(params.get("month"));
+    const linkedYear = Number(params.get("year"));
+
+    setRequestedPayrollId(linkedPayrollId);
+
+    if (Number.isInteger(linkedMonth) && linkedMonth >= 1 && linkedMonth <= 12) {
+      setMonth(String(linkedMonth));
+    }
+
+    if (Number.isInteger(linkedYear) && linkedYear >= 2020 && linkedYear <= 2100) {
+      setYear(String(linkedYear));
+    }
+  }, []);
 
   useEffect(() => {
     async function loadCompanyAndEmployees() {
@@ -368,12 +389,56 @@ export default function PayslipsPage() {
         const payrollRecords: PayrollRecord[] = Array.isArray(data) ? data : [];
         setRecords(payrollRecords);
 
-        setSelectedRecordId((current) =>
-          current &&
-          payrollRecords.some((record) => record.id === current)
-            ? current
-            : payrollRecords[0]?.id || "",
-        );
+        const issuedAdjustments = payrollRecords
+          .filter(
+            (record) =>
+              record.isAdjustment === true &&
+              record.status === "issued",
+          )
+          .sort((a, b) => {
+            const aTime = new Date(
+              a.adjustmentIssuedAt || a.updatedAt || a.createdAt || 0,
+            ).getTime();
+            const bTime = new Date(
+              b.adjustmentIssuedAt || b.updatedAt || b.createdAt || 0,
+            ).getTime();
+            return bTime - aTime;
+          });
+
+        const issuedOriginals = payrollRecords
+          .filter(
+            (record) =>
+              record.isAdjustment !== true &&
+              record.status === "issued",
+          )
+          .sort((a, b) => {
+            const aTime = new Date(a.updatedAt || a.createdAt || 0).getTime();
+            const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
+            return bTime - aTime;
+          });
+
+        setSelectedRecordId((current) => {
+          if (
+            requestedPayrollId &&
+            payrollRecords.some((record) => record.id === requestedPayrollId)
+          ) {
+            return requestedPayrollId;
+          }
+
+          if (
+            current &&
+            payrollRecords.some((record) => record.id === current)
+          ) {
+            return current;
+          }
+
+          return (
+            issuedAdjustments[0]?.id ||
+            issuedOriginals[0]?.id ||
+            payrollRecords[0]?.id ||
+            ""
+          );
+        });
       } catch (loadError) {
         setRecords([]);
         setSelectedRecordId("");
@@ -388,7 +453,7 @@ export default function PayslipsPage() {
     }
 
     loadPayslips();
-  }, [month, year, router]);
+  }, [month, year, requestedPayrollId, router]);
 
   function printPayslip() {
     if (selectedRecord) window.print();

@@ -225,6 +225,7 @@ export default function PayrollPage() {
   const [lockedIssuedPayroll, setLockedIssuedPayroll] = useState<PayrollRecord | null>(null);
   const [adjustmentReason, setAdjustmentReason] = useState("");
   const [activeAdjustmentId, setActiveAdjustmentId] = useState("");
+  const [latestIssuedPayslipId, setLatestIssuedPayslipId] = useState("");
 
   const selectedEmployee = useMemo(
     () => employees.find((employee) => employee.id === form.employeeId) ?? null,
@@ -419,6 +420,7 @@ export default function PayrollPage() {
 
   function updatePayrollPeriod(field: "month" | "year", value: string) {
     setActiveAdjustmentId("");
+    setLatestIssuedPayslipId("");
     setAdjustmentReason("");
     setLockedIssuedPayroll(null);
     setForm((current) => ({
@@ -434,6 +436,7 @@ export default function PayrollPage() {
 
   function handleEmployeeChange(employeeId: string) {
     setActiveAdjustmentId("");
+    setLatestIssuedPayslipId("");
     setAdjustmentReason("");
     setLockedIssuedPayroll(null);
     const employee = employees.find((item) => item.id === employeeId);
@@ -645,6 +648,7 @@ export default function PayrollPage() {
       );
 
       if (activeAdjustmentId && form.status === "issued") {
+        setLatestIssuedPayslipId(savedPayroll.id);
         setActiveAdjustmentId("");
       }
 
@@ -892,6 +896,32 @@ export default function PayrollPage() {
         {activeAdjustmentId ? (
           <div className="mt-6 rounded-2xl border border-[#d4ad63]/35 bg-[#d4ad63]/8 p-4 text-sm text-[#ead5aa]">
             <b>Adjustment mode.</b> Reason: {adjustmentReason}. The original issued payroll remains locked.
+          </div>
+        ) : null}
+
+        {latestIssuedPayslipId ? (
+          <div className="mt-6 flex flex-wrap items-center gap-3 rounded-2xl border border-emerald-400/30 bg-emerald-400/8 p-4">
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-emerald-200">Adjustment issued successfully.</p>
+              <p className="mt-1 text-sm text-white/55">
+                The latest adjusted payslip is ready. The original issued payslip remains in payroll history.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                router.push(
+                  `/manager-dashboard/payslips?payrollId=${encodeURIComponent(
+                    latestIssuedPayslipId,
+                  )}&month=${encodeURIComponent(form.month)}&year=${encodeURIComponent(
+                    form.year,
+                  )}`,
+                )
+              }
+              className="rounded-full bg-emerald-300 px-5 py-2.5 text-sm font-bold text-[#101416] transition hover:bg-emerald-200"
+            >
+              View Latest Payslip
+            </button>
           </div>
         ) : null}
 
