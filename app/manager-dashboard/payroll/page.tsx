@@ -68,6 +68,13 @@ type PayrollRecord = {
   otSource?: "manual" | "approved-roster";
   useApprovedRosterOt?: boolean;
   status?: PayrollStatus;
+  isAdjustment?: boolean;
+  adjustedFromPayrollId?: string;
+  adjustmentReason?: string;
+  adjustmentCreatedAt?: string;
+  adjustmentCreatedBy?: string;
+  adjustmentIssuedAt?: string;
+  adjustmentIssuedBy?: string;
   remarks: string;
   createdAt?: string;
   updatedAt?: string;
@@ -215,6 +222,9 @@ export default function PayrollPage() {
   const [message, setMessage] = useState("");
   const [approvedOtMessage, setApprovedOtMessage] = useState("");
   const [useApprovedRosterOt, setUseApprovedRosterOt] = useState(false);
+  const [lockedIssuedPayroll, setLockedIssuedPayroll] = useState<PayrollRecord | null>(null);
+  const [adjustmentReason, setAdjustmentReason] = useState("");
+  const [activeAdjustmentId, setActiveAdjustmentId] = useState("");
 
   const selectedEmployee = useMemo(
     () => employees.find((employee) => employee.id === form.employeeId) ?? null,
@@ -305,11 +315,59 @@ export default function PayrollPage() {
   }, [router]);
 
   useEffect(() => {
+    async function detectIssuedPayroll() {
+      const token = localStorage.getItem("wc_manager_token");
+      const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+      const month = Number(form.month);
+      const year = Number(form.year);
+
+      if (
+        activeAdjustmentId ||
+        !token ||
+        !apiBaseUrl ||
+        !form.employeeId ||
+        !Number.isInteger(month) ||
+        !Number.isInteger(year)
+      ) {
+        if (!activeAdjustmentId) setLockedIssuedPayroll(null);
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          `${apiBaseUrl}/api/payroll?employeeId=${encodeURIComponent(
+            form.employeeId,
+          )}&month=${month}&year=${year}`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        const data = await response.json();
+        if (!response.ok) return;
+
+        const rows: PayrollRecord[] = Array.isArray(data) ? data : [];
+        setLockedIssuedPayroll(
+          rows.find(
+            (record) => record.status === "issued" && record.isAdjustment !== true,
+          ) || null,
+        );
+      } catch {
+        // The normal payroll request remains the final server-side lock.
+      }
+    }
+
+    detectIssuedPayroll();
+  }, [form.employeeId, form.month, form.year, activeAdjustmentId]);
+
+  useEffect(() => {
     async function loadApprovedOvertime() {
       const token = localStorage.getItem("wc_manager_token");
       const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
       const month = Number(form.month);
       const year = Number(form.year);
+
+      if (activeAdjustmentId) {
+        setApprovedOtMessage("Adjustment mode: original attendance and OT snapshot is preserved unless you edit the adjustment.");
+        return;
+      }
 
       if (!token || !apiBaseUrl || !form.employeeId || !month || !year) {
         setApprovedOtMessage("");
@@ -348,7 +406,7 @@ export default function PayrollPage() {
     }
 
     loadApprovedOvertime();
-  }, [form.employeeId, form.month, form.year]);
+  }, [form.employeeId, form.month, form.year, activeAdjustmentId]);
 
   function updateField<K extends keyof PayrollForm>(
     field: K,
@@ -360,6 +418,9 @@ export default function PayrollPage() {
   }
 
   function updatePayrollPeriod(field: "month" | "year", value: string) {
+    setActiveAdjustmentId("");
+    setAdjustmentReason("");
+    setLockedIssuedPayroll(null);
     setForm((current) => ({
       ...current,
       [field]: value,
@@ -372,6 +433,9 @@ export default function PayrollPage() {
   }
 
   function handleEmployeeChange(employeeId: string) {
+    setActiveAdjustmentId("");
+    setAdjustmentReason("");
+    setLockedIssuedPayroll(null);
     const employee = employees.find((item) => item.id === employeeId);
     const defaults = employee?.payrollDefaults;
 
@@ -442,36 +506,6 @@ export default function PayrollPage() {
     return "";
   }
 
-  async function saveEmployeePayrollLabels(employee: Employee) {
-    const token = localStorage.getItem("wc_manager_token");
-    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
-    if (!token || !apiBaseUrl) return;
-
-    const response = await fetch(
-      `${apiBaseUrl}/api/manager/employees/${encodeURIComponent(employee.id)}/payroll-defaults`,
-      {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          payrollDefaults: {
-            allowanceALabel: cleanLabel(form.allowanceALabel, "Allowance A"),
-            allowanceBLabel: cleanLabel(form.allowanceBLabel, "Allowance B"),
-            allowanceCLabel: cleanLabel(form.allowanceCLabel, "Allowance C"),
-            skbbkEnabled: form.skbbkEnabled,
-          },
-        }),
-      },
-    );
-
-    if (!response.ok) {
-      const data = await response.json().catch(() => null);
-      throw new Error(data?.message || "Employee allowance labels could not be saved.");
-    }
-  }
-
   async function generatePayroll(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const validationError = validateForm();
@@ -498,6 +532,13 @@ export default function PayrollPage() {
 
     if (!selectedEmployee) {
       setError("The selected employee could not be found.");
+      return;
+    }
+
+    if (lockedIssuedPayroll && !activeAdjustmentId) {
+      setError(
+        "This payroll has already been issued and cannot be edited. Create an adjustment if a correction is required.",
+      );
       return;
     }
 
@@ -542,6 +583,7 @@ export default function PayrollPage() {
       otherDeduction: parseAmount(form.otherDeduction),
       otHours: parseAmount(form.otHours),
       otRate: parseAmount(form.otRate),
+      otPay: calculations.otAmount,
       status: form.status,
       remarks: form.remarks.trim(),
       useApprovedRosterOt,
@@ -552,10 +594,12 @@ export default function PayrollPage() {
     setMessage("");
 
     try {
-      await saveEmployeePayrollLabels(selectedEmployee);
+      const endpoint = activeAdjustmentId
+        ? `${apiBaseUrl}/api/payroll/adjustments/${encodeURIComponent(activeAdjustmentId)}`
+        : `${apiBaseUrl}/api/payroll`;
 
-      const response = await fetch(`${apiBaseUrl}/api/payroll`, {
-        method: "POST",
+      const response = await fetch(endpoint, {
+        method: activeAdjustmentId ? "PUT" : "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
@@ -568,16 +612,137 @@ export default function PayrollPage() {
         throw new Error(data?.message || "Payroll could not be generated.");
       }
 
-      const savedCalculation = calculatePayroll(data.payroll as PayrollRecord);
+      const savedPayroll = data.payroll as PayrollRecord;
+      const savedCalculation = calculatePayroll(savedPayroll);
+
+      if (!activeAdjustmentId) {
+        setEmployees((current) =>
+          current.map((employee) =>
+            employee.id === selectedEmployee.id
+              ? {
+                  ...employee,
+                  payrollDefaults: {
+                    ...employee.payrollDefaults,
+                    basicSalary: parseAmount(form.basicSalary),
+                    allowanceALabel: cleanLabel(form.allowanceALabel, "Allowance A"),
+                    allowanceAAmount: parseAmount(form.allowanceA),
+                    allowanceBLabel: cleanLabel(form.allowanceBLabel, "Allowance B"),
+                    allowanceBAmount: parseAmount(form.allowanceB),
+                    allowanceCLabel: cleanLabel(form.allowanceCLabel, "Allowance C"),
+                    allowanceCAmount: parseAmount(form.allowanceC),
+                    skbbkEnabled: form.skbbkEnabled,
+                  },
+                }
+              : employee,
+          ),
+        );
+      }
+
       setMessage(
-        `${form.status === "issued" ? "Issued" : "Draft"} payroll synchronised successfully. Net Pay: ${money(savedCalculation.netPay)}`,
+        activeAdjustmentId
+          ? `${form.status === "issued" ? "Issued" : "Draft"} adjustment saved successfully. Net Pay: ${money(savedCalculation.netPay)}`
+          : `${form.status === "issued" ? "Issued" : "Draft"} payroll synchronised successfully. Net Pay: ${money(savedCalculation.netPay)}`,
       );
+
+      if (activeAdjustmentId && form.status === "issued") {
+        setActiveAdjustmentId("");
+      }
+
       await loadPayrollSummary();
     } catch (saveError) {
       setError(
         saveError instanceof Error
           ? saveError.message
           : "Payroll could not be generated.",
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function createAdjustment() {
+    if (!lockedIssuedPayroll) return;
+
+    const reason = adjustmentReason.trim();
+    if (reason.length < 3) {
+      setError("Please enter the reason for this payroll adjustment.");
+      return;
+    }
+
+    const token = localStorage.getItem("wc_manager_token");
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+    if (!token || !apiBaseUrl) {
+      setError("Manager session or API service is unavailable.");
+      return;
+    }
+
+    setIsSaving(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/api/payroll/${encodeURIComponent(lockedIssuedPayroll.id)}/adjustments`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ reason }),
+        },
+      );
+
+      const data = await response.json();
+      if (!response.ok) {
+        if (response.status === 409 && data?.payroll?.id) {
+          // Resume the existing draft rather than creating duplicates.
+        } else {
+          throw new Error(data?.message || "Payroll adjustment could not be created.");
+        }
+      }
+
+      const adjustment = data.payroll as PayrollRecord;
+      if (!adjustment?.id) {
+        throw new Error("Payroll adjustment could not be loaded.");
+      }
+
+      setActiveAdjustmentId(adjustment.id);
+      setForm((current) => ({
+        ...current,
+        employeeId: adjustment.employeeId,
+        month: String(adjustment.month),
+        year: String(adjustment.year),
+        basicSalary: String(adjustment.basicSalary ?? 0),
+        allowanceALabel: cleanLabel(adjustment.allowanceALabel ?? "", "Allowance A"),
+        allowanceA: String(adjustment.allowanceA ?? 0),
+        allowanceBLabel: cleanLabel(adjustment.allowanceBLabel ?? "", "Allowance B"),
+        allowanceB: String(adjustment.allowanceB ?? 0),
+        allowanceCLabel: cleanLabel(adjustment.allowanceCLabel ?? "", "Allowance C"),
+        allowanceC: String(adjustment.allowanceC ?? 0),
+        monthlyIncentive: String(adjustment.monthlyIncentive ?? 0),
+        monthlyIncentiveLabel: cleanLabel(
+          adjustment.monthlyIncentiveLabel ?? "",
+          "Commission / Incentive",
+        ),
+        showMonthlyIncentiveOnPayslip:
+          adjustment.showMonthlyIncentiveOnPayslip !== false,
+        skbbkEnabled: adjustment.skbbkEnabled === true,
+        otherDeduction: String(adjustment.otherDeduction ?? 0),
+        otHours: String(adjustment.otHours ?? 0),
+        otRate: String(adjustment.otRate ?? 0),
+        status: "draft",
+        remarks: adjustment.remarks || "",
+      }));
+      setMessage(
+        "Adjustment draft created. Edit the correction below; the original issued payroll remains locked.",
+      );
+    } catch (adjustmentError) {
+      setError(
+        adjustmentError instanceof Error
+          ? adjustmentError.message
+          : "Payroll adjustment could not be created.",
       );
     } finally {
       setIsSaving(false);
@@ -689,10 +854,53 @@ export default function PayrollPage() {
           </div>
         ) : null}
 
+        {lockedIssuedPayroll && !activeAdjustmentId ? (
+          <section className="mt-6 rounded-[2rem] border border-amber-400/30 bg-amber-400/8 p-6">
+            <p className="text-xs font-bold tracking-[0.18em] text-amber-200">
+              CREATE PAYROLL ADJUSTMENT
+            </p>
+            <h2 className="mt-2 text-xl font-bold text-[#f0dfbd]">
+              This payroll has already been issued and cannot be edited.
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-white/55">
+              Create a separate adjustment if a correction is required. The issued payroll remains unchanged for audit history.
+            </p>
+            <label className="mt-5 block">
+              <span className="text-sm font-semibold text-white/70">
+                Reason for adjustment *
+              </span>
+              <textarea
+                value={adjustmentReason}
+                onChange={(event) => setAdjustmentReason(event.target.value)}
+                rows={3}
+                maxLength={1000}
+                className={inputClassName}
+                placeholder="Example: Missing RM120 meal allowance for August payroll"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={createAdjustment}
+              disabled={isSaving || adjustmentReason.trim().length < 3}
+              className="mt-4 rounded-full bg-[#d4ad63] px-6 py-3 font-bold text-[#101416] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {isSaving ? "Creating Adjustment..." : "Create Adjustment"}
+            </button>
+          </section>
+        ) : null}
+
+        {activeAdjustmentId ? (
+          <div className="mt-6 rounded-2xl border border-[#d4ad63]/35 bg-[#d4ad63]/8 p-4 text-sm text-[#ead5aa]">
+            <b>Adjustment mode.</b> Reason: {adjustmentReason}. The original issued payroll remains locked.
+          </div>
+        ) : null}
+
         {activeView === "entry" ? (
           <form onSubmit={generatePayroll} className="mt-8 grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
             <section className="rounded-[2rem] border border-white/10 bg-[#1e2428] p-6 sm:p-8">
-              <h2 className="text-2xl font-bold text-[#f0dfbd]">Generate Payroll</h2>
+              <h2 className="text-2xl font-bold text-[#f0dfbd]">
+                {activeAdjustmentId ? "Payroll Adjustment" : "Generate Payroll"}
+              </h2>
 
               <div className="mt-6">
                 <label className="text-sm text-white/55">Employee</label>
@@ -925,14 +1133,26 @@ export default function PayrollPage() {
 
               <button
                 type="submit"
-                disabled={isSaving || isLoading}
+                disabled={
+                  isSaving ||
+                  isLoading ||
+                  Boolean(lockedIssuedPayroll && !activeAdjustmentId)
+                }
                 className="mt-8 w-full rounded-full bg-[#d4ad63] px-8 py-4 font-bold text-[#101416] transition hover:bg-[#e4bf75] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isSaving
-                  ? "Generating Payroll..."
-                  : form.status === "issued"
-                    ? "Generate & Issue Payroll"
-                    : "Generate Draft Payroll"}
+                  ? activeAdjustmentId
+                    ? "Saving Adjustment..."
+                    : "Generating Payroll..."
+                  : lockedIssuedPayroll && !activeAdjustmentId
+                    ? "Issued Payroll Locked"
+                    : activeAdjustmentId
+                      ? form.status === "issued"
+                        ? "Issue Adjustment"
+                        : "Save Adjustment Draft"
+                      : form.status === "issued"
+                        ? "Generate & Issue Payroll"
+                        : "Generate Draft Payroll"}
               </button>
             </aside>
           </form>
@@ -1016,7 +1236,9 @@ export default function PayrollPage() {
                             </td>
                             <td className="px-5 py-4">
                               <span className="rounded-full border border-[#d4ad63]/25 bg-[#d4ad63]/10 px-3 py-1 text-xs capitalize text-[#d4ad63]">
-                                {record.status ?? "draft"}
+                                {record.isAdjustment
+                                  ? `adjustment ${record.status ?? "draft"}`
+                                  : record.status ?? "draft"}
                               </span>
                             </td>
                             <td className="px-5 py-4 text-white/60">{money(record.basicSalary)}</td>
@@ -1137,7 +1359,9 @@ function MoneyField({
           min="0"
           step="0.01"
           value={value}
+          onWheel={(event) => event.currentTarget.blur()}
           onChange={(event) => onChange(event.target.value)}
+          inputMode="decimal"
           className="w-full bg-transparent px-4 py-3 text-white outline-none"
         />
       </div>
@@ -1162,7 +1386,9 @@ function NumberField({
         min="0"
         step="0.01"
         value={value}
+        onWheel={(event) => event.currentTarget.blur()}
         onChange={(event) => onChange(event.target.value)}
+        inputMode="decimal"
         className={inputClassName}
       />
     </div>

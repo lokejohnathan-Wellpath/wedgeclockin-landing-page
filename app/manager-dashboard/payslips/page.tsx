@@ -43,6 +43,13 @@ type PayrollRecord = {
   lateMinutes?: number;
   replacementOtMinutes?: number;
   status?: PayrollStatus;
+  isAdjustment?: boolean;
+  adjustedFromPayrollId?: string;
+  adjustmentReason?: string;
+  adjustmentCreatedAt?: string;
+  adjustmentCreatedBy?: string;
+  adjustmentIssuedAt?: string;
+  adjustmentIssuedBy?: string;
   remarks: string;
   createdAt?: string;
   updatedAt?: string;
@@ -545,7 +552,7 @@ export default function PayslipsPage() {
                 ) : (
                   records.map((record) => (
                     <option key={record.id} value={record.id}>
-                      {record.employeeName}
+                      {record.employeeName}{record.isAdjustment ? " — Payroll Adjustment" : ""}
                     </option>
                   ))
                 )}
@@ -650,6 +657,17 @@ function PayslipDocument({
           </div>
         </div>
       </header>
+
+      {record.isAdjustment ? (
+        <section className="print-compact-section border-b border-[#806431]/20 bg-[#f1e7d5] px-8 py-4 sm:px-10">
+          <p className="text-[11px] font-bold tracking-[0.18em] text-[#806431]">
+            PAYROLL ADJUSTMENT
+          </p>
+          <p className="mt-1 text-sm text-[#211d17]/70">
+            Reason: {record.adjustmentReason || "Payroll correction"}
+          </p>
+        </section>
+      ) : null}
 
       <section className="print-compact-section print-compact-grid grid gap-4 border-b border-[#211d17]/15 px-8 py-5 sm:grid-cols-3 sm:px-10">
         <PayslipMeta label="Employee Name" value={record.employeeName} />
