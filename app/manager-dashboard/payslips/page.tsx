@@ -25,7 +25,12 @@ type PayrollRecord = {
   showMonthlyIncentiveOnPayslip?: boolean;
   epfDeduction: number;
   socsoDeduction: number;
+  socsoEmployerContribution?: number;
+  skbbkEnabled?: boolean;
+  skbbkDeduction?: number;
   eisDeduction: number;
+  epfEmployerContribution?: number;
+  eisEmployerContribution?: number;
   taxDeduction: number;
   otherDeduction: number;
   otHours: number;
@@ -669,44 +674,40 @@ function PayslipDocument({
               : "—"
           }
         />
-        <PayslipMeta label="Payslip Reference" value={record.id} />
       </section>
 
-      <section className="print-compact-section print-compact-grid grid gap-7 px-8 py-6 sm:grid-cols-2 sm:px-10">
+      <section className="print-compact-section print-compact-grid grid gap-6 px-8 py-6 sm:grid-cols-3 sm:px-10">
         <div>
           <PayslipSectionTitle title="Earnings" />
           <div className="mt-3 space-y-2.5">
             <PayslipRow label="Basic Salary" value={record.basicSalary} />
-            <PayslipRow
-              label={cleanLabel(
-                record.allowanceALabel,
-                cleanLabel(
-                  employee?.payrollDefaults?.allowanceALabel,
-                  "Allowance A",
-                ),
-              )}
-              value={record.allowanceA}
-            />
-            <PayslipRow
-              label={cleanLabel(
-                record.allowanceBLabel,
-                cleanLabel(
-                  employee?.payrollDefaults?.allowanceBLabel,
-                  "Allowance B",
-                ),
-              )}
-              value={record.allowanceB}
-            />
-            <PayslipRow
-              label={cleanLabel(
-                record.allowanceCLabel,
-                cleanLabel(
-                  employee?.payrollDefaults?.allowanceCLabel,
-                  "Allowance C",
-                ),
-              )}
-              value={record.allowanceC}
-            />
+            {record.allowanceA > 0 && (
+              <PayslipRow
+                label={cleanLabel(
+                  record.allowanceALabel,
+                  cleanLabel(employee?.payrollDefaults?.allowanceALabel, "Allowance A"),
+                )}
+                value={record.allowanceA}
+              />
+            )}
+            {record.allowanceB > 0 && (
+              <PayslipRow
+                label={cleanLabel(
+                  record.allowanceBLabel,
+                  cleanLabel(employee?.payrollDefaults?.allowanceBLabel, "Allowance B"),
+                )}
+                value={record.allowanceB}
+              />
+            )}
+            {record.allowanceC > 0 && (
+              <PayslipRow
+                label={cleanLabel(
+                  record.allowanceCLabel,
+                  cleanLabel(employee?.payrollDefaults?.allowanceCLabel, "Allowance C"),
+                )}
+                value={record.allowanceC}
+              />
+            )}
             {Number(record.monthlyIncentive || 0) > 0 &&
               record.showMonthlyIncentiveOnPayslip !== false && (
               <PayslipRow
@@ -731,27 +732,41 @@ function PayslipDocument({
         </div>
 
         <div>
-          <PayslipSectionTitle title="Deductions" />
+          <PayslipSectionTitle title="Employee Deductions" />
           <div className="mt-3 space-y-2.5">
             <PayslipRow label="EPF" value={record.epfDeduction} />
-            <PayslipRow label="SOCSO" value={record.socsoDeduction} />
+            <PayslipRow
+              label="SOCSO"
+              value={Math.max(0, record.socsoDeduction - Number(record.skbbkDeduction || 0))}
+            />
+            {record.skbbkEnabled === true && Number(record.skbbkDeduction || 0) > 0 && (
+              <PayslipRow label="SKBBK" value={Number(record.skbbkDeduction || 0)} />
+            )}
             <PayslipRow label="EIS" value={record.eisDeduction} />
             <PayslipRow label="PCB / Tax" value={record.taxDeduction} />
-            <PayslipRow
-              label="Other Deduction"
-              value={record.otherDeduction}
-            />
+            {record.otherDeduction > 0 && (
+              <PayslipRow label="Other Deduction" value={record.otherDeduction} />
+            )}
             {Number(record.unpaidLeaveDeduction || 0) > 0 && (
               <PayslipRow
                 label={`Unpaid Leave (${Number(record.unpaidLeaveDays || 0).toFixed(2)} day(s))`}
                 value={Number(record.unpaidLeaveDeduction || 0)}
               />
             )}
-            <PayslipTotalRow
-              label="Total Deductions"
-              value={calculations.totalDeductions}
-            />
+            <PayslipTotalRow label="Total Deductions" value={calculations.totalDeductions} />
           </div>
+        </div>
+
+        <div>
+          <PayslipSectionTitle title="Employer Contributions" />
+          <div className="mt-3 space-y-2.5">
+            <PayslipRow label="EPF" value={Number(record.epfEmployerContribution || 0)} />
+            <PayslipRow label="SOCSO" value={Number(record.socsoEmployerContribution || 0)} />
+            <PayslipRow label="EIS" value={Number(record.eisEmployerContribution || 0)} />
+          </div>
+          <p className="mt-4 text-[11px] leading-4 text-[#211d17]/50">
+            Employer contributions are shown for information only and are not deducted from employee net pay.
+          </p>
         </div>
       </section>
 

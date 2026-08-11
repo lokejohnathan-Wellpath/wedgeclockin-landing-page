@@ -13,6 +13,7 @@ type EmployeePayrollDefaults = {
   allowanceCLabel?: string;
   allowanceCAmount?: number;
   otRate?: number;
+  skbbkEnabled?: boolean;
 };
 
 type Employee = {
@@ -47,6 +48,8 @@ type PayrollRecord = {
   epfEmployerContribution?: number;
   socsoDeduction: number;
   socsoEmployerContribution?: number;
+  skbbkEnabled?: boolean;
+  skbbkDeduction?: number;
   eisDeduction: number;
   eisEmployerContribution?: number;
   taxDeduction: number;
@@ -84,6 +87,7 @@ type PayrollForm = {
   monthlyIncentive: string;
   monthlyIncentiveLabel: string;
   showMonthlyIncentiveOnPayslip: boolean;
+  skbbkEnabled: boolean;
   epfDeduction: string;
   socsoDeduction: string;
   eisDeduction: string;
@@ -131,6 +135,7 @@ const initialForm: PayrollForm = {
   monthlyIncentive: "0",
   monthlyIncentiveLabel: "Commission / Incentive",
   showMonthlyIncentiveOnPayslip: true,
+  skbbkEnabled: false,
   epfDeduction: "0",
   socsoDeduction: "0",
   eisDeduction: "0",
@@ -153,6 +158,17 @@ function money(value: number) {
     currency: "MYR",
     minimumFractionDigits: 2,
   }).format(value);
+}
+
+// WEDGE_V492_SKBBK_PAYSLIP
+function skbbkStorageKey(employeeId: string) {
+  return `wc_skbbk_opt_in_${employeeId}`;
+}
+
+function savedSkbbkChoice(employeeId: string, serverChoice?: boolean) {
+  if (typeof serverChoice === "boolean") return serverChoice;
+  if (typeof window === "undefined" || !employeeId) return false;
+  return localStorage.getItem(skbbkStorageKey(employeeId)) === "1";
 }
 
 function monthName(month: number) {
@@ -216,9 +232,12 @@ export default function PayrollPage() {
     const grossPay = basicSalary + totalAllowances + monthlyIncentive + otAmount;
     const statutoryWages = basicSalary + totalAllowances + monthlyIncentive;
     const statutory = calculateMalaysiaStatutory(statutoryWages, grossPay);
+    const skbbkDeduction = form.skbbkEnabled ? statutory.skbbkEmployee : 0;
+    const socsoEmployeeDeduction =
+      statutory.socsoInvalidityEmployee + skbbkDeduction;
     const totalDeductions =
       statutory.epfEmployee +
-      statutory.socsoEmployee +
+      socsoEmployeeDeduction +
       statutory.eisEmployee +
       statutory.pcbEstimate +
       parseAmount(form.otherDeduction);
@@ -231,6 +250,8 @@ export default function PayrollPage() {
       totalDeductions,
       netPay: grossPay - totalDeductions,
       statutory,
+      socsoEmployeeDeduction,
+      skbbkDeduction,
     };
   }, [form]);
 
@@ -377,6 +398,7 @@ export default function PayrollPage() {
           ? String(defaults.allowanceCAmount)
           : "0",
       monthlyIncentive: "0",
+      skbbkEnabled: savedSkbbkChoice(employeeId, defaults?.skbbkEnabled),
       otRate: defaults?.otRate !== undefined ? String(defaults.otRate) : current.otRate,
     }));
 
@@ -438,6 +460,7 @@ export default function PayrollPage() {
             allowanceALabel: cleanLabel(form.allowanceALabel, "Allowance A"),
             allowanceBLabel: cleanLabel(form.allowanceBLabel, "Allowance B"),
             allowanceCLabel: cleanLabel(form.allowanceCLabel, "Allowance C"),
+            skbbkEnabled: form.skbbkEnabled,
           },
         }),
       },
@@ -481,6 +504,11 @@ export default function PayrollPage() {
     const month = Number(form.month);
     const year = Number(form.year);
 
+    localStorage.setItem(
+      skbbkStorageKey(selectedEmployee.id),
+      form.skbbkEnabled ? "1" : "0",
+    );
+
     const payroll: PayrollRecord = {
       id: `${selectedEmployee.id}_${month}_${year}`,
       companyId,
@@ -504,8 +532,10 @@ export default function PayrollPage() {
       showMonthlyIncentiveOnPayslip: form.showMonthlyIncentiveOnPayslip,
       epfDeduction: calculations.statutory.epfEmployee,
       epfEmployerContribution: calculations.statutory.epfEmployer,
-      socsoDeduction: calculations.statutory.socsoEmployee,
+      socsoDeduction: calculations.socsoEmployeeDeduction,
       socsoEmployerContribution: calculations.statutory.socsoEmployer,
+      skbbkEnabled: form.skbbkEnabled,
+      skbbkDeduction: calculations.skbbkDeduction,
       eisDeduction: calculations.statutory.eisEmployee,
       eisEmployerContribution: calculations.statutory.eisEmployer,
       taxDeduction: calculations.statutory.pcbEstimate,
@@ -802,7 +832,29 @@ export default function PayrollPage() {
               <SectionTitle title="Statutory / Other Deductions" />
               <div className="grid gap-3 sm:grid-cols-2">
                 <StatutoryCard label="EPF" employee={calculations.statutory.epfEmployee} employer={calculations.statutory.epfEmployer} />
-                <StatutoryCard label="SOCSO + SKBBK" employee={calculations.statutory.socsoEmployee} employer={calculations.statutory.socsoEmployer} />
+                <StatutoryCard label="SOCSO" employee={calculations.statutory.socsoInvalidityEmployee} employer={calculations.statutory.socsoEmployer} />
+                <div className="rounded-2xl border border-white/10 bg-[#101416] p-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <p className="font-semibold text-[#f0dfbd]">SKBBK</p>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={form.skbbkEnabled}
+                      onClick={() => updateField("skbbkEnabled", !form.skbbkEnabled)}
+                      className={`rounded-full border px-4 py-1.5 text-xs font-bold transition ${
+                        form.skbbkEnabled
+                          ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-200"
+                          : "border-white/15 bg-white/5 text-white/55"
+                      }`}
+                    >
+                      {form.skbbkEnabled ? "ON" : "OFF"}
+                    </button>
+                  </div>
+                  <p className="mt-2 text-sm text-white/55">
+                    Employee: <span className="font-semibold text-white/80">{money(calculations.skbbkDeduction)}</span>
+                  </p>
+                  <p className="mt-1 text-xs text-white/35">Employee opt-in only. No employer SKBBK contribution.</p>
+                </div>
                 <StatutoryCard label="EIS" employee={calculations.statutory.eisEmployee} employer={calculations.statutory.eisEmployer} />
                 <StatutoryCard label="PCB estimate" employee={calculations.statutory.pcbEstimate} />
               </div>
@@ -961,7 +1013,6 @@ export default function PayrollPage() {
                           <tr key={record.id} className="border-b border-white/5">
                             <td className="px-5 py-4">
                               <p className="font-semibold text-[#f0dfbd]">{record.employeeName}</p>
-                              <p className="mt-1 text-xs text-white/35">{record.employeeId}</p>
                             </td>
                             <td className="px-5 py-4">
                               <span className="rounded-full border border-[#d4ad63]/25 bg-[#d4ad63]/10 px-3 py-1 text-xs capitalize text-[#d4ad63]">
@@ -970,10 +1021,15 @@ export default function PayrollPage() {
                             </td>
                             <td className="px-5 py-4 text-white/60">{money(record.basicSalary)}</td>
                             <td className="px-5 py-4 text-white/60">
-                              <p>{record.allowanceALabel ?? "Allowance A"}: {money(record.allowanceA)}</p>
-                              <p className="mt-1">{record.allowanceBLabel ?? "Allowance B"}: {money(record.allowanceB)}</p>
-                              <p className="mt-1">{record.allowanceCLabel ?? "Allowance C"}: {money(record.allowanceC)}</p>
-                              <p className="mt-1 text-[#e5c584]">{record.monthlyIncentiveLabel || "Commission / Incentive"}: {money(Number(record.monthlyIncentive || 0))}</p>
+                              {record.allowanceA > 0 && <p>{record.allowanceALabel ?? "Allowance A"}: {money(record.allowanceA)}</p>}
+                              {record.allowanceB > 0 && <p className="mt-1">{record.allowanceBLabel ?? "Allowance B"}: {money(record.allowanceB)}</p>}
+                              {record.allowanceC > 0 && <p className="mt-1">{record.allowanceCLabel ?? "Allowance C"}: {money(record.allowanceC)}</p>}
+                              {Number(record.monthlyIncentive || 0) > 0 && (
+                                <p className="mt-1 text-[#e5c584]">{record.monthlyIncentiveLabel || "Commission / Incentive"}: {money(Number(record.monthlyIncentive || 0))}</p>
+                              )}
+                              {record.allowanceA <= 0 && record.allowanceB <= 0 && record.allowanceC <= 0 && Number(record.monthlyIncentive || 0) <= 0 && (
+                                <span className="text-white/30">—</span>
+                              )}
                             </td>
                             <td className="px-5 py-4 text-white/60">{record.otHours.toFixed(2)}</td>
                             <td className="px-5 py-4 text-white/60">{money(result.otAmount)}</td>
