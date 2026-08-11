@@ -26,6 +26,9 @@ type AttendanceRecord = {
   clockOut: string | null;
   lateMinutes?: number;
   todayStatus?: string;
+  rosterEnabled?: boolean;
+  scheduledStart?: string | null;
+  scheduledEnd?: string | null;
 };
 
 type LeaveItem = {
@@ -230,12 +233,13 @@ export default function ManagerDashboardPage() {
           row.todayStatus === "On Leave" ||
           row.todayStatus === "Approved Leave"),
     ).length;
-    const absent = attendance.filter(
-      (row) =>
-        !row.clockIn &&
-        !approvedLeaveByEmployee.has(row.employeeId) &&
-        row.todayStatus === "Absent",
-    ).length;
+    const absent = attendance.filter((row) => {
+      if (row.clockIn || approvedLeaveByEmployee.has(row.employeeId)) return false;
+      if (row.todayStatus === "Absent") return true;
+      if (!row.scheduledStart) return false;
+      const scheduledStartMs = new Date(row.scheduledStart).getTime();
+      return Number.isFinite(scheduledStartMs) && Date.now() >= scheduledStartMs;
+    }).length;
 
     return {
       employees: stats?.employees ?? attendance.length,
@@ -256,6 +260,32 @@ export default function ManagerDashboardPage() {
     { label: "Pending Face", value: liveStats.pendingFace, href: "/manager-dashboard/faces" },
   ];
 
+  // WEDGE_V4122_ROSTER_FALLBACK:
+  // Use the saved attendance lateMinutes first, but derive it from roster timestamps
+  // when an older attendance row was created before the roster was saved/attached.
+  function derivedLateMinutes(record: AttendanceRecord) {
+    const stored = Math.max(0, Math.floor(Number(record.lateMinutes || 0)));
+    if (stored > 0) return stored;
+    if (!record.clockIn || !record.scheduledStart) return 0;
+
+    const clockInMs = new Date(record.clockIn).getTime();
+    const scheduledStartMs = new Date(record.scheduledStart).getTime();
+    if (!Number.isFinite(clockInMs) || !Number.isFinite(scheduledStartMs)) return 0;
+
+    return Math.max(0, Math.floor((clockInMs - scheduledStartMs) / 60000));
+  }
+
+  function isAutomaticallyAbsent(record: AttendanceRecord) {
+    if (record.clockIn || approvedLeaveByEmployee.has(record.employeeId)) return false;
+    if (record.todayStatus === "Absent") return true;
+    if (!record.scheduledStart) return false;
+
+    const scheduledStartMs = new Date(record.scheduledStart).getTime();
+    if (!Number.isFinite(scheduledStartMs)) return false;
+
+    return Date.now() >= scheduledStartMs;
+  }
+
   function liveStatus(record: AttendanceRecord) {
     const approvedLeave = approvedLeaveByEmployee.get(record.employeeId);
     if (!record.clockIn && approvedLeave) {
@@ -265,7 +295,7 @@ export default function ManagerDashboardPage() {
       };
     }
 
-    const lateMinutes = Math.max(0, Math.floor(Number(record.lateMinutes || 0)));
+    const lateMinutes = derivedLateMinutes(record);
     if (record.clockIn && lateMinutes > 0) {
       return {
         text: `LATE • ${lateMinutes} min`,
@@ -273,15 +303,22 @@ export default function ManagerDashboardPage() {
       };
     }
 
-    if (record.todayStatus === "Absent") {
+    if (isAutomaticallyAbsent(record)) {
       return {
         text: "ABSENT",
-        className: "border-red-400/50 bg-red-500/10 text-red-200",
+        className: "animate-pulse border-red-400/50 bg-red-500/10 text-red-200",
+      };
+    }
+
+    if (!record.clockIn) {
+      return {
+        text: record.todayStatus || "Not Clocked In",
+        className: "border-white/15 bg-white/5 text-white/55",
       };
     }
 
     return {
-      text: record.todayStatus || (record.clockIn ? "Present" : "—"),
+      text: record.todayStatus || "Present",
       className: "border-emerald-400/30 bg-emerald-500/10 text-emerald-100",
     };
   }
