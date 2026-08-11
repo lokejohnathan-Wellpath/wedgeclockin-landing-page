@@ -397,7 +397,7 @@ function findDate(lines: string[]) {
   const line = lines.find((value) => /date|tarikh|日期|日期|தேதி/i.test(value)) ??
     lines.find((value) => /\d{1,2}[/-]\d{1,2}[/-]\d{2,4}/.test(value));
   const value = line?.match(/(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/);
-  if (!value) return new Date().toISOString().slice(0, 10);
+  if (!value) return "";
   const [, day, month, rawYear] = value;
   const year = rawYear.length === 2 ? `20${rawYear}` : rawYear;
   return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
