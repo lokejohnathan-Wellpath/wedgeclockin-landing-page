@@ -32,9 +32,17 @@ type StoredLeaveBalance = {
   medicalLeaveBalance: number | null;
 };
 
+type StaffUsage = {
+  used: number;
+  limit: number;
+  remaining: number;
+  canAdd: boolean;
+};
+
 export default function ManagerEmployeesPage() {
   const router = useRouter();
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [staffUsage, setStaffUsage] = useState<StaffUsage | null>(null);
   const [search, setSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
@@ -73,6 +81,7 @@ export default function ManagerEmployeesPage() {
         }
 
         const loadedEmployees: Employee[] = data.employees || [];
+        setStaffUsage(data.staffUsage || null);
 
         try {
           const balanceResponse = await fetch(`${apiBaseUrl}/api/leaves/balances`, {
@@ -192,7 +201,7 @@ export default function ManagerEmployeesPage() {
           </div>
 
           <div className="flex flex-wrap gap-3">
-            <button onClick={() => setAddingEmployee(true)} className="rounded-full bg-emerald-500 px-6 py-3 font-bold text-[#07110c]">+ Add Employee</button>
+            <button onClick={() => setAddingEmployee(true)} disabled={staffUsage?.canAdd===false} className="rounded-full bg-emerald-500 px-6 py-3 font-bold text-[#07110c] disabled:cursor-not-allowed disabled:opacity-45">{staffUsage?.canAdd===false?"Staff Limit Reached":"+ Add Employee"}</button>
             <button onClick={() => router.push("/manager-dashboard")} className="rounded-full border border-[#d4ad63]/50 px-6 py-3 font-semibold text-[#f0dfbd] hover:bg-white/5">Back to Dashboard</button>
           </div>
         </div>
@@ -205,7 +214,7 @@ export default function ManagerEmployeesPage() {
                 : `${filteredEmployees.length} employee(s) found`}
             </p>
             <p className="mt-1 text-sm text-white/50">
-              Company employee records loaded successfully.
+              {staffUsage?`${staffUsage.used} of ${staffUsage.limit} active staff places used.`:"Company employee records loaded successfully."}
             </p>
           </div>
 
