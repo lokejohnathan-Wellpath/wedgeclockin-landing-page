@@ -11,7 +11,6 @@ const navItems = [
   { href: "/wedge-i/accounts/pnl", label: "P&L Workspace" },
   { href: "/wedge-i/accounts/pnl-templates", label: "P&L Templates" },
   { href: "/wedge-i/accounts/reconciliation", label: "Reconciliation" },
-  { href: "/wedge-i/accounts/new", label: "Add Client" },
 ];
 
 export default function ManagedAccountsLayout({ children }: { children: React.ReactNode }) {
@@ -51,7 +50,7 @@ export default function ManagedAccountsLayout({ children }: { children: React.Re
               <span className="grid h-9 w-9 place-items-center rounded-full border border-[#c8a467]/30 bg-[#c8a467]/10 font-bold text-[#d9b979]">W</span>
               <span>
                 <span className="block text-xs font-bold tracking-[.16em] text-[#c8a467]">WEDGE-I</span>
-                <span className="block text-[10px] text-white/35">Managed Accounts</span>
+                <span className="block text-[10px] text-white/35">Managed Accounts workspace</span>
               </span>
             </Link>
             <Link href="/founder-john-control/dashboard" className="text-xs font-semibold text-white/45 hover:text-white xl:hidden">Founder Control</Link>
