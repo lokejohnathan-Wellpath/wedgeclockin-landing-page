@@ -23,6 +23,7 @@ export default function NewManagedClientPage() {
 
     try {
       const result = await createManagedClient({
+        existingWedgeIBusinessId: String(form.get("existingWedgeIBusinessId") || "").trim() || undefined,
         companyCode: String(form.get("companyCode") || "").trim().toUpperCase(),
         legalName: String(form.get("legalName") || "").trim(),
         tradingName: String(form.get("tradingName") || "").trim() || undefined,
@@ -44,10 +45,10 @@ export default function NewManagedClientPage() {
         bankLast4: String(form.get("bankLast4") || "").trim() || undefined,
       });
 
-      setMessage(`${result.client.legalName} created as ${result.client.businessId}. WedgeBooks and WedgeCLOCKin are enabled.`);
+      setMessage(`${result.client.legalName} is now a managed-account client under ${result.client.businessId}. WedgeBooks and WedgeCLOCKin are enabled.`);
       event.currentTarget.reset();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Client could not be created.");
+      setError(err instanceof Error ? err.message : "Managed account could not be activated.");
     } finally {
       setBusy(false);
     }
@@ -56,16 +57,22 @@ export default function NewManagedClientPage() {
   return (
     <main className="min-h-screen bg-[#090d10] px-5 py-8 text-[#f4efe6] sm:px-8">
       <div className="mx-auto max-w-5xl">
-        <Link href="/wedge-i/accounts" className="text-sm font-medium text-[#c8a467] hover:text-[#ead3a8]">← Accounts Control Centre</Link>
+        <Link href="/founder-john-control/dashboard" className="text-sm font-medium text-[#c8a467] hover:text-[#ead3a8]">← Founder John Control</Link>
 
         <div className="mt-6 rounded-[30px] border border-white/10 bg-[#11171b]/95 p-6 sm:p-8">
-          <p className="text-xs font-semibold tracking-[0.22em] text-[#c8a467]">MASTER CLIENT REGISTRATION</p>
-          <h1 className="mt-3 text-3xl font-semibold text-[#f1dfbc]">Add managed accounts client</h1>
+          <p className="text-xs font-semibold tracking-[0.22em] text-[#c8a467]">FOUNDER MANAGED-ACCOUNT CONVERSION</p>
+          <h1 className="mt-3 text-3xl font-semibold text-[#f1dfbc]">Add managed account</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-white/50">
-            Register the company once in Wedge-I. The backend will create the permanent business ID, keep the easy company code, and provision WedgeBooks plus WedgeCLOCKin for the managed-account subscription.
+            Use this only after the human conversation with the customer. If the business already uses free Wedge-I, attach the managed service to that existing Wedge-I business identity. Do not create a duplicate company record.
           </p>
 
           <form onSubmit={submit} className="mt-8 space-y-8">
+            <Section title="Existing Wedge-I identity">
+              <div className="rounded-2xl border border-[#c8a467]/20 bg-[#c8a467]/5 p-5">
+                <Field name="existingWedgeIBusinessId" label="Existing Wedge-I business ID" placeholder="Use existing ID if available" required={false} help="Preferred path. The backend must reuse this business identity and attach managed-service entitlements to it. Leave blank only for a genuinely new business." />
+              </div>
+            </Section>
+
             <Section title="Company identity">
               <div className="grid gap-4 md:grid-cols-2">
                 <Field name="legalName" label="Legal company name" placeholder="ABC Cafe Sdn Bhd" />
@@ -94,7 +101,7 @@ export default function NewManagedClientPage() {
                 <Field name="ownerName" label="Owner / authorised person" placeholder="Full name" />
                 <Field name="ownerEmail" label="Owner email" type="email" placeholder="owner@company.com" />
                 <Field name="ownerPhone" label="Owner mobile" type="tel" placeholder="+60..." required={false} />
-                <Field name="assignedAccountsExecutive" label="Assigned accounts executive" placeholder="Accounts Executive A" required={false} />
+                <Field name="assignedAccountsExecutive" label="Assigned accounts executive" placeholder="Assign after onboarding if needed" required={false} />
               </div>
             </Section>
 
@@ -103,18 +110,18 @@ export default function NewManagedClientPage() {
                 <Field name="bankName" label="Bank" placeholder="Maybank" required={false} />
                 <Field name="bankLast4" label="Last 4 digits only" placeholder="4421" maxLength={4} required={false} />
               </div>
-              <p className="mt-3 text-xs leading-5 text-white/35">Do not collect internet-banking usernames, passwords, PINs or TACs. Initial reconciliation uses uploaded bank statements / exports.</p>
+              <p className="mt-3 text-xs leading-5 text-white/35">Do not collect internet-banking usernames, passwords, PINs or TACs. Initial reconciliation uses uploaded statements / transaction exports.</p>
             </Section>
 
-            <div className="rounded-2xl border border-[#c8a467]/20 bg-[#c8a467]/5 p-5 text-sm text-white/55">
-              <b className="text-[#e3c78e]">Provision on activation:</b> WedgeBooks included · WedgeCLOCKin included · owner/client access enabled · employee IDs remain separate under the same company code.
+            <div className="rounded-2xl border border-[#c8a467]/20 bg-[#c8a467]/5 p-5 text-sm leading-6 text-white/55">
+              <b className="text-[#e3c78e]">On activation:</b> preserve the Wedge-I business identity · Managed Accounts = active/pilot · WedgeBooks included · WedgeCLOCKin included · industry P&amp;L assigned · owner access retained · employees remain separate under the same company code.
             </div>
 
             {error ? <div className="rounded-xl border border-red-400/25 bg-red-400/10 px-4 py-3 text-sm text-red-200">{error}</div> : null}
             {message ? <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">{message}</div> : null}
 
             <button disabled={busy} className="w-full rounded-xl bg-[#c8a467] px-6 py-4 text-sm font-bold tracking-[0.08em] text-[#111416] disabled:opacity-60">
-              {busy ? "CREATING CLIENT..." : "CREATE CLIENT & ENABLE TOOLS"}
+              {busy ? "ACTIVATING MANAGED ACCOUNT..." : "ACTIVATE MANAGED ACCOUNT & INCLUDED TOOLS"}
             </button>
           </form>
         </div>

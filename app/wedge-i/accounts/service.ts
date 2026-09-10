@@ -2,6 +2,7 @@ import { founderRequest } from "../../lib/founderApi";
 import type { ManagedClient, MonthlyAccountFile, RestaurantSalesInput } from "./types";
 
 type CreateManagedClientInput = Omit<ManagedClient, "businessId" | "createdAt" | "updatedAt" | "banks" | "employeeCount"> & {
+  existingWedgeIBusinessId?: string;
   bankName?: string;
   bankLast4?: string;
 };
