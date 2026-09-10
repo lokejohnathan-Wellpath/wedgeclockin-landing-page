@@ -3,12 +3,50 @@
 import { useEffect, useState } from "react";
 import { customerSafeMessage } from "../../lib/customerMessages";
 
-type Plan={displayName:string;packageName:string;monthlyPrice:number;annualPrice:number;trialDays:number;currency:"MYR"};
 type Subscription={status:string;trialEndsAt?:string;daysRemaining:number;currentPeriodEnd?:string};
 
-async function apiRequest<T>(path:string,init:RequestInit={},authenticated=true):Promise<T>{const base=process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/,"");if(!base)throw new Error("API is not configured.");const token=localStorage.getItem("wc_manager_token");const response=await fetch(`${base}${path}`,{...init,headers:{"Content-Type":"application/json",...(authenticated&&token?{Authorization:`Bearer ${token}`}:{ }),...init.headers}});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(customerSafeMessage(data?.message,"Request failed."));return data as T;}
-
-export default function ClockInSubscriptionPage(){const[plan,setPlan]=useState<Plan|null>(null);const[sub,setSub]=useState<Subscription|null>(null);const[cycle,setCycle]=useState<"monthly"|"annual">("annual");const[method,setMethod]=useState<"card"|"fpx">("card");const[busy,setBusy]=useState(false);const[error,setError]=useState("");useEffect(()=>{Promise.all([apiRequest<Plan>("/api/auth/manager-plan",{},false),apiRequest<Subscription>("/api/auth/subscription")]).then(([p,s])=>{setPlan(p);setSub(s);}).catch(e=>setError(e.message));},[]);async function pay(){setBusy(true);setError("");try{const result=await apiRequest<{checkoutUrl:string}>("/api/payments/checkout/clockin",{method:"POST",body:JSON.stringify({billingCycle:cycle,paymentMethod:method})});const url=new URL(result.checkoutUrl);if(url.protocol!=="https:")throw new Error("Invalid secure payment address.");window.location.assign(url.toString());}catch(e){setError(e instanceof Error?e.message:"Payment could not start.");setBusy(false);}}
-  return <main className="min-h-screen bg-[#101416] px-5 py-12 text-[#f4efe6]"><div className="mx-auto max-w-4xl"><a href="/manager-dashboard" className="font-bold text-[#d4ad63]">← Manager Dashboard</a><div className="mt-8 grid overflow-hidden rounded-[2rem] border border-white/10 bg-[#1e2428] shadow-2xl lg:grid-cols-[1fr_.75fr]"><section className="p-7 sm:p-10"><p className="text-xs font-bold tracking-[.22em] text-[#d4ad63]">SUBSCRIPTION</p><h1 className="mt-3 font-serif text-4xl text-[#f0dfbd]">Continue Wedge Clock-In</h1><p className="mt-4 leading-7 text-white/55">Your company and attendance records remain protected. Choose a package period and payment method.</p><div className="mt-7 grid grid-cols-2 gap-3"><Choice active={cycle==="monthly"} onClick={()=>setCycle("monthly")} title="Monthly" value={plan?`RM ${plan.monthlyPrice.toFixed(2)}`:"—"}/><Choice active={cycle==="annual"} onClick={()=>setCycle("annual")} title="Annual" value={plan?`RM ${plan.annualPrice.toFixed(2)}`:"—"}/></div><p className="mt-6 text-sm font-bold">Payment method</p><div className="mt-2 grid grid-cols-2 gap-3"><Choice active={method==="card"} onClick={()=>setMethod("card")} title="Card" value="Recurring"/><Choice active={method==="fpx"} onClick={()=>setMethod("fpx")} title="FPX" value="One-time renewal"/></div>{error&&<p className="mt-5 rounded-xl bg-red-500/10 p-3 text-sm text-red-200">{error}</p>}<button onClick={pay} disabled={!plan||busy} className="mt-6 w-full rounded-full bg-[#d4ad63] px-6 py-4 font-bold text-black disabled:opacity-50">{busy?"Opening secure payment...":"Proceed to Secure Payment"}</button></section><aside className="bg-[#0d1316] p-7 sm:p-10"><p className="text-xs font-bold tracking-[.2em] text-[#d4ad63]">YOUR COMPANY</p><p className="mt-6 text-sm text-white/40">Current status</p><p className="mt-1 text-xl font-bold">{sub?.status?.replaceAll("_"," ")||"Loading..."}</p>{sub?.trialEndsAt&&<><p className="mt-6 text-sm text-white/40">Trial ends</p><p className="mt-1 font-semibold">{new Date(sub.trialEndsAt).toLocaleDateString("en-MY",{dateStyle:"long"})}</p></>}</aside></div></div></main>;
+async function apiRequest<T>(path:string,init:RequestInit={},authenticated=true):Promise<T>{
+  const base=process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/,"");
+  if(!base)throw new Error("API is not configured.");
+  const token=localStorage.getItem("wc_manager_token");
+  const response=await fetch(`${base}${path}`,{...init,headers:{"Content-Type":"application/json",...(authenticated&&token?{Authorization:`Bearer ${token}`}:{ }),...init.headers}});
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok)throw new Error(customerSafeMessage(data?.message,"Request failed."));
+  return data as T;
 }
-function Choice({active,onClick,title,value}:{active:boolean;onClick:()=>void;title:string;value:string}){return <button type="button" onClick={onClick} className={`rounded-xl border p-4 text-left ${active?"border-[#d4ad63] bg-[#d4ad63]/10":"border-white/10"}`}><span className="block text-sm font-bold">{title}</span><span className="mt-1 block text-xs text-white/50">{value}</span></button>;}
+
+export default function ClockInSubscriptionPage(){
+  const[sub,setSub]=useState<Subscription|null>(null);
+  const[error,setError]=useState("");
+
+  useEffect(()=>{
+    apiRequest<Subscription>("/api/auth/subscription")
+      .then(setSub)
+      .catch(e=>setError(e instanceof Error?e.message:"Status could not be loaded."));
+  },[]);
+
+  return <main className="min-h-screen bg-[#f4f0e8] px-5 py-12 text-[#20282c]">
+    <div className="mx-auto max-w-4xl">
+      <a href="/manager-dashboard" className="font-bold text-[#9a6a22]">← Manager Dashboard</a>
+      <div className="mt-8 grid overflow-hidden rounded-[2rem] border border-[#20282c]/10 bg-white shadow-xl lg:grid-cols-[1fr_.75fr]">
+        <section className="p-7 sm:p-10">
+          <p className="text-xs font-bold tracking-[.22em] text-[#b08745]">ACCESS & SERVICE</p>
+          <h1 className="mt-3 font-serif text-4xl">WedgeCLOCKin access</h1>
+          <p className="mt-4 leading-7 text-[#657074]">
+            Public package pricing and online checkout are temporarily hidden while Wedge is onboarding businesses directly.
+          </p>
+          <div className="mt-7 rounded-2xl border border-[#b08745]/20 bg-[#f8f3ea] p-5 text-sm leading-6 text-[#5f686c]">
+            Your attendance and employee records remain protected. Access continuation and managed-service arrangements are handled directly by the Wedge team during the current pilot period.
+          </div>
+        </section>
+        <aside className="bg-[#20282c] p-7 text-white sm:p-10">
+          <p className="text-xs font-bold tracking-[.2em] text-[#d4ad63]">YOUR COMPANY</p>
+          <p className="mt-6 text-sm text-white/45">Current status</p>
+          <p className="mt-1 text-xl font-bold">{sub?.status?.replaceAll("_"," ")||"Loading..."}</p>
+          {sub?.trialEndsAt&&<><p className="mt-6 text-sm text-white/45">Current access ends</p><p className="mt-1 font-semibold">{new Date(sub.trialEndsAt).toLocaleDateString("en-MY",{dateStyle:"long"})}</p></>}
+          {error&&<p className="mt-6 rounded-xl bg-red-500/10 p-3 text-sm text-red-200">{error}</p>}
+        </aside>
+      </div>
+    </div>
+  </main>;
+}
