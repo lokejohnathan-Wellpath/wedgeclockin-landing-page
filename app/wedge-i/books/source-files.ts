@@ -1,3 +1,5 @@
+import { getBooksCloudSource, saveBooksCloudSource } from "./books-cloud";
+
 const databaseName = "wedgebooks-source-documents";
 const storeName = "source-files";
 
@@ -22,18 +24,12 @@ function openSourceDatabase() {
   });
 }
 
-export async function saveSourceFile(documentId: string, file: File) {
+async function saveLocalSource(source: StoredSourceFile) {
   const database = await openSourceDatabase();
   try {
     await new Promise<void>((resolve, reject) => {
       const transaction = database.transaction(storeName, "readwrite");
-      transaction.objectStore(storeName).put({
-        documentId,
-        fileName: file.name,
-        mimeType: file.type || "application/octet-stream",
-        blob: file,
-        savedAt: new Date().toISOString(),
-      } satisfies StoredSourceFile);
+      transaction.objectStore(storeName).put(source);
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error ?? new Error("Source document could not be saved."));
       transaction.onabort = () => reject(transaction.error ?? new Error("Source document storage was interrupted."));
@@ -43,7 +39,7 @@ export async function saveSourceFile(documentId: string, file: File) {
   }
 }
 
-export async function getSourceFile(documentId: string) {
+async function getLocalSource(documentId: string) {
   const database = await openSourceDatabase();
   try {
     return await new Promise<StoredSourceFile | null>((resolve, reject) => {
@@ -54,6 +50,49 @@ export async function getSourceFile(documentId: string) {
     });
   } finally {
     database.close();
+  }
+}
+
+export async function saveSourceFile(documentId: string, file: File) {
+  const source: StoredSourceFile = {
+    documentId,
+    fileName: file.name,
+    mimeType: file.type || "application/octet-stream",
+    blob: file,
+    savedAt: new Date().toISOString(),
+  };
+
+  // Keep a fast browser cache, but also persist the original source in the
+  // signed-in WedgeBooks cloud account so another device can open it later.
+  await saveLocalSource(source);
+  await saveBooksCloudSource(documentId, file, source.fileName, source.mimeType);
+}
+
+export async function getSourceFile(documentId: string) {
+  try {
+    const local = await getLocalSource(documentId);
+    if (local) return local;
+  } catch {
+    // Fall through to cloud recovery when IndexedDB is unavailable/corrupt.
+  }
+
+  try {
+    const cloud = await getBooksCloudSource(documentId);
+    const source: StoredSourceFile = {
+      documentId,
+      fileName: cloud.fileName,
+      mimeType: cloud.mimeType,
+      blob: cloud.blob,
+      savedAt: new Date().toISOString(),
+    };
+    try {
+      await saveLocalSource(source);
+    } catch {
+      // Cloud source remains usable even if the local cache cannot be written.
+    }
+    return source;
+  } catch {
+    return null;
   }
 }
 
