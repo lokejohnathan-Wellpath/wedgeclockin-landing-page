@@ -1,5 +1,6 @@
 import type { BusinessType } from "../engine/benchmarks";
 import type { WedgeCeoReport } from "../engine/wedgeCeoEngine";
+import { getFreeBusinessProfile } from "./freeBusinessClient";
 
 export type ExecutiveReportPeriod = { month: number; year: number };
 
@@ -93,7 +94,15 @@ function sanitiseIdPart(value: string) {
 }
 
 function freeCompanyCode(companyName: string) {
+  const registered = getFreeBusinessProfile();
+  if (registered) return registered.companyCode;
   return `FREE_${sanitiseIdPart(companyName).slice(0, 36)}`;
+}
+
+function freeCompanyId(companyName: string) {
+  const registered = getFreeBusinessProfile();
+  if (registered) return registered.businessId;
+  return freeCompanyCode(companyName).toLowerCase();
 }
 
 function round(value: number) {
@@ -192,19 +201,22 @@ export function buildExecutiveSnapshot(
 function saveFreeSnapshot(input: ExecutiveMemoryInput, snapshot: ReturnType<typeof buildExecutiveSnapshot>) {
   const now = new Date().toISOString();
   const companyCode = freeCompanyCode(input.companyName);
+  const companyId = freeCompanyId(input.companyName);
+  const registered = getFreeBusinessProfile();
+  const companyName = registered?.tradingName || registered?.legalName || input.companyName.trim();
   const store = readFreeMemory();
   const existingBucket = store.businesses[companyCode];
   const existing = existingBucket?.history.find((record) => record.year === snapshot.year && record.month === snapshot.month);
   const record: ExecutiveHistoryRecord = {
     ...snapshot,
-    companyId: companyCode.toLowerCase(),
+    companyId,
     companyCode,
-    companyName: input.companyName.trim(),
+    companyName,
     createdAt: existing?.createdAt || now,
     updatedAt: now,
   };
   const history = sortHistory([record, ...(existingBucket?.history || []).filter((item) => !(item.year === record.year && item.month === record.month))]).slice(0, FREE_MONTH_LIMIT);
-  store.businesses[companyCode] = { companyName: input.companyName.trim(), history, touchedAt: now };
+  store.businesses[companyCode] = { companyName, history, touchedAt: now };
   store.activeCompanyCode = companyCode;
 
   const keepCodes = Object.entries(store.businesses)
@@ -236,7 +248,9 @@ export async function loadExecutiveHistory(limit = 36) {
   const token = getManagerToken();
   if (!token) {
     const store = readFreeMemory();
-    const active = store.businesses[store.activeCompanyCode];
+    const registered = getFreeBusinessProfile();
+    const activeCode = registered?.companyCode || store.activeCompanyCode;
+    const active = store.businesses[activeCode];
     return sortHistory(active?.history || []).slice(0, Math.min(Math.max(Math.trunc(limit), 1), FREE_MONTH_LIMIT));
   }
 
