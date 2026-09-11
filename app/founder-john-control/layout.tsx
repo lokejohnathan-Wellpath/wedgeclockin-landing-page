@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import FounderQuickNav from "./FounderQuickNav";
 
 export const metadata: Metadata = {
   title: "Private Control | Wedge Works",
@@ -8,5 +9,5 @@ export const metadata: Metadata = {
 export default function FounderControlLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  return children;
+  return <>{children}<FounderQuickNav /></>;
 }
