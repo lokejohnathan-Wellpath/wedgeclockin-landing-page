@@ -1,12 +1,35 @@
 import { founderRequest } from "../../lib/founderApi";
 import type { BookDocument } from "../books/brain";
 import type { PayrollRecordForPnl } from "./integration";
-import type { ManagedClient, MonthlyAccountFile, RestaurantSalesInput } from "./types";
+import type {
+  ManagedAccountIndustry,
+  ManagedAccountsSubscriptionStatus,
+  ManagedClient,
+  MonthlyAccountFile,
+  RestaurantSalesInput,
+} from "./types";
 
-type CreateManagedClientInput = Omit<ManagedClient, "businessId" | "createdAt" | "updatedAt" | "banks" | "employeeCount"> & {
-  existingWedgeIBusinessId?: string;
+export type CreateManagedClientInput = {
+  existingWedgeIBusinessId: string;
+  industry?: ManagedAccountIndustry;
+  financialYearEnd?: string;
+  sstRegistered?: boolean;
+  sstRegistrationNumber?: string;
+  serviceChargeEnabled?: boolean;
+  assignedAccountsExecutive?: string;
+  subscriptionStatus?: ManagedAccountsSubscriptionStatus;
+  subscriptionStartedAt?: string;
   bankName?: string;
   bankLast4?: string;
+  legalName?: string;
+  tradingName?: string;
+  registrationNumber?: string;
+  companyCode?: string;
+  ownerName?: string;
+  ownerEmail?: string;
+  ownerPhone?: string;
+  wedgeBooksEnabled?: boolean;
+  wedgeClockInEnabled?: boolean;
 };
 
 export type ManagedSourceData = {
