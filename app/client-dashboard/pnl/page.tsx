@@ -5,8 +5,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { ownerReportRequest, ownerToken } from "../../lib/ownerAccess";
-import { calculateIndustryPnl, type PnlValueMap } from "../../wedge-i/accounts/pnlEngine";
-import type { ManagedAccountIndustry } from "../../wedge-i/accounts/types";
+import { calculateIndustryPnl, type CalculatedIndustryPnl, type PnlValueMap } from "../../wedge-i/accounts/pnlEngine";
+import { MANAGED_ACCOUNT_INDUSTRIES, type ManagedAccountIndustry } from "../../wedge-i/accounts/types";
 
 type Report = {
   period: string;
@@ -25,6 +25,10 @@ function money(value: number) {
 
 function periodLabel(report: Report) {
   return new Intl.DateTimeFormat("en-MY", { month: "long", year: "numeric" }).format(new Date(report.year, report.month - 1, 1));
+}
+
+function isIndustry(value: string): value is ManagedAccountIndustry {
+  return (MANAGED_ACCOUNT_INDUSTRIES as readonly string[]).includes(value);
 }
 
 export default function ClientPnlPage() {
@@ -58,12 +62,8 @@ export default function ClientPnlPage() {
 
   const selected = reports.find((report) => report.period === selectedPeriod) || reports[0] || null;
   const calculated = useMemo(() => {
-    if (!selected) return null;
-    try {
-      return calculateIndustryPnl(selected.industry as ManagedAccountIndustry, selected.values || {});
-    } catch {
-      return null;
-    }
+    if (!selected || !isIndustry(selected.industry)) return null;
+    return calculateIndustryPnl(selected.industry, selected.values || {});
   }, [selected]);
 
   return (
@@ -88,6 +88,7 @@ export default function ClientPnlPage() {
             <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-[#667074]">Your Wedge accounts team will publish the month here after books, payroll and bank reconciliation are reviewed and the month is closed.</p>
           </section>
         ) : null}
+        {!loading && selected && !calculated ? <section className="mt-8 rounded-[28px] border border-amber-300/30 bg-amber-50 p-8 text-sm text-amber-900">This closed report uses an unsupported industry profile. Ask the Wedge accounts team to review the report classification.</section> : null}
 
         {selected && calculated ? (
           <div className="mt-8 space-y-6">
@@ -127,6 +128,7 @@ function Metric({ label, value, sub }: { label: string; value: string; sub?: str
   return <div className="rounded-2xl border border-[#ded8ce] bg-[#faf8f3] p-4"><p className="text-[10px] font-bold uppercase tracking-[.12em] text-[#7a8385]">{label}</p><p className="mt-2 text-xl font-bold">{value}</p>{sub ? <p className="mt-1 text-xs text-[#667074]">{sub}</p> : null}</div>;
 }
 
-function PnlBlock({ title, lines, total, footerLabel, footerValue }: { title: string; lines: Array<{ code: string; label: string; value: number }>; total: number; footerLabel?: string; footerValue?: number }) {
-  return <section className="overflow-hidden rounded-[26px] border border-[#d8d0c2] bg-white"><div className="flex items-center justify-between border-b border-[#e6e0d6] px-6 py-4"><h3 className="font-bold">{title}</h3><b>{money(total)}</b></div><div className="divide-y divide-[#eee9e0]">{lines.filter((line) => Math.abs(line.value) > 0.004).map((line) => <div key={line.code} className="flex items-center justify-between gap-5 px-6 py-3 text-sm"><span className="text-[#667074]">{line.label}</span><span className="font-semibold">{money(line.value)}</span></div>)}</div>{footerLabel && footerValue !== undefined ? <div className="flex items-center justify-between border-t border-[#d8d0c2] bg-[#f8f5ef] px-6 py-4"><b>{footerLabel}</b><b>{money(footerValue)}</b></div> : null}</section>;
+function PnlBlock({ title, lines, total, footerLabel, footerValue }: { title: string; lines: CalculatedIndustryPnl["revenueLines"]; total: number; footerLabel?: string; footerValue?: number }) {
+  const visible = lines.filter((line) => Math.abs(line.amount) > 0.004);
+  return <section className="overflow-hidden rounded-[26px] border border-[#d8d0c2] bg-white"><div className="flex items-center justify-between border-b border-[#e6e0d6] px-6 py-4"><h3 className="font-bold">{title}</h3><b>{money(total)}</b></div><div className="divide-y divide-[#eee9e0]">{visible.length ? visible.map((line) => <div key={line.code} className="grid grid-cols-[1fr_auto_auto] items-center gap-4 px-6 py-3 text-sm"><span className="text-[#667074]">{line.label}</span><span className="text-xs text-[#92999b]">{line.percentOfRevenue.toFixed(1)}%</span><span className="font-semibold">{money(line.amount)}</span></div>) : <p className="px-6 py-4 text-sm text-[#92999b]">No amount recorded.</p>}</div>{footerLabel && footerValue !== undefined ? <div className="flex items-center justify-between border-t border-[#d8d0c2] bg-[#f8f5ef] px-6 py-4"><b>{footerLabel}</b><b>{money(footerValue)}</b></div> : null}</section>;
 }
