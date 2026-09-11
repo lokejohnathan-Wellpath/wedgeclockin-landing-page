@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import { saveProductToken } from "../../../lib/productAccess";
 
 const inputClass = "mt-2 w-full rounded-xl border border-[#20282c]/15 bg-white px-4 py-3 outline-none focus:border-[#b4873b]";
@@ -42,8 +41,7 @@ type AccessResult = {
 };
 
 export default function ApprovedBusinessAccessPage() {
-  const params = useSearchParams();
-  const requestId = params.get("request") || "";
+  const [requestId, setRequestId] = useState("");
   const [step, setStep] = useState<"start" | "verify" | "complete" | "done">("start");
   const [challengeId, setChallengeId] = useState("");
   const [verificationToken, setVerificationToken] = useState("");
@@ -52,8 +50,10 @@ export default function ApprovedBusinessAccessPage() {
   const [result, setResult] = useState<AccessResult | null>(null);
 
   useEffect(() => {
-    if (!requestId) setError("Registration request is missing. Return to Business Profile first.");
-  }, [requestId]);
+    const id = new URLSearchParams(window.location.search).get("request") || "";
+    setRequestId(id);
+    if (!id) setError("Registration request is missing. Return to Business Profile first.");
+  }, []);
 
   async function start() {
     if (!requestId) return;
