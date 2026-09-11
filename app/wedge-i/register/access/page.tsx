@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { saveProductToken } from "../../../lib/productAccess";
 
 const inputClass = "mt-2 w-full rounded-xl border border-[#20282c]/15 bg-white px-4 py-3 outline-none focus:border-[#b4873b]";
 
@@ -22,6 +23,24 @@ async function request<T>(path: string, init: RequestInit = {}) {
   return data as T;
 }
 
+type AccessResult = {
+  business: {
+    businessId: string;
+    companyCode: string;
+    entitlements: Record<string, { enabled: boolean }>;
+  };
+  access: {
+    books: { token: string } | null;
+    clockIn: {
+      token: string;
+      companyId: string;
+      companyCode: string;
+      companyName: string;
+      managerId: string;
+    } | null;
+  };
+};
+
 export default function ApprovedBusinessAccessPage() {
   const params = useSearchParams();
   const requestId = params.get("request") || "";
@@ -30,7 +49,7 @@ export default function ApprovedBusinessAccessPage() {
   const [verificationToken, setVerificationToken] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [result, setResult] = useState<{ businessId: string; companyCode: string; entitlements: Record<string, { enabled: boolean }> } | null>(null);
+  const [result, setResult] = useState<AccessResult | null>(null);
 
   useEffect(() => {
     if (!requestId) setError("Registration request is missing. Return to Business Profile first.");
@@ -68,7 +87,7 @@ export default function ApprovedBusinessAccessPage() {
       setError("Passwords do not match."); setBusy(false); return;
     }
     try {
-      const data = await request<{ business: { businessId: string; companyCode: string; entitlements: Record<string, { enabled: boolean }> } }>(`/api/business-registrations/${encodeURIComponent(requestId)}/access/complete`, {
+      const data = await request<AccessResult>(`/api/business-registrations/${encodeURIComponent(requestId)}/access/complete`, {
         method: "POST",
         body: JSON.stringify({
           challengeId,
@@ -77,7 +96,17 @@ export default function ApprovedBusinessAccessPage() {
           password: form.get("password"),
         }),
       });
-      setResult(data.business);
+
+      if (data.access.books?.token) saveProductToken("books", data.access.books.token);
+      if (data.access.clockIn) {
+        localStorage.setItem("wc_manager_token", data.access.clockIn.token);
+        localStorage.setItem("wc_company_id", data.access.clockIn.companyId);
+        localStorage.setItem("wc_company_code", data.access.clockIn.companyCode);
+        localStorage.setItem("wc_company_name", data.access.clockIn.companyName || "");
+        localStorage.setItem("wc_manager_id", data.access.clockIn.managerId || "");
+      }
+
+      setResult(data);
       setStep("done");
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Access setup could not be completed."); }
     finally { setBusy(false); }
@@ -90,7 +119,7 @@ export default function ApprovedBusinessAccessPage() {
         <section className="mt-6 rounded-[30px] border border-[#20282c]/10 bg-[#fffdf8] p-7 shadow-[0_24px_70px_rgba(32,40,44,.10)] sm:p-9">
           <p className="text-xs font-bold tracking-[.22em] text-[#b4873b]">APPROVED BUSINESS ACCESS</p>
           <h1 className="mt-3 text-3xl font-semibold">Set up owner access once.</h1>
-          <p className="mt-4 text-sm leading-6 text-[#657074]">Verify the Founder-approved owner email, add the business address, then choose one password. Wedge will provision only the products Founder enabled.</p>
+          <p className="mt-4 text-sm leading-6 text-[#657074]">Verify the Founder-approved owner email, add the business address, then choose one password. Wedge provisions only the products Founder enabled and signs this device in automatically.</p>
 
           {step === "start" ? <button disabled={busy || !requestId} onClick={() => void start()} className="mt-7 w-full rounded-xl bg-[#20282c] px-5 py-4 font-bold text-white disabled:opacity-50">{busy ? "Sending code…" : "Send verification code"}</button> : null}
 
@@ -98,7 +127,7 @@ export default function ApprovedBusinessAccessPage() {
 
           {step === "complete" ? <form onSubmit={complete} className="mt-7 space-y-4"><label className="block text-sm font-semibold">Business address<textarea name="address" required rows={3} className={inputClass}/></label><label className="block text-sm font-semibold">Create owner password<input name="password" required type="password" minLength={8} autoComplete="new-password" className={inputClass}/></label><label className="block text-sm font-semibold">Confirm password<input name="confirmPassword" required type="password" minLength={8} autoComplete="new-password" className={inputClass}/></label><button disabled={busy} className="w-full rounded-xl bg-[#20282c] px-5 py-4 font-bold text-white">{busy ? "Activating…" : "Activate approved access"}</button></form> : null}
 
-          {step === "done" && result ? <div className="mt-7 space-y-4"><div className="rounded-2xl border border-emerald-700/15 bg-emerald-50 p-5 text-sm text-emerald-900"><b>Owner access is ready.</b><div className="mt-2">Business ID: <b>{result.businessId}</b></div><div>Company code: <b>{result.companyCode}</b></div></div><div className="grid gap-3 sm:grid-cols-2">{result.entitlements?.books?.enabled ? <Link href="/wedge-i/books/login" className="rounded-xl bg-[#20282c] px-5 py-4 text-center font-bold text-white">Open WedgeBooks</Link> : null}{result.entitlements?.clockIn?.enabled ? <Link href="/manager-login" className="rounded-xl border border-[#20282c]/15 px-5 py-4 text-center font-bold">Open WedgeCLOCKin</Link> : null}</div></div> : null}
+          {step === "done" && result ? <div className="mt-7 space-y-4"><div className="rounded-2xl border border-emerald-700/15 bg-emerald-50 p-5 text-sm text-emerald-900"><b>Owner access is ready.</b><div className="mt-2">Business ID: <b>{result.business.businessId}</b></div><div>Company code: <b>{result.business.companyCode}</b></div><div className="mt-2">This browser is already signed in to the products Founder enabled.</div></div><div className="grid gap-3 sm:grid-cols-2">{result.access.books ? <Link href="/wedge-i/books" className="rounded-xl bg-[#20282c] px-5 py-4 text-center font-bold text-white">Open WedgeBooks</Link> : null}{result.access.clockIn ? <Link href="/manager-dashboard" className="rounded-xl border border-[#20282c]/15 px-5 py-4 text-center font-bold">Open WedgeCLOCKin</Link> : null}</div></div> : null}
 
           {error ? <p className="mt-5 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
         </section>
