@@ -1,5 +1,5 @@
-import { ProductSignupPage } from "../../../components/ProductAuthPages";
+import { redirect } from "next/navigation";
 
 export default function WedgeBooksSignup() {
-  return <ProductSignupPage product="books" />;
+  redirect("/wedge-i/register");
 }
