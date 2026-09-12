@@ -1,5 +1,5 @@
-import { ProductForgotPasswordPage } from "../../../components/ProductAuthPages";
+import { redirect } from "next/navigation";
 
 export default function WedgeBooksForgotPassword() {
-  return <ProductForgotPasswordPage product="books" />;
+  redirect("/client-forgot-password");
 }

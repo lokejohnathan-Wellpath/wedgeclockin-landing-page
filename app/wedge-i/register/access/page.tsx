@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
+import { saveOwnerToken } from "../../../lib/ownerAccess";
 import { saveProductToken } from "../../../lib/productAccess";
 
 const inputClass = "mt-2 w-full rounded-xl border border-[#20282c]/15 bg-white px-4 py-3 outline-none focus:border-[#b4873b]";
@@ -23,6 +24,7 @@ async function request<T>(path: string, init: RequestInit = {}) {
 }
 
 type AccessResult = {
+  ownerToken: string;
   business: {
     businessId: string;
     companyCode: string;
@@ -97,6 +99,7 @@ export default function ApprovedBusinessAccessPage() {
         }),
       });
 
+      saveOwnerToken(data.ownerToken);
       if (data.access.books?.token) saveProductToken("books", data.access.books.token);
       if (data.access.clockIn) {
         localStorage.setItem("wc_manager_token", data.access.clockIn.token);
@@ -119,15 +122,15 @@ export default function ApprovedBusinessAccessPage() {
         <section className="mt-6 rounded-[30px] border border-[#20282c]/10 bg-[#fffdf8] p-7 shadow-[0_24px_70px_rgba(32,40,44,.10)] sm:p-9">
           <p className="text-xs font-bold tracking-[.22em] text-[#b4873b]">APPROVED BUSINESS ACCESS</p>
           <h1 className="mt-3 text-3xl font-semibold">Set up owner access once.</h1>
-          <p className="mt-4 text-sm leading-6 text-[#657074]">Verify the Founder-approved owner email, add the business address, then choose one password. Wedge provisions only the products Founder enabled and signs this device in automatically.</p>
+          <p className="mt-4 text-sm leading-6 text-[#657074]">Verify the Founder-approved owner email, add the business address, then choose one owner password. After this, use the Client Login for Wedge-I, WedgeBooks, WedgeCLOCKin and management reports.</p>
 
           {step === "start" ? <button disabled={busy || !requestId} onClick={() => void start()} className="mt-7 w-full rounded-xl bg-[#20282c] px-5 py-4 font-bold text-white disabled:opacity-50">{busy ? "Sending code…" : "Send verification code"}</button> : null}
 
           {step === "verify" ? <form onSubmit={verify} className="mt-7 space-y-4"><label className="block text-sm font-semibold">Verification code<input name="code" required inputMode="numeric" pattern="[0-9]{6}" maxLength={6} className={inputClass}/></label><button disabled={busy} className="w-full rounded-xl bg-[#20282c] px-5 py-4 font-bold text-white">{busy ? "Verifying…" : "Verify owner email"}</button></form> : null}
 
-          {step === "complete" ? <form onSubmit={complete} className="mt-7 space-y-4"><label className="block text-sm font-semibold">Business address<textarea name="address" required rows={3} className={inputClass}/></label><label className="block text-sm font-semibold">Create owner password<input name="password" required type="password" minLength={8} autoComplete="new-password" className={inputClass}/></label><label className="block text-sm font-semibold">Confirm password<input name="confirmPassword" required type="password" minLength={8} autoComplete="new-password" className={inputClass}/></label><button disabled={busy} className="w-full rounded-xl bg-[#20282c] px-5 py-4 font-bold text-white">{busy ? "Activating…" : "Activate approved access"}</button></form> : null}
+          {step === "complete" ? <form onSubmit={complete} className="mt-7 space-y-4"><label className="block text-sm font-semibold">Business address<textarea name="address" required rows={3} className={inputClass}/></label><label className="block text-sm font-semibold">Create owner password<input name="password" required type="password" minLength={8} autoComplete="new-password" className={inputClass}/></label><label className="block text-sm font-semibold">Confirm password<input name="confirmPassword" required type="password" minLength={8} autoComplete="new-password" className={inputClass}/></label><button disabled={busy} className="w-full rounded-xl bg-[#20282c] px-5 py-4 font-bold text-white">{busy ? "Activating…" : "Activate Owner Access"}</button></form> : null}
 
-          {step === "done" && result ? <div className="mt-7 space-y-4"><div className="rounded-2xl border border-emerald-700/15 bg-emerald-50 p-5 text-sm text-emerald-900"><b>Owner access is ready.</b><div className="mt-2">Business ID: <b>{result.business.businessId}</b></div><div>Company code: <b>{result.business.companyCode}</b></div><div className="mt-2">This browser is already signed in to the products Founder enabled.</div></div><div className="grid gap-3 sm:grid-cols-2">{result.access.books ? <Link href="/wedge-i/books" className="rounded-xl bg-[#20282c] px-5 py-4 text-center font-bold text-white">Open WedgeBooks</Link> : null}{result.access.clockIn ? <Link href="/manager-dashboard" className="rounded-xl border border-[#20282c]/15 px-5 py-4 text-center font-bold">Open WedgeCLOCKin</Link> : null}</div></div> : null}
+          {step === "done" && result ? <div className="mt-7 space-y-4"><div className="rounded-2xl border border-emerald-700/15 bg-emerald-50 p-5 text-sm text-emerald-900"><b>Owner access is ready.</b><div className="mt-2">Business ID: <b>{result.business.businessId}</b></div><div>Company code: <b>{result.business.companyCode}</b></div><div className="mt-2">Your owner session is active. Product access will open from the Client Dashboard without another owner login.</div></div><Link href="/client-dashboard" className="block w-full rounded-xl bg-[#20282c] px-5 py-4 text-center font-bold text-white">Open Client Dashboard</Link><Link href="/client-login" className="block text-center text-sm font-semibold text-[#8b692f]">Use Client Login next time</Link></div> : null}
 
           {error ? <p className="mt-5 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
         </section>

@@ -1,119 +1,181 @@
-import Link from "next/link";
+"use client";
 
-const rows = [
-  { date: "03 Sep 2026", bank: "CARD SETTLEMENT", amount: 53900, books: "Card clearing", status: "matched" },
-  { date: "08 Sep 2026", bank: "TNB PAYMENT", amount: -3187.4, books: "Electricity expense", status: "matched" },
-  { date: "14 Sep 2026", bank: "ABC HARDWARE", amount: -680, books: "No supporting document", status: "bank_only" },
-  { date: "19 Sep 2026", bank: "GRAB SETTLEMENT", amount: 11620, books: "GrabFood clearing", status: "suggested" },
-  { date: "25 Sep 2026", bank: "CHEQUE 001223", amount: -1240, books: "Supplier payment", status: "books_only" },
-];
+import Link from "next/link";
+import { ChangeEvent, FormEvent, useEffect, useState } from "react";
+
+import {
+  loadMonthlyAccountFile,
+  saveManagedReconciliation,
+  uploadBankStatementMetadata,
+} from "../service";
+import type { MonthlyAccountFile } from "../types";
+
+const inputClass = "mt-2 w-full rounded-xl border border-white/10 bg-[#0d1316] px-4 py-3 text-white outline-none focus:border-[#c8a467]";
 
 function money(value: number) {
-  return new Intl.NumberFormat("en-MY", { style: "currency", currency: "MYR" }).format(Math.abs(value));
+  return new Intl.NumberFormat("en-MY", { style: "currency", currency: "MYR" }).format(value);
 }
 
-function tone(status: string) {
-  if (status === "matched") return "border-emerald-400/20 bg-emerald-400/10 text-emerald-200";
-  if (status === "suggested") return "border-amber-300/20 bg-amber-300/10 text-amber-100";
-  if (status === "bank_only") return "border-red-400/20 bg-red-400/10 text-red-200";
-  return "border-sky-300/20 bg-sky-300/10 text-sky-100";
-}
-
-function label(status: string) {
-  if (status === "bank_only") return "Bank only";
-  if (status === "books_only") return "Books only";
-  return status[0].toUpperCase() + status.slice(1);
+function monthName(month: number, year: number) {
+  return new Intl.DateTimeFormat("en-MY", { month: "long", year: "numeric" }).format(new Date(year, month - 1, 1));
 }
 
 export default function ReconciliationWorkspacePage() {
-  const statementBalance = 39630;
-  const adjustedBookBalance = 38950;
-  const difference = statementBalance - adjustedBookBalance;
+  const now = new Date();
+  const [businessId, setBusinessId] = useState("");
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year, setYear] = useState(now.getFullYear());
+  const [file, setFile] = useState<MonthlyAccountFile | null>(null);
+  const [difference, setDifference] = useState("0");
+  const [exceptions, setExceptions] = useState("0");
+  const [statement, setStatement] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    setBusinessId(new URLSearchParams(window.location.search).get("businessId") || "");
+  }, []);
+
+  useEffect(() => {
+    if (!businessId) return;
+    let cancelled = false;
+    async function load() {
+      setBusy(true); setError("");
+      try {
+        const result = await loadMonthlyAccountFile(businessId, year, month);
+        if (cancelled) return;
+        setFile(result.file);
+        setDifference(String(result.file.reconciliationDifference || 0));
+        setExceptions(String(result.file.bankExceptionCount || 0));
+      } catch (caught) {
+        if (!cancelled) setError(caught instanceof Error ? caught.message : "Monthly reconciliation could not be loaded.");
+      } finally {
+        if (!cancelled) setBusy(false);
+      }
+    }
+    void load();
+    return () => { cancelled = true; };
+  }, [businessId, year, month]);
+
+  function pickStatement(event: ChangeEvent<HTMLInputElement>) {
+    setStatement(event.target.files?.[0] || null);
+    setMessage("");
+  }
+
+  async function recordStatement() {
+    if (!businessId || !statement) return;
+    setUploading(true); setError(""); setMessage("");
+    try {
+      await uploadBankStatementMetadata(businessId, year, month, {
+        bankAccountId: "",
+        fileName: statement.name,
+        mimeType: statement.type || "application/octet-stream",
+      });
+      const refreshed = await loadMonthlyAccountFile(businessId, year, month);
+      setFile(refreshed.file);
+      setStatement(null);
+      setMessage("Statement recorded for this month. Reconciliation can now be worked and exceptions updated below.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Statement could not be recorded.");
+    } finally { setUploading(false); }
+  }
+
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    if (!businessId) return;
+    const parsedDifference = Number(difference);
+    const parsedExceptions = Number(exceptions);
+    if (!Number.isFinite(parsedDifference) || !Number.isFinite(parsedExceptions) || parsedExceptions < 0) {
+      setError("Enter a valid bank difference and unresolved exception count.");
+      return;
+    }
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const result = await saveManagedReconciliation(businessId, year, month, {
+        reconciliationDifference: parsedDifference,
+        bankExceptionCount: Math.floor(parsedExceptions),
+      });
+      setFile(result.file);
+      setMessage(result.file.bankReconciliation === "reconciled" ? "Reconciliation complete: RM0 difference and no unresolved exceptions." : "Reconciliation status saved. Resolve the remaining difference or exceptions before month close.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Reconciliation status could not be saved.");
+    } finally { setBusy(false); }
+  }
+
+  if (!businessId) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-[#090d10] px-6 text-center text-[#f4efe6]">
+        <section className="max-w-xl rounded-[28px] border border-white/10 bg-[#11171b] p-8">
+          <h1 className="text-3xl font-semibold text-[#f0dfbd]">Select a managed business first</h1>
+          <p className="mt-4 text-sm leading-6 text-white/45">Reconciliation is stored against a canonical Business ID and month. No sample transactions are shown.</p>
+          <Link href="/wedge-i/accounts" className="mt-6 inline-flex rounded-full bg-[#c8a467] px-6 py-3 font-bold text-[#111416]">Open Accounts Control</Link>
+        </section>
+      </main>
+    );
+  }
+
+  const reconciled = file?.bankReconciliation === "reconciled" || file?.bankReconciliation === "closed";
+  const locked = Boolean(file?.lockedAt);
 
   return (
     <main className="min-h-screen bg-[#090d10] px-5 py-8 text-[#f4efe6] sm:px-8">
-      <div className="mx-auto max-w-[1500px]">
-        <Link href="/wedge-i/accounts" className="text-sm font-medium text-[#c8a467] hover:text-[#ead3a8]">← Accounts Control Centre</Link>
+      <div className="mx-auto max-w-6xl">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <Link href="/wedge-i/accounts" className="text-sm font-medium text-[#c8a467]">← Accounts Control Centre</Link>
+          <Link href={`/wedge-i/accounts/pnl?businessId=${encodeURIComponent(businessId)}`} className="rounded-full border border-white/10 px-5 py-2 text-xs font-bold text-white/60">P&amp;L Workspace</Link>
+        </div>
 
-        <header className="mt-6 flex flex-col gap-5 border-b border-white/10 pb-7 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-xs font-semibold tracking-[0.22em] text-[#c8a467]">BANK RECONCILIATION</p>
-            <h1 className="mt-3 text-3xl font-semibold text-[#f1dfbc]">ABC Cafe · September 2026</h1>
-            <p className="mt-3 text-sm text-white/45">Maybank Operating ····4421</p>
-          </div>
-          <div className="flex flex-wrap gap-2 text-xs">
-            <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-4 py-2 text-amber-100">6 exceptions</span>
-            <span className="rounded-full border border-red-400/20 bg-red-400/10 px-4 py-2 text-red-200">Difference {money(difference)}</span>
-          </div>
+        <header className="mt-6 border-b border-white/10 pb-7">
+          <p className="text-xs font-semibold tracking-[0.22em] text-[#c8a467]">BANK RECONCILIATION</p>
+          <h1 className="mt-3 text-3xl font-semibold text-[#f1dfbc]">{monthName(month, year)}</h1>
+          <p className="mt-3 text-sm text-white/45">Business ID {businessId}. Only actual month status is displayed; transaction matching detail will appear when statement parsing/matching is available.</p>
         </header>
 
         <section className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Metric label="Statement closing" value={money(statementBalance)} />
-          <Metric label="Adjusted books" value={money(adjustedBookBalance)} />
-          <Metric label="Auto matched" value="169" />
-          <Metric label="Unresolved" value="18" />
+          <Metric label="Status" value={(file?.bankReconciliation || "loading").replaceAll("_", " ")} />
+          <Metric label="Difference" value={money(Number(file?.reconciliationDifference || 0))} />
+          <Metric label="Unresolved exceptions" value={String(file?.bankExceptionCount || 0)} />
+          <Metric label="Missing documents" value={String(file?.missingDocumentCount || 0)} />
         </section>
 
-        <section className="mt-8 overflow-hidden rounded-[28px] border border-white/10 bg-[#11171b]/95">
-          <div className="flex flex-col gap-3 border-b border-white/10 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-xs font-semibold tracking-[0.2em] text-[#c8a467]">STATEMENT MATCHING</p>
-              <p className="mt-2 text-sm text-white/45">Accountants work only on suggested, bank-only and books-only exceptions.</p>
-            </div>
-            <button className="rounded-full border border-white/10 bg-white/[0.04] px-5 py-2.5 text-xs font-semibold text-white/70">Upload statement</button>
+        <section className="mt-8 grid gap-6 lg:grid-cols-2">
+          <div className="rounded-[28px] border border-white/10 bg-[#11171b] p-6">
+            <p className="text-xs font-semibold tracking-[0.2em] text-[#c8a467]">BANK STATEMENT</p>
+            <h2 className="mt-2 text-xl font-semibold text-[#f1dfbc]">Record the month statement</h2>
+            <p className="mt-3 text-xs leading-5 text-white/40">Wedge stores the statement reference for the managed workflow here. Never enter bank login credentials, PINs or TAC codes.</p>
+            <input disabled={locked} onChange={pickStatement} type="file" accept=".csv,.xlsx,.xls,.pdf,text/csv,application/pdf" className="mt-5 block w-full rounded-xl border border-dashed border-white/15 bg-white/[.03] p-4 text-sm text-white/60 file:mr-4 file:rounded-lg file:border-0 file:bg-[#c8a467] file:px-4 file:py-2 file:font-bold file:text-[#111416]" />
+            {statement ? <p className="mt-3 text-xs text-white/45">Selected: {statement.name}</p> : null}
+            <button type="button" disabled={!statement || uploading || locked} onClick={() => void recordStatement()} className="mt-5 w-full rounded-xl border border-[#c8a467]/30 px-5 py-3 text-sm font-bold text-[#ead3a8] disabled:opacity-40">{uploading ? "Recording…" : "Record Statement"}</button>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] text-left text-sm">
-              <thead className="border-b border-white/8 text-[11px] uppercase tracking-[0.12em] text-white/35">
-                <tr>
-                  <th className="px-6 py-4">Date</th>
-                  <th className="px-4 py-4">Bank description</th>
-                  <th className="px-4 py-4">Amount</th>
-                  <th className="px-4 py-4">WedgeBooks match</th>
-                  <th className="px-4 py-4">Status</th>
-                  <th className="px-4 py-4">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row, index) => (
-                  <tr key={`${row.date}-${index}`} className="border-b border-white/[0.06] last:border-0">
-                    <td className="px-6 py-5 text-white/50">{row.date}</td>
-                    <td className="px-4 py-5 font-medium text-white/80">{row.bank}</td>
-                    <td className={`px-4 py-5 font-semibold ${row.amount < 0 ? "text-red-200" : "text-emerald-200"}`}>{row.amount < 0 ? "-" : "+"}{money(row.amount)}</td>
-                    <td className="px-4 py-5 text-white/50">{row.books}</td>
-                    <td className="px-4 py-5"><span className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold ${tone(row.status)}`}>{label(row.status)}</span></td>
-                    <td className="px-4 py-5"><button className="text-xs font-semibold text-[#c8a467]">{row.status === "matched" ? "View" : "Resolve"}</button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <form onSubmit={save} className="rounded-[28px] border border-white/10 bg-[#11171b] p-6">
+            <p className="text-xs font-semibold tracking-[0.2em] text-[#c8a467]">RECONCILIATION CONTROL</p>
+            <h2 className="mt-2 text-xl font-semibold text-[#f1dfbc]">Exception summary</h2>
+            <p className="mt-3 text-xs leading-5 text-white/40">Update these values only after reviewing the actual bank statement against WedgeBooks and clearing records.</p>
+            <label className="mt-5 block text-sm text-white/60">Bank difference (RM)
+              <input disabled={locked} type="number" step="0.01" value={difference} onChange={(event) => setDifference(event.target.value)} className={inputClass} />
+            </label>
+            <label className="mt-4 block text-sm text-white/60">Unresolved exceptions
+              <input disabled={locked} type="number" min="0" step="1" value={exceptions} onChange={(event) => setExceptions(event.target.value)} className={inputClass} />
+            </label>
+            <button disabled={busy || locked} className="mt-5 w-full rounded-xl bg-[#c8a467] px-5 py-3 font-bold text-[#111416] disabled:opacity-40">{busy ? "Saving…" : "Save Reconciliation Status"}</button>
+          </form>
         </section>
 
-        <section className="mt-7 grid gap-7 lg:grid-cols-2">
-          <div className="rounded-[26px] border border-white/10 bg-[#11171b]/95 p-6">
-            <p className="text-xs font-semibold tracking-[0.2em] text-[#c8a467]">RESTAURANT CLEARING</p>
-            <div className="mt-5 space-y-3 text-sm">
-              <Line label="Card collections" value="RM55,000.00" />
-              <Line label="Less: merchant fee" value="RM1,100.00" />
-              <Line label="Net bank settlement" value="RM53,900.00" />
-              <Line label="Card clearing balance" value="RM0.00" strong />
-            </div>
-            <p className="mt-5 text-xs leading-5 text-white/35">The same clearing logic will be used for card processors, DuitNow/QR, GrabFood and Foodpanda before Wedge-I flags a genuine difference.</p>
-          </div>
+        {error ? <p className="mt-6 rounded-xl border border-red-400/25 bg-red-400/10 p-4 text-sm text-red-200">{error}</p> : null}
+        {message ? <p className="mt-6 rounded-xl border border-emerald-400/20 bg-emerald-400/10 p-4 text-sm text-emerald-200">{message}</p> : null}
 
-          <div className="rounded-[26px] border border-[#c8a467]/20 bg-[#12181c]/95 p-6">
-            <p className="text-xs font-semibold tracking-[0.2em] text-[#c8a467]">MONTH CLOSE GATE</p>
-            <div className="mt-5 space-y-2 text-sm text-white/55">
-              <Check ok label="Sales entered" />
-              <Check ok label="Payroll imported from WedgeCLOCKin" />
-              <Check ok={false} label="Bank reconciliation difference = RM0" />
-              <Check ok={false} label="Missing supporting documents = 0" />
-              <Check ok={false} label="Reviewer approval" />
-            </div>
-            <button disabled className="mt-6 w-full rounded-xl bg-[#c8a467] px-5 py-3.5 text-sm font-bold text-[#111416] opacity-40">CLOSE SEPTEMBER 2026</button>
+        <section className="mt-7 rounded-[26px] border border-[#c8a467]/20 bg-[#12181c] p-6">
+          <p className="text-xs font-semibold tracking-[0.2em] text-[#c8a467]">MONTH CLOSE GATE</p>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Check ok={reconciled} label="Bank difference = RM0" />
+            <Check ok={(file?.bankExceptionCount || 0) === 0} label="Bank exceptions = 0" />
+            <Check ok={(file?.missingDocumentCount || 0) === 0} label="Missing documents = 0" />
+            <Check ok={file?.pnl === "review_required" || file?.pnl === "complete"} label="P&L draft saved" />
           </div>
+          <p className="mt-5 text-xs leading-5 text-white/40">Final month close is performed from the P&amp;L Workspace. The backend enforces these gates and will not publish a client P&amp;L until reconciliation is complete.</p>
         </section>
       </div>
     </main>
@@ -121,13 +183,9 @@ export default function ReconciliationWorkspacePage() {
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
-  return <div className="rounded-2xl border border-white/10 bg-[#11171b]/90 p-5"><p className="text-xs uppercase tracking-[0.14em] text-white/35">{label}</p><div className="mt-3 text-2xl font-semibold text-[#f1dfbc]">{value}</div></div>;
-}
-
-function Line({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
-  return <div className={`flex items-center justify-between border-b border-white/[0.06] py-2 ${strong ? "font-semibold text-[#f1dfbc]" : "text-white/55"}`}><span>{label}</span><span>{value}</span></div>;
+  return <div className="rounded-2xl border border-white/10 bg-[#11171b]/90 p-5"><p className="text-xs uppercase tracking-[0.14em] text-white/35">{label}</p><div className="mt-3 text-xl font-semibold capitalize text-[#f1dfbc]">{value}</div></div>;
 }
 
 function Check({ ok, label }: { ok: boolean; label: string }) {
-  return <div className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3"><span className={ok ? "text-emerald-300" : "text-amber-200"}>{ok ? "✓" : "!"}</span><span>{label}</span></div>;
+  return <div className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 text-sm text-white/55"><span className={ok ? "text-emerald-300" : "text-amber-200"}>{ok ? "✓" : "!"}</span><span>{label}</span></div>;
 }
