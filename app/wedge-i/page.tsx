@@ -136,7 +136,7 @@ export default function WedgeIInternalPage() {
           <Action title="WedgeBooks" body="Review client captures, classify expenses and maintain books." href={`/wedge-i/books?${suffix}`} />
           <Action title="Payroll" body="Review automatic month-end payroll drafts, statutory amounts and issue the month." href={`/wedge-i/payroll?${suffix}`} />
           <Action title="Reconciliation" body="Review bank statement status, exceptions, payables and accruals." href={`/wedge-i/accounts/reconciliation?${suffix}`} />
-          <Action title="Management P&L" body="Generate the month using Books + CLOCKin payroll + approved sales." href={`/wedge-i/accounts/pnl?${suffix}`} />
+          <Action title="Accounting Centre" body="Post Books and payroll into the double-entry ledger, reconcile bank, review P&L / Trial Balance / Balance Sheet and export Word or Excel." href={`/wedge-i/accounts/accounting?${suffix}&period=${encodeURIComponent(period)}`} />
           <Action title="Business Registry" body="Return to all managed businesses and client setup." href="/founder-john-control/businesses" />
         </section>
 
