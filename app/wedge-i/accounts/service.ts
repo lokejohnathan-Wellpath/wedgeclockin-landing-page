@@ -3,6 +3,7 @@ import type { BookDocument } from "../books/brain";
 import type { PayrollRecordForPnl } from "./integration";
 import type { PnlValueMap } from "./pnlEngine";
 import type {
+  AccountingItemType,
   ManagedAccountIndustry,
   ManagedAccountsSubscriptionStatus,
   ManagedClient,
@@ -110,6 +111,39 @@ export function saveManagedReconciliation(
   return managedAccountsRequest<{ success: true; file: MonthlyAccountFile }>(
     `/api/managed-accounts/clients/${encodeURIComponent(businessId)}/months/${period(year, month)}/reconciliation`,
     { method: "PUT", body: JSON.stringify(input) },
+  );
+}
+
+export function addAccountingItem(
+  businessId: string,
+  year: number,
+  month: number,
+  input: {
+    type: AccountingItemType;
+    counterparty?: string;
+    reference?: string;
+    date?: string;
+    amount?: number;
+    note?: string;
+    blocksClose?: boolean;
+  },
+) {
+  return managedAccountsRequest<{ success: true; file: MonthlyAccountFile }>(
+    `/api/managed-accounts/clients/${encodeURIComponent(businessId)}/months/${period(year, month)}/accounting-items`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+}
+
+export function updateAccountingItem(
+  businessId: string,
+  year: number,
+  month: number,
+  itemId: string,
+  input: { status?: "open" | "resolved" | "paid"; blocksClose?: boolean; note?: string },
+) {
+  return managedAccountsRequest<{ success: true; file: MonthlyAccountFile }>(
+    `/api/managed-accounts/clients/${encodeURIComponent(businessId)}/months/${period(year, month)}/accounting-items/${encodeURIComponent(itemId)}`,
+    { method: "PATCH", body: JSON.stringify(input) },
   );
 }
 
