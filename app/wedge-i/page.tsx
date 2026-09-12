@@ -103,14 +103,8 @@ export default function WedgeIInternalPage() {
     <main className="min-h-screen bg-[#090d10] px-5 py-8 text-[#f4efe6] sm:px-8">
       <div className="mx-auto max-w-[1500px]">
         <header className="flex flex-col gap-5 border-b border-white/10 pb-7 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-xs font-bold tracking-[.22em] text-[#c8a467]">WEDGE-I · MANAGED BUSINESS CONTROL</p>
-            <h1 className="mt-2 text-4xl font-semibold text-[#f0dfbd]">{name}</h1>
-            <p className="mt-2 text-sm text-white/45">{workspace.business.companyCode} · {workspace.business.businessId} · {workspace.business.industry}</p>
-          </div>
-          <label className="text-xs font-semibold text-white/45">Month
-            <input type="month" value={period} onChange={(event) => setPeriod(event.target.value)} className="ml-3 rounded-xl border border-white/10 bg-[#11171b] px-4 py-2.5 text-sm text-white" />
-          </label>
+          <div><p className="text-xs font-bold tracking-[.22em] text-[#c8a467]">WEDGE-I · MANAGED BUSINESS CONTROL</p><h1 className="mt-2 text-4xl font-semibold text-[#f0dfbd]">{name}</h1><p className="mt-2 text-sm text-white/45">{workspace.business.companyCode} · {workspace.business.businessId} · {workspace.business.industry}</p></div>
+          <label className="text-xs font-semibold text-white/45">Month<input type="month" value={period} onChange={(event) => setPeriod(event.target.value)} className="ml-3 rounded-xl border border-white/10 bg-[#11171b] px-4 py-2.5 text-sm text-white" /></label>
         </header>
 
         <section className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
@@ -124,10 +118,7 @@ export default function WedgeIInternalPage() {
 
         <section className="mt-7 grid gap-5 lg:grid-cols-[1.2fr_.8fr]">
           <div className="rounded-[28px] border border-white/10 bg-[#11171b] p-6 sm:p-7">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div><p className="text-xs font-bold tracking-[.18em] text-[#c8a467]">WHAT NEEDS WORK</p><h2 className="mt-2 text-2xl font-semibold text-[#f0dfbd]">Month-end control</h2></div>
-              <span className={`rounded-full px-4 py-2 text-xs font-bold ${closeReady ? "bg-emerald-400/10 text-emerald-200" : "bg-amber-300/10 text-amber-100"}`}>{closeReady ? "READY FOR FINAL REVIEW" : "WORK IN PROGRESS"}</span>
-            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-bold tracking-[.18em] text-[#c8a467]">WHAT NEEDS WORK</p><h2 className="mt-2 text-2xl font-semibold text-[#f0dfbd]">Month-end control</h2></div><span className={`rounded-full px-4 py-2 text-xs font-bold ${closeReady ? "bg-emerald-400/10 text-emerald-200" : "bg-amber-300/10 text-amber-100"}`}>{closeReady ? "READY FOR FINAL REVIEW" : "WORK IN PROGRESS"}</span></div>
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
               <Check ok={workspace.stats.reviewDocumentCount === 0} text={`${workspace.stats.reviewDocumentCount} document(s) need bookkeeping review`} />
               <Check ok={workspace.stats.draftPayroll === 0 && workspace.stats.issuedPayroll >= workspace.stats.activeEmployees} text={`${workspace.stats.draftPayroll} payroll draft(s) still need review / issue`} />
@@ -138,41 +129,23 @@ export default function WedgeIInternalPage() {
             </div>
           </div>
 
-          <aside className="rounded-[28px] border border-[#c8a467]/20 bg-[#12181c] p-6 sm:p-7">
-            <p className="text-xs font-bold tracking-[.18em] text-[#c8a467]">CARRY-FORWARD ITEMS</p>
-            <div className="mt-4 text-3xl font-semibold text-[#f0dfbd]">{money(workspace.stats.outstandingPayables)}</div>
-            <p className="mt-1 text-sm text-white/40">Outstanding supplier payables. These do not block month close when the expense is properly recorded.</p>
-            <div className="mt-5 space-y-2">
-              {openItems.slice(0, 5).map((item) => <div key={item.id} className="rounded-xl border border-white/[.06] bg-white/[.025] p-3 text-xs text-white/55"><div className="flex justify-between gap-3"><b className="capitalize text-white/75">{item.type.replaceAll("_", " ")}</b><span>{money(Number(item.amount || 0))}</span></div><p className="mt-1">{item.counterparty || item.note || "Review item"}{item.blocksClose ? " · BLOCKS CLOSE" : ""}</p></div>)}
-              {!openItems.length ? <p className="text-sm text-white/35">No open accounting items.</p> : null}
-            </div>
-          </aside>
+          <aside className="rounded-[28px] border border-[#c8a467]/20 bg-[#12181c] p-6 sm:p-7"><p className="text-xs font-bold tracking-[.18em] text-[#c8a467]">CARRY-FORWARD ITEMS</p><div className="mt-4 text-3xl font-semibold text-[#f0dfbd]">{money(workspace.stats.outstandingPayables)}</div><p className="mt-1 text-sm text-white/40">Outstanding supplier payables. These do not block month close when the expense is properly recorded.</p><div className="mt-5 space-y-2">{openItems.slice(0, 5).map((item) => <div key={item.id} className="rounded-xl border border-white/[.06] bg-white/[.025] p-3 text-xs text-white/55"><div className="flex justify-between gap-3"><b className="capitalize text-white/75">{item.type.replaceAll("_", " ")}</b><span>{money(Number(item.amount || 0))}</span></div><p className="mt-1">{item.counterparty || item.note || "Review item"}{item.blocksClose ? " · BLOCKS CLOSE" : ""}</p></div>)}{!openItems.length ? <p className="text-sm text-white/35">No open accounting items.</p> : null}</div></aside>
         </section>
 
-        <section className="mt-7 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <section className="mt-7 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <Action title="WedgeBooks" body="Review client captures, classify expenses and maintain books." href={`/wedge-i/books?${suffix}`} />
-          <Action title="Reconciliation" body="Upload / review bank statement status, exceptions, payables and accruals." href={`/wedge-i/accounts/reconciliation?${suffix}`} />
+          <Action title="Payroll" body="Review automatic month-end payroll drafts, statutory amounts and issue the month." href={`/wedge-i/payroll?${suffix}`} />
+          <Action title="Reconciliation" body="Review bank statement status, exceptions, payables and accruals." href={`/wedge-i/accounts/reconciliation?${suffix}`} />
           <Action title="Management P&L" body="Generate the month using Books + CLOCKin payroll + approved sales." href={`/wedge-i/accounts/pnl?${suffix}`} />
           <Action title="Business Registry" body="Return to all managed businesses and client setup." href="/founder-john-control/businesses" />
         </section>
 
-        <section className="mt-7 rounded-[26px] border border-white/10 bg-[#0e1417] p-6 text-sm leading-6 text-white/45">
-          <b className="text-[#e3c78e]">Operating rule:</b> a month closes when the accounts are reasonably complete and explainable. Properly recorded unpaid suppliers, accruals and timing differences may remain open and carry forward. Unknown material transactions and unresolved duplicates remain blocking exceptions.
-        </section>
+        <section className="mt-7 rounded-[26px] border border-white/10 bg-[#0e1417] p-6 text-sm leading-6 text-white/45"><b className="text-[#e3c78e]">Operating rule:</b> a month closes when the accounts are reasonably complete and explainable. Properly recorded unpaid suppliers, accruals and timing differences may remain open and carry forward. Unknown material transactions and unresolved duplicates remain blocking exceptions.</section>
       </div>
     </main>
   );
 }
 
-function StatusCard({ title, status, detail }: { title: string; status: string; detail: string }) {
-  const good = ["ready", "complete", "reconciled", "closed"].includes(status);
-  return <div className="rounded-2xl border border-white/10 bg-[#11171b] p-5"><p className="text-[10px] font-bold uppercase tracking-[.15em] text-white/30">{title}</p><p className={`mt-2 text-sm font-bold capitalize ${good ? "text-emerald-200" : "text-amber-100"}`}>{status.replaceAll("_", " ")}</p><p className="mt-2 text-xs text-white/35">{detail}</p></div>;
-}
-
-function Check({ ok, text }: { ok: boolean; text: string }) {
-  return <div className="flex gap-3 rounded-xl border border-white/[.06] bg-white/[.025] p-4 text-sm text-white/55"><span className={ok ? "text-emerald-300" : "text-amber-200"}>{ok ? "✓" : "!"}</span><span>{text}</span></div>;
-}
-
-function Action({ title, body, href }: { title: string; body: string; href: string }) {
-  return <Link href={href} className="rounded-[24px] border border-white/10 bg-[#11171b] p-6 hover:border-[#c8a467]/35"><p className="text-xs font-bold tracking-[.16em] text-[#c8a467]">{title.toUpperCase()}</p><p className="mt-3 text-sm leading-6 text-white/45">{body}</p><span className="mt-5 inline-flex text-sm font-bold text-[#ead3a8]">Open →</span></Link>;
-}
+function StatusCard({ title, status, detail }: { title: string; status: string; detail: string }) { const good = ["ready", "complete", "reconciled", "closed"].includes(status); return <div className="rounded-2xl border border-white/10 bg-[#11171b] p-5"><p className="text-[10px] font-bold uppercase tracking-[.15em] text-white/30">{title}</p><p className={`mt-2 text-sm font-bold capitalize ${good ? "text-emerald-200" : "text-amber-100"}`}>{status.replaceAll("_", " ")}</p><p className="mt-2 text-xs text-white/35">{detail}</p></div>; }
+function Check({ ok, text }: { ok: boolean; text: string }) { return <div className="flex gap-3 rounded-xl border border-white/[.06] bg-white/[.025] p-4 text-sm text-white/55"><span className={ok ? "text-emerald-300" : "text-amber-200"}>{ok ? "✓" : "!"}</span><span>{text}</span></div>; }
+function Action({ title, body, href }: { title: string; body: string; href: string }) { return <Link href={href} className="rounded-[24px] border border-white/10 bg-[#11171b] p-6 hover:border-[#c8a467]/35"><p className="text-xs font-bold tracking-[.16em] text-[#c8a467]">{title.toUpperCase()}</p><p className="mt-3 text-sm leading-6 text-white/45">{body}</p><span className="mt-5 inline-flex text-sm font-bold text-[#ead3a8]">Open →</span></Link>; }
