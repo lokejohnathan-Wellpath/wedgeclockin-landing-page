@@ -2,7 +2,6 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import ClockInSubscriptionBanner from "../components/ClockInSubscriptionBanner";
 
 export default function ManagerDashboardLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -21,5 +20,5 @@ export default function ManagerDashboardLayout({ children }: { children: ReactNo
     return <main className="flex min-h-screen items-center justify-center bg-[#101416] text-[#f0dfbd]">Checking WedgeCLOCKin access…</main>;
   }
 
-  return <><ClockInSubscriptionBanner />{children}</>;
+  return <>{children}</>;
 }
