@@ -20,7 +20,27 @@ export type FreeWedgeBusinessInput = Omit<
   "version" | "businessId" | "companyCode" | "createdAt" | "updatedAt"
 >;
 
+export type ApprovedBusinessProfileInput = {
+  businessId: string;
+  companyCode: string;
+  legalName: string;
+  tradingName?: string;
+  businessType: string;
+  registrationNumber?: string;
+  ownerName: string;
+  ownerEmail: string;
+  phone?: string;
+};
+
 const FREE_BUSINESS_KEY = "wedge_i_free_business_profile_v1";
+const BUSINESS_TYPES: BusinessType[] = [
+  "Retail",
+  "F&B",
+  "Beauty / Aesthetic / Medical",
+  "Service",
+  "Manufacturing",
+  "General SME",
+];
 
 function sanitiseCodePart(value: string) {
   return value
@@ -35,6 +55,12 @@ function randomPart() {
     return crypto.randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase();
   }
   return Math.random().toString(36).slice(2, 10).toUpperCase();
+}
+
+function asBusinessType(value: string): BusinessType {
+  return BUSINESS_TYPES.includes(value as BusinessType)
+    ? (value as BusinessType)
+    : "General SME";
 }
 
 export function getFreeBusinessProfile(): FreeWedgeBusinessProfile | null {
@@ -79,6 +105,35 @@ export function saveFreeBusinessProfile(input: FreeWedgeBusinessInput) {
   localStorage.setItem(FREE_BUSINESS_KEY, JSON.stringify(profile));
   window.dispatchEvent(new Event("wedge-free-business-changed"));
   return profile;
+}
+
+export function saveApprovedBusinessProfile(input: ApprovedBusinessProfileInput) {
+  if (typeof window === "undefined") return null;
+  const existing = getFreeBusinessProfile();
+  const now = new Date().toISOString();
+  const profile: FreeWedgeBusinessProfile = {
+    version: 1,
+    businessId: input.businessId,
+    companyCode: input.companyCode,
+    legalName: input.legalName.trim(),
+    tradingName: String(input.tradingName || "").trim(),
+    businessType: asBusinessType(input.businessType),
+    ssmRegistrationNo: String(input.registrationNumber || existing?.ssmRegistrationNo || "").trim(),
+    contactName: input.ownerName.trim(),
+    email: input.ownerEmail.trim().toLowerCase(),
+    mobile: String(input.phone || "").trim(),
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
+  };
+  localStorage.setItem(FREE_BUSINESS_KEY, JSON.stringify(profile));
+  window.dispatchEvent(new Event("wedge-free-business-changed"));
+  return profile;
+}
+
+export function clearFreeBusinessProfile() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(FREE_BUSINESS_KEY);
+  window.dispatchEvent(new Event("wedge-free-business-changed"));
 }
 
 export function freeBusinessMatchesName(profile: FreeWedgeBusinessProfile, companyName: string) {
