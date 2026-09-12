@@ -1,6 +1,7 @@
 import { founderRequest } from "../../lib/founderApi";
 import type { BookDocument } from "../books/brain";
 import type { PayrollRecordForPnl } from "./integration";
+import type { PnlValueMap } from "./pnlEngine";
 import type {
   ManagedAccountIndustry,
   ManagedAccountsSubscriptionStatus,
@@ -115,7 +116,7 @@ export function saveManagedReconciliation(
 export function loadManagedPnlDraft(businessId: string, year: number, month: number) {
   return managedAccountsRequest<{
     success: true;
-    pnl: { industry: string; values: Record<string, number>; warnings?: string[] } | null;
+    pnl: { industry: string; values: PnlValueMap; warnings?: string[] } | null;
     status: string;
     closedAt?: string | null;
     closedBy?: string;
@@ -127,7 +128,7 @@ export function saveManagedPnlDraft(
   businessId: string,
   year: number,
   month: number,
-  input: { industry: string; values: Record<string, number>; warnings?: string[] },
+  input: { industry: string; values: PnlValueMap; warnings?: string[] },
 ) {
   return managedAccountsRequest(
     `/api/managed-accounts/clients/${encodeURIComponent(businessId)}/months/${period(year, month)}/pnl`,
