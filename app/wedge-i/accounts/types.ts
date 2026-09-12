@@ -26,11 +26,7 @@ export const MANAGED_ACCOUNT_INDUSTRIES = [
 
 export type ManagedAccountIndustry = (typeof MANAGED_ACCOUNT_INDUSTRIES)[number];
 
-export type ManagedAccountsSubscriptionStatus =
-  | "pilot"
-  | "active"
-  | "paused"
-  | "ended";
+export type ManagedAccountsSubscriptionStatus = "pilot" | "active" | "paused" | "ended";
 
 export type AccountsUserRole =
   | "owner"
@@ -91,6 +87,36 @@ export type ReconciliationStatus =
   | "reconciled"
   | "closed";
 
+export type AccountingItemType =
+  | "payable"
+  | "receivable"
+  | "accrual"
+  | "timing"
+  | "unknown"
+  | "duplicate"
+  | "missing_expense";
+
+export type AccountingItem = {
+  id: string;
+  type: AccountingItemType;
+  status: "open" | "resolved" | "paid";
+  counterparty?: string;
+  reference?: string;
+  date?: string;
+  amount: number;
+  note?: string;
+  blocksClose: boolean;
+  createdAt?: string;
+  resolvedAt?: string | null;
+};
+
+export type BankStatementRef = {
+  bankAccountId?: string;
+  fileName: string;
+  mimeType?: string;
+  uploadedAt?: string;
+};
+
 export type MonthlyAccountFile = {
   id: string;
   businessId: string;
@@ -106,6 +132,8 @@ export type MonthlyAccountFile = {
   missingDocumentCount: number;
   bankExceptionCount: number;
   reconciliationDifference: number;
+  bankStatements?: BankStatementRef[];
+  accountingItems?: AccountingItem[];
   lockedAt?: string;
   lockedBy?: string;
 };

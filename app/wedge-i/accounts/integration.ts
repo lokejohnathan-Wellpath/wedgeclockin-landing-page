@@ -200,14 +200,17 @@ export function buildIntegratedPnlInput(
   }
 
   const periodPayroll = payrollRecords.filter((record) => record.year === year && record.month === month);
-  const issuedPayroll = periodPayroll.filter((record) => record.status === "issued" && record.isAdjustment !== true);
-  const draftPayroll = periodPayroll.filter((record) => record.status !== "issued");
+  const basePayroll = periodPayroll.filter((record) => record.isAdjustment !== true);
+  const issuedPayroll = basePayroll.filter((record) => record.status === "issued");
+  const draftPayroll = basePayroll.filter((record) => record.status !== "issued");
   const adjustmentPayroll = periodPayroll.filter((record) => record.isAdjustment === true);
   const payrollCode = defaultPayrollCode(industry);
-  const payrollTotal = issuedPayroll.reduce((total, record) => total + grossEmploymentCost(record), 0);
+  const payrollTotal = basePayroll.reduce((total, record) => total + grossEmploymentCost(record), 0);
 
+  // Automatic month-end payroll drafts feed the working P&L immediately. Final month close is
+  // separately blocked by the backend until every base payroll record has been reviewed/issued.
   if (payrollCode && payrollTotal > 0) add(values, payrollCode, payrollTotal);
-  if (draftPayroll.length) warnings.push(`${draftPayroll.length} payroll record(s) are still draft and excluded from the P&L.`);
+  if (draftPayroll.length) warnings.push(`${draftPayroll.length} payroll record(s) are still draft. Their staff cost is included provisionally in this working P&L; review and issue payroll before final month close.`);
   if (adjustmentPayroll.length) warnings.push(`${adjustmentPayroll.length} payroll adjustment record(s) require accountant review before posting.`);
   if (payrollAllocationSensitiveIndustries.includes(industry) && payrollTotal > 0) {
     warnings.push("Payroll is provisionally posted to operating staff cost. Allocate production/site/frontline labour separately before final close.");

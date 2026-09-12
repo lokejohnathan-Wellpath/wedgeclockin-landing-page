@@ -30,7 +30,7 @@ export default function ManagerLoginPage() {
       localStorage.setItem("wc_company_code", data.companyCode);
       localStorage.setItem("wc_company_name", data.companyName || "");
       localStorage.setItem("wc_manager_id", data.managerId || "");
-      router.push("/manager-dashboard");
+      router.push("/business");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed.");
     } finally {
@@ -44,29 +44,28 @@ export default function ManagerLoginPage() {
         <div className="w-full max-w-md rounded-[2rem] border border-[#d4ad63]/40 bg-[#1e2428] p-8 shadow-2xl">
           <div className="mb-8 text-center">
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#d4ad63] text-2xl text-black">◷</div>
-            <p className="text-sm tracking-[0.3em] text-[#d4ad63]">WEDGECLOCKIN</p>
-            <h1 className="mt-3 text-3xl font-bold text-[#f0dfbd]">Manager Login</h1>
-            <p className="mt-3 text-sm leading-6 text-white/55">For delegated managers who operate attendance, employees, leave and payroll. Business owners should use the Client Login instead.</p>
+            <p className="text-sm tracking-[0.3em] text-[#d4ad63]">WEDGE BUSINESS</p>
+            <h1 className="mt-3 text-3xl font-bold text-[#f0dfbd]">Business Operations Login</h1>
+            <p className="mt-3 text-sm leading-6 text-white/55">For the business owner or delegated manager. This opens WedgeCLOCKin and document capture only. Bookkeeping, Wedge-I, reconciliation and P&amp;L stay with the Wedge back-office team.</p>
           </div>
-
-          <Link href="/client-login" className="mb-6 block rounded-xl border border-[#d4ad63]/35 bg-[#d4ad63]/10 px-4 py-3 text-center text-sm font-bold text-[#f0dfbd]">Business owner? Open Client Login</Link>
 
           <form onSubmit={handleLogin} className="space-y-5">
             <label className="block text-sm font-semibold text-white/70">Company Code
               <input type="text" value={companyCode} onChange={(event) => setCompanyCode(event.target.value)} placeholder="Enter company code" className="mt-2 w-full rounded-xl border border-white/10 bg-[#101416] px-4 py-3 text-white outline-none focus:border-[#d4ad63]" required />
             </label>
-            <label className="block text-sm font-semibold text-white/70">Manager Password
-              <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Enter manager password" className="mt-2 w-full rounded-xl border border-white/10 bg-[#101416] px-4 py-3 text-white outline-none focus:border-[#d4ad63]" required />
+            <label className="block text-sm font-semibold text-white/70">Operations Password
+              <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Enter password" className="mt-2 w-full rounded-xl border border-white/10 bg-[#101416] px-4 py-3 text-white outline-none focus:border-[#d4ad63]" required />
             </label>
 
             {error ? <div className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div> : null}
 
-            <button type="submit" disabled={isLoading} className="block w-full rounded-full bg-[#d4ad63] px-6 py-4 text-center font-bold text-black hover:bg-[#e4bf75] disabled:cursor-not-allowed disabled:opacity-60">{isLoading ? "Logging in..." : "Manager Login"}</button>
-            <div className="text-right text-xs"><Link href="/manager-forgot-password" className="text-white/55 hover:text-white">Forgot manager password?</Link></div>
+            <button type="submit" disabled={isLoading} className="block w-full rounded-full bg-[#d4ad63] px-6 py-4 text-center font-bold text-black hover:bg-[#e4bf75] disabled:cursor-not-allowed disabled:opacity-60">{isLoading ? "Opening…" : "Open Business Tools"}</button>
+            <div className="text-right text-xs"><Link href="/manager-forgot-password" className="text-white/55 hover:text-white">Forgot operations password?</Link></div>
           </form>
 
-          <div className="mt-8 rounded-2xl border border-white/10 bg-white/5 p-5 text-sm leading-6 text-white/55">Manager access is restricted to WedgeCLOCKin operations for the assigned company. It does not grant WedgeBooks, Founder Control or management P&L access.</div>
-          <Link href="/" className="mt-6 block text-center text-sm text-[#d4ad63] hover:underline">Back to Wedge Works</Link>
+          <div className="mt-8 rounded-2xl border border-white/10 bg-white/5 p-5 text-sm leading-6 text-white/55">Employees continue to use the separate employee CLOCKin page. Business operations access never grants Founder Control, Wedge-I or full accounting access.</div>
+          <Link href="/employee-clockin" className="mt-5 block text-center text-sm font-semibold text-[#d4ad63]">Employee Clock-In</Link>
+          <Link href="/" className="mt-3 block text-center text-sm text-white/40 hover:text-white">Back to Wedge Works</Link>
         </div>
       </section>
     </main>
