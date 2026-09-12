@@ -1,4 +1,5 @@
 import { clearProductToken, saveProductToken } from "./productAccess";
+import { saveApprovedBusinessProfile } from "../wedge-i/services/freeBusinessClient";
 
 export const OWNER_TOKEN_KEY = "wedge_owner_token";
 
@@ -14,6 +15,7 @@ export type OwnerBusiness = {
   legalName: string;
   tradingName?: string;
   businessType: string;
+  registrationNumber?: string;
   ownerName: string;
   ownerEmail: string;
   phone?: string;
@@ -66,6 +68,20 @@ export function ownerToken() {
 
 export function saveOwnerToken(token: string) {
   localStorage.setItem(OWNER_TOKEN_KEY, token);
+}
+
+function persistOwnerBusiness(business: OwnerBusiness) {
+  saveApprovedBusinessProfile({
+    businessId: business.businessId,
+    companyCode: business.companyCode,
+    legalName: business.legalName,
+    tradingName: business.tradingName,
+    businessType: business.businessType,
+    registrationNumber: business.registrationNumber,
+    ownerName: business.ownerName,
+    ownerEmail: business.ownerEmail,
+    phone: business.phone,
+  });
 }
 
 function saveScopedAccess(access: ScopedAccess) {
@@ -135,16 +151,20 @@ export async function loginOwner(email: string, password: string, businessId?: s
   const result = data as OwnerLoginResult;
   saveOwnerToken(result.token);
   saveScopedAccess(result.access);
+  persistOwnerBusiness(result.business);
   return result;
 }
 
 export async function loadOwnerSession() {
-  return ownerRequest<{ success: true; business: OwnerBusiness }>("/api/owner/auth/session");
+  const result = await ownerRequest<{ success: true; business: OwnerBusiness }>("/api/owner/auth/session");
+  persistOwnerBusiness(result.business);
+  return result;
 }
 
 export async function refreshOwnerProductAccess() {
   const result = await ownerRequest<{ success: true; business: OwnerBusiness; access: ScopedAccess }>("/api/owner/auth/access");
   saveScopedAccess(result.access);
+  persistOwnerBusiness(result.business);
   return result;
 }
 
