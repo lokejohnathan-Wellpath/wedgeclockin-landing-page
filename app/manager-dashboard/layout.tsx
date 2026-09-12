@@ -3,46 +3,18 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import ClockInSubscriptionBanner from "../components/ClockInSubscriptionBanner";
-import { ensureOwnerProductAccess, ownerToken } from "../lib/ownerAccess";
 
-export default function ManagerDashboardLayout({
-  children,
-}: {
-  children: ReactNode;
-}) {
+export default function ManagerDashboardLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [allowed, setAllowed] = useState<boolean | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    async function check() {
-      if (localStorage.getItem("wc_manager_token")) {
-        if (!cancelled) setAllowed(true);
-        return;
-      }
-      if (ownerToken()) {
-        try {
-          const ready = await ensureOwnerProductAccess("clockIn");
-          if (!cancelled && ready) {
-            setAllowed(true);
-            return;
-          }
-        } catch {
-          // Fall through to owner dashboard rather than showing a manager credential screen.
-        }
-        if (!cancelled) {
-          setAllowed(false);
-          router.replace("/client-dashboard");
-        }
-        return;
-      }
-      if (!cancelled) {
-        setAllowed(false);
-        router.replace("/manager-login");
-      }
+    if (localStorage.getItem("wc_manager_token")) {
+      setAllowed(true);
+      return;
     }
-    void check();
-    return () => { cancelled = true; };
+    setAllowed(false);
+    router.replace("/manager-login");
   }, [router]);
 
   if (!allowed) {
