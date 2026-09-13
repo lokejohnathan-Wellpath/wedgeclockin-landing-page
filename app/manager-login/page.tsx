@@ -45,25 +45,31 @@ export default function ManagerLoginPage() {
           <div className="mb-8 text-center">
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#d4ad63] text-2xl text-black">◷</div>
             <p className="text-sm tracking-[0.3em] text-[#d4ad63]">WEDGE BUSINESS</p>
-            <h1 className="mt-3 text-3xl font-bold text-[#f0dfbd]">Business Operations Login</h1>
-            <p className="mt-3 text-sm leading-6 text-white/55">For the business owner or delegated manager. This opens WedgeCLOCKin and document capture only. Bookkeeping, Wedge-I, reconciliation and P&amp;L stay with the Wedge back-office team.</p>
+            <h1 className="mt-3 text-3xl font-bold text-[#f0dfbd]">Business &amp; HR Login</h1>
+            <p className="mt-3 text-sm leading-6 text-white/55">For the business owner, HR team or delegated manager. Use the Company Code issued for your business — not your email address.</p>
           </div>
 
           <form onSubmit={handleLogin} className="space-y-5">
             <label className="block text-sm font-semibold text-white/70">Company Code
-              <input type="text" value={companyCode} onChange={(event) => setCompanyCode(event.target.value)} placeholder="Enter company code" className="mt-2 w-full rounded-xl border border-white/10 bg-[#101416] px-4 py-3 text-white outline-none focus:border-[#d4ad63]" required />
+              <input type="text" value={companyCode} onChange={(event) => setCompanyCode(event.target.value)} placeholder="e.g. WEDGETESFA88" autoCapitalize="characters" className="mt-2 w-full rounded-xl border border-white/10 bg-[#101416] px-4 py-3 text-white outline-none focus:border-[#d4ad63]" required />
+              <span className="mt-2 block text-xs leading-5 text-white/40">Use the Company Code shown in your Wedge onboarding. Do not enter your email or the WDG Business ID.</span>
             </label>
             <label className="block text-sm font-semibold text-white/70">Operations Password
-              <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Enter password" className="mt-2 w-full rounded-xl border border-white/10 bg-[#101416] px-4 py-3 text-white outline-none focus:border-[#d4ad63]" required />
+              <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Enter operations password" className="mt-2 w-full rounded-xl border border-white/10 bg-[#101416] px-4 py-3 text-white outline-none focus:border-[#d4ad63]" required />
+              <span className="mt-2 block text-xs leading-5 text-white/40">This is the password created for your business manager account.</span>
             </label>
 
             {error ? <div className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div> : null}
 
-            <button type="submit" disabled={isLoading} className="block w-full rounded-full bg-[#d4ad63] px-6 py-4 text-center font-bold text-black hover:bg-[#e4bf75] disabled:cursor-not-allowed disabled:opacity-60">{isLoading ? "Opening…" : "Open Business Tools"}</button>
+            <button type="submit" disabled={isLoading} className="block w-full rounded-full bg-[#d4ad63] px-6 py-4 text-center font-bold text-black hover:bg-[#e4bf75] disabled:cursor-not-allowed disabled:opacity-60">{isLoading ? "Opening…" : "Open Business & HR Tools"}</button>
             <div className="text-right text-xs"><Link href="/manager-forgot-password" className="text-white/55 hover:text-white">Forgot operations password?</Link></div>
           </form>
 
-          <div className="mt-8 rounded-2xl border border-white/10 bg-white/5 p-5 text-sm leading-6 text-white/55">Employees continue to use the separate employee CLOCKin page. Business operations access never grants Founder Control, Wedge-I or full accounting access.</div>
+          <div className="mt-8 rounded-2xl border border-white/10 bg-white/5 p-5 text-sm leading-6 text-white/55">
+            <p className="font-semibold text-[#f0dfbd]">What you can manage after login</p>
+            <p className="mt-2">Add employees, attendance, roster, leave, OT, payroll setup, face/GPS status and business document capture.</p>
+            <p className="mt-2 text-xs text-white/40">Bookkeeping review, Wedge-I, reconciliation and final P&amp;L remain with the Wedge back-office team.</p>
+          </div>
           <Link href="/employee-clockin" className="mt-5 block text-center text-sm font-semibold text-[#d4ad63]">Employee Clock-In</Link>
           <Link href="/" className="mt-3 block text-center text-sm text-white/40 hover:text-white">Back to Wedge Works</Link>
         </div>
