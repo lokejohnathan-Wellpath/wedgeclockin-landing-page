@@ -65,7 +65,10 @@ export default function FounderBusinessesPage() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return rows;
-    return rows.filter((row) => [row.legalName, row.tradingName || "", row.companyCode, row.businessId, row.ownerName, row.ownerEmail].some((value) => value.toLowerCase().includes(q)));
+    return rows.filter((row) =>
+      [row.legalName, row.tradingName || "", row.companyCode, row.businessId, row.ownerName, row.ownerEmail]
+        .some((value) => value.toLowerCase().includes(q)),
+    );
   }, [rows, search]);
 
   async function createBusiness(event: FormEvent<HTMLFormElement>) {
@@ -96,22 +99,40 @@ export default function FounderBusinessesPage() {
   }
 
   async function deleteBusiness(row: Business) {
-    const confirmation = window.prompt(`Type DELETE to remove ${row.tradingName || row.legalName} from active Wedge operations.`);
-    if (confirmation !== "DELETE") return;
-    const reason = window.prompt("Reason for deleting this business? Accounting history will be retained for audit purposes.");
-    if (!reason?.trim()) return;
+    const name = row.tradingName || row.legalName;
+    const confirmed = window.confirm(
+      `Permanently delete ${name}?\n\nThis will erase this test business and its linked CLOCKin, employee, attendance, leave, payroll, WedgeBooks, managed-account and business-specific audit records from MongoDB. This cannot be undone.`,
+    );
+    if (!confirmed) return;
+
+    const reason = window.prompt("Reason for permanent deletion?", "Test account cleanup");
+    if (!reason?.trim()) {
+      setError("A deletion reason is required.");
+      return;
+    }
+
     setDeletingId(row.businessId);
     setError("");
     setMessage("");
     try {
-      await founderRequest<{ success: true; message: string }>(`/api/founder/control/businesses/${encodeURIComponent(row.businessId)}`, {
+      const result = await founderRequest<{
+        success: true;
+        message: string;
+        deletedDocuments: number;
+        collectionsTouched: number;
+      }>(`/api/founder/control/businesses/${encodeURIComponent(row.businessId)}/purge`, {
         method: "DELETE",
-        body: JSON.stringify({ reason: reason.trim() }),
+        body: JSON.stringify({
+          reason: reason.trim(),
+          hardDelete: true,
+          confirmBusinessId: row.businessId,
+          companyCode: row.companyCode,
+        }),
       });
       setRows((current) => current.filter((item) => item.businessId !== row.businessId));
-      setMessage(`${row.tradingName || row.legalName} removed from active operations. CLOCKin and internal product access are disabled; historical accounting records remain retained.`);
+      setMessage(`${name} permanently deleted. Removed ${result.deletedDocuments ?? 0} linked document(s) across ${result.collectionsTouched ?? 0} MongoDB collection(s).`);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Business could not be deleted.");
+      setError(caught instanceof Error ? caught.message : "Business could not be permanently deleted.");
     } finally {
       setDeletingId("");
     }
@@ -135,7 +156,13 @@ export default function FounderBusinessesPage() {
 
         {showCreate ? (
           <form onSubmit={createBusiness} className="mt-7 rounded-[28px] border border-[#d2aa62]/20 bg-[#11181c] p-6 sm:p-8">
-            <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-bold tracking-[.18em] text-[#d2aa62]">FOUNDER ONBOARDING</p><h2 className="mt-2 text-2xl font-semibold text-[#f1dfbc]">Create managed business</h2><p className="mt-2 text-sm text-white/40">This provisions the permanent Wedge identity, internal WedgeBooks and the client&apos;s WedgeCLOCKin access in one step.</p></div></div>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold tracking-[.18em] text-[#d2aa62]">FOUNDER ONBOARDING</p>
+                <h2 className="mt-2 text-2xl font-semibold text-[#f1dfbc]">Create managed business</h2>
+                <p className="mt-2 text-sm text-white/40">This provisions the permanent Wedge identity, internal WedgeBooks and the client&apos;s WedgeCLOCKin access in one step.</p>
+              </div>
+            </div>
             <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               <Field name="legalName" label="Legal business name" placeholder="ABC Restaurant Sdn Bhd" />
               <Field name="tradingName" label="Trading name" placeholder="ABC Restaurant" required={false} />
@@ -153,7 +180,10 @@ export default function FounderBusinessesPage() {
               <Field name="financialYearEnd" label="Financial year end" defaultValue="12-31" />
               <Field name="sstRegistrationNumber" label="SST registration no." placeholder="Optional" required={false} />
             </div>
-            <div className="mt-5 flex flex-wrap gap-4 text-sm text-white/55"><label className="flex items-center gap-2"><input name="sstRegistered" type="checkbox" className="accent-[#d2aa62]" /> SST registered</label><label className="flex items-center gap-2"><input name="serviceChargeEnabled" type="checkbox" className="accent-[#d2aa62]" /> Service charge enabled</label></div>
+            <div className="mt-5 flex flex-wrap gap-4 text-sm text-white/55">
+              <label className="flex items-center gap-2"><input name="sstRegistered" type="checkbox" className="accent-[#d2aa62]" /> SST registered</label>
+              <label className="flex items-center gap-2"><input name="serviceChargeEnabled" type="checkbox" className="accent-[#d2aa62]" /> Service charge enabled</label>
+            </div>
             <button disabled={creating} className="mt-6 rounded-xl bg-[#d2aa62] px-6 py-3.5 text-sm font-bold text-black disabled:opacity-50">{creating ? "Creating business…" : "Create Managed Business"}</button>
           </form>
         ) : null}
@@ -180,7 +210,7 @@ export default function FounderBusinessesPage() {
                   <div className="flex flex-col gap-2 lg:min-w-48">
                     <Link href={`/wedge-i?businessId=${encodeURIComponent(row.businessId)}`} className="rounded-lg bg-[#d2aa62] px-4 py-2.5 text-center text-xs font-bold text-black">Open Business Workspace</Link>
                     <Link href={`/wedge-i/books?businessId=${encodeURIComponent(row.businessId)}`} className="rounded-lg border border-white/10 px-4 py-2 text-center text-xs font-bold text-white/60">Open Books</Link>
-                    <button disabled={deletingId === row.businessId} onClick={() => void deleteBusiness(row)} className="rounded-lg border border-red-400/25 bg-red-400/5 px-4 py-2 text-xs font-bold text-red-200 disabled:opacity-50">{deletingId === row.businessId ? "Deleting…" : "Delete Business"}</button>
+                    <button disabled={deletingId === row.businessId} onClick={() => void deleteBusiness(row)} className="rounded-lg border border-red-400/25 bg-red-400/5 px-4 py-2 text-xs font-bold text-red-200 disabled:opacity-50">{deletingId === row.businessId ? "Deleting permanently…" : "Permanently Delete"}</button>
                   </div>
                 </article>
               ))}
@@ -195,5 +225,11 @@ export default function FounderBusinessesPage() {
 function Field({ label, required = true, ...props }: React.InputHTMLAttributes<HTMLInputElement> & { label: string; required?: boolean }) {
   return <label className="text-sm font-semibold text-white/65">{label}<input {...props} required={required} name={props.name} className={inputClass} /></label>;
 }
-function Code({ children }: { children: React.ReactNode }) { return <span className="rounded-full border border-white/10 bg-white/[.035] px-3 py-1 text-white/55">{children}</span>; }
-function Pill({ active, children }: { active: boolean; children: React.ReactNode }) { return <span className={`rounded-full px-3 py-1 font-bold ${active ? "bg-emerald-400/10 text-emerald-200" : "bg-white/[.04] text-white/30"}`}>{children}</span>; }
+
+function Code({ children }: { children: React.ReactNode }) {
+  return <span className="rounded-full border border-white/10 bg-white/[.035] px-3 py-1 text-white/55">{children}</span>;
+}
+
+function Pill({ active, children }: { active: boolean; children: React.ReactNode }) {
+  return <span className={`rounded-full px-3 py-1 font-bold ${active ? "bg-emerald-400/10 text-emerald-200" : "bg-white/[.04] text-white/30"}`}>{children}</span>;
+}
