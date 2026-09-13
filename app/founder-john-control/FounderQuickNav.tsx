@@ -1,13 +1,21 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { FOUNDER_TOKEN_KEY } from "../lib/founderApi";
 
 export default function FounderQuickNav() {
+  const pathname = usePathname();
   const [visible, setVisible] = useState(false);
-  useEffect(() => setVisible(Boolean(localStorage.getItem(FOUNDER_TOKEN_KEY))), []);
-  if (!visible) return null;
+
+  useEffect(() => {
+    setVisible(Boolean(localStorage.getItem(FOUNDER_TOKEN_KEY)));
+  }, [pathname]);
+
+  // Never show authenticated Founder navigation on the private login screen,
+  // even if an old/stale Founder token is still stored in the browser.
+  if (!visible || pathname === "/founder-john-control") return null;
 
   return (
     <nav className="fixed bottom-4 left-1/2 z-[190] flex max-w-[calc(100vw-24px)] -translate-x-1/2 gap-1 overflow-x-auto rounded-full border border-white/10 bg-[#0d1316]/95 p-1.5 text-[11px] font-bold text-white/60 shadow-2xl backdrop-blur">
