@@ -13,14 +13,14 @@ export default function FounderQuickNav() {
     setVisible(Boolean(localStorage.getItem(FOUNDER_TOKEN_KEY)));
   }, [pathname]);
 
-  // Never show authenticated Founder navigation on the private login screen,
-  // even if an old/stale Founder token is still stored in the browser.
   if (!visible || pathname === "/founder-john-control") return null;
 
   return (
     <nav className="fixed bottom-4 left-1/2 z-[190] flex max-w-[calc(100vw-24px)] -translate-x-1/2 gap-1 overflow-x-auto rounded-full border border-white/10 bg-[#0d1316]/95 p-1.5 text-[11px] font-bold text-white/60 shadow-2xl backdrop-blur">
       <Link href="/founder-john-control/dashboard" className="whitespace-nowrap rounded-full px-4 py-2 hover:bg-white/5 hover:text-white">Founder Desk</Link>
       <Link href="/founder-john-control/businesses" className="whitespace-nowrap rounded-full bg-[#d2aa62] px-4 py-2 text-black">Managed Businesses</Link>
+      <Link href="/founder-john-control/legacy-accounts" className="whitespace-nowrap rounded-full px-4 py-2 hover:bg-white/5 hover:text-white">Delete Test Accounts</Link>
+      <Link href="/founder-john-control?reset=1" className="whitespace-nowrap rounded-full px-4 py-2 hover:bg-white/5 hover:text-white">Reset Password</Link>
     </nav>
   );
 }
