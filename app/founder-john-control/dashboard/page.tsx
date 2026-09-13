@@ -122,13 +122,20 @@ function AccessModal({ account, close, saved }: { account: Account; close: () =>
   }
 
   async function deleteAccount() {
-    const confirmation = window.prompt(`Type DELETE to remove ${account.businessName} from Founder Control.`);
-    if (confirmation !== "DELETE") return;
+    const confirmed = window.confirm(`Delete ${account.businessName} from Founder Control? Its product access will be disabled, while historical records remain retained for audit.`);
+    if (!confirmed) return;
     const deleteReason = window.prompt("Reason for deleting this account?", "Testing account cleanup");
-    if (!deleteReason?.trim()) return;
-    setDeleting(true); setError("");
+    if (!deleteReason?.trim()) {
+      setError("A deletion reason is required.");
+      return;
+    }
+    setDeleting(true);
+    setError("");
     try {
-      await founderRequest(`/api/founder/control/accounts/${account.accountType}/${account.accountId}`, { method: "DELETE", body: JSON.stringify({ reason: deleteReason.trim() }) });
+      await founderRequest(`/api/founder/control/accounts/${encodeURIComponent(account.accountType)}/${encodeURIComponent(account.accountId)}`, {
+        method: "DELETE",
+        body: JSON.stringify({ reason: deleteReason.trim() }),
+      });
       saved();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Delete failed.");
