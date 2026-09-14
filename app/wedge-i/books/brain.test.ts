@@ -10,7 +10,7 @@ import {
   reconcileDocumentCategories,
 } from "./brain.ts";
 
-test("retail sales receipt keeps merchant and ignores payment lines", () => {
+test("retail purchase receipt becomes one bookkeeping total", () => {
   const document = parseBookDocument({
     text: `
 HUP SOON IPOH FOODS SDN. BHD.
@@ -31,10 +31,12 @@ Tax Invoice No: PPI22607240136
   assert.match(document.merchant, /HUP SOON/i);
   assert.equal(document.total, 250);
   assert.equal(document.items.length, 1);
-  assert.equal(document.items[0].description, "PI TULANG BESAR (10KG)");
+  assert.equal(document.items[0].amount, 250);
+  assert.equal(document.items[0].category, "Goods for Resale");
+  assert.match(document.items[0].description, /receipt total/i);
 });
 
-test("clinic receipt uses medical context and restores missing decimal amounts", () => {
+test("clinic receipt becomes one medical total", () => {
   const document = parseBookDocument({
     text: `
 POLIKLINIK SIHAT DAHLIA SDN. BHD.
@@ -58,9 +60,41 @@ SY PCM 250MG 10.00
 
   assert.match(document.merchant, /POLIKLINIK/i);
   assert.equal(document.total, 54);
-  assert.equal(document.items.length, 4);
-  assert.equal(document.items.reduce((sum, item) => sum + item.amount, 0), 54);
-  assert.ok(document.items.every((item) => item.category === "Medical / Healthcare"));
+  assert.equal(document.items.length, 1);
+  assert.equal(document.items[0].amount, 54);
+  assert.equal(document.items[0].category, "Medical / Healthcare");
+  assert.equal(document.status, "Ready");
+});
+
+test("99 Speedmart receipt uses printed total and restaurant purchase category", () => {
+  const document = parseBookDocument({
+    text: `
+99 SPEED MART SDN BHD
+INVOICE NO : 107870993/102/T6055
+22-06-25
+176 CAPILANO HONEY 400G 17.95
+2226 DUTCH LADY UHT LOW FAT RM 17.55
+4532 AYAM BRAND DELI SPREAD RM 14.80
+3210 CHEE HUP HONEY ROCK SU RM 5.50
+1708 KELLOGGS CORN FLAKES 2 RM 6.99
+Sub Total RM 70.54
+Rounding Adjustment RM .01
+NET TOTAL RM 70.55
+MYCASH RM 70.55
+CHANGE RM 0.00
+`,
+    businessType: "restaurant",
+    documentType: "purchase",
+    learning: {},
+    ocrConfidence: 47,
+  });
+
+  assert.equal(document.merchant, "99 Speedmart");
+  assert.equal(document.total, 70.55);
+  assert.equal(document.items.length, 1);
+  assert.equal(document.items[0].amount, 70.55);
+  assert.equal(document.items[0].category, "Ingredients & Beverages");
+  assert.equal(document.items[0].confidence, 95);
   assert.equal(document.status, "Ready");
 });
 
@@ -178,7 +212,6 @@ test("payment and receipt metadata cannot become learned bookkeeping lines", () 
   assert.equal(isNonPurchaseMetadata("Pork Loin T100"), false);
 });
 
-
 test("online voucher recognises advertising and preserves the printed total", () => {
   const document = parseBookDocument({
     text: `
@@ -193,7 +226,6 @@ Total Amount                        312.67
     businessType: "restaurant",
     documentType: "purchase",
     learning: {},
-    // Covers browser OCR engines that return text but an unusable 0% confidence value.
     ocrConfidence: 0,
   });
 
