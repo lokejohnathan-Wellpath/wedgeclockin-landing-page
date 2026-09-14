@@ -126,22 +126,23 @@ function auditorSourceFileName(document: BookDocument) {
   return `${document.date}-${safeFilePart(reference)}-${safeFilePart(document.id).slice(-8)}${extension}`;
 }
 
-async function prepareImageForOcr(file: File, lineItemsOnly = false) {
+async function prepareImageForOcr(file: File, lineItemsOnly = false, highContrast = false) {
   try {
     const image = await createImageBitmap(file);
     const sourceX = lineItemsOnly ? Math.round(image.width * 0.015) : 0;
     const sourceY = lineItemsOnly ? Math.round(image.height * 0.16) : 0;
     const sourceWidth = lineItemsOnly ? Math.round(image.width * 0.97) : image.width;
     const sourceHeight = lineItemsOnly ? Math.round(image.height * 0.62) : image.height;
-    const scale = Math.max(1, Math.min(lineItemsOnly ? 3.2 : 2.2, 3600 / sourceWidth));
+    const scale = Math.max(1, Math.min(lineItemsOnly || highContrast ? 3.4 : 2.6, 4200 / sourceWidth));
     const canvas = document.createElement("canvas");
     canvas.width = Math.round(sourceWidth * scale);
     canvas.height = Math.round(sourceHeight * scale);
-    const context = canvas.getContext("2d");
+    const context = canvas.getContext("2d", { willReadFrequently: true });
     if (!context) return file;
+    context.imageSmoothingEnabled = false;
     context.filter = lineItemsOnly
-      ? "grayscale(1) contrast(1.4) brightness(1.1)"
-      : "grayscale(1) contrast(1.3) brightness(1.06)";
+      ? "grayscale(1) contrast(1.55) brightness(1.12)"
+      : "grayscale(1) contrast(1.4) brightness(1.08)";
     context.drawImage(
       image,
       sourceX,
@@ -153,6 +154,20 @@ async function prepareImageForOcr(file: File, lineItemsOnly = false) {
       canvas.width,
       canvas.height,
     );
+    if (highContrast) {
+      const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+      for (let index = 0; index < pixels.data.length; index += 4) {
+        const luminance =
+          pixels.data[index] * 0.2126 +
+          pixels.data[index + 1] * 0.7152 +
+          pixels.data[index + 2] * 0.0722;
+        const adjusted = Math.max(0, Math.min(255, (luminance - 128) * 2.15 + 142));
+        pixels.data[index] = adjusted;
+        pixels.data[index + 1] = adjusted;
+        pixels.data[index + 2] = adjusted;
+      }
+      context.putImageData(pixels, 0, 0);
+    }
     image.close();
     return await new Promise<Blob>((resolve) =>
       canvas.toBlob((blob) => resolve(blob ?? file), "image/png", 1),
@@ -160,6 +175,19 @@ async function prepareImageForOcr(file: File, lineItemsOnly = false) {
   } catch {
     return file;
   }
+}
+
+function measuredOcrConfidence(text: string, reportedConfidence: number) {
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const signals = [
+    /\d{1,2}[/-]\d{1,2}[/-]\d{2,4}/.test(text),
+    /(?:RM\s*)?\d[\d,]*\.\d{2}/i.test(text),
+    lines.some((line) => /sdn\s*bhd|enterprise|trading|supplier|vendor|供应商|供應商/i.test(line)),
+    lines.some((line) => /[\p{L}]{4}/u.test(line)),
+  ].filter(Boolean).length;
+  // Tesseract occasionally returns a false 0% for a usable image. Preserve a low
+  // score for weak text, but do not discard a document that contains four clear signals.
+  return signals >= 4 ? Math.max(reportedConfidence, 68) : reportedConfidence;
 }
 
 function documentRows(documents: BookDocument[]) {
@@ -507,6 +535,7 @@ function BooksWorkspace() {
         const { createWorker, PSM } = await import("tesseract.js");
         const preparedImage = await prepareImageForOcr(file);
         const lineItemsImage = await prepareImageForOcr(file, true);
+        const highContrastImage = await prepareImageForOcr(file, false, true);
         const recognise = async (
           languages: string[],
           start: number,
@@ -539,37 +568,67 @@ function BooksWorkspace() {
           }
         };
 
-        const fullPageResult = await recognise(["eng", "msa"], 0, 56, preparedImage, PSM.AUTO);
+        const fullPageResult = await recognise(["eng", "msa"], 0, 42, preparedImage, PSM.AUTO);
         const lineItemsResult = await recognise(
           ["eng", "msa"],
-          56,
+          42,
           30,
           lineItemsImage,
           PSM.SPARSE_TEXT,
         );
+        setOcrStage("Checking high-contrast document text");
+        const highContrastResult = await recognise(
+          ["eng", "msa"],
+          72,
+          12,
+          highContrastImage,
+          PSM.AUTO,
+        );
         let extraLanguageText = "";
         let extraLanguageConfidence = 0;
-        if (Math.max(fullPageResult.data.confidence, lineItemsResult.data.confidence) < 72) {
-          setOcrStage("Checking Chinese / Mandarin text");
-          const multilingualResult = await recognise(
-            ["eng", "msa", "chi_sim"],
-            86,
-            14,
-            lineItemsImage,
-            PSM.SPARSE_TEXT,
-          );
-          extraLanguageText = multilingualResult.data.text.trim();
-          extraLanguageConfidence = multilingualResult.data.confidence;
+        if (Math.max(
+          fullPageResult.data.confidence,
+          lineItemsResult.data.confidence,
+          highContrastResult.data.confidence,
+        ) < 78) {
+          setOcrStage("Reading Chinese / Mandarin text");
+          try {
+            const multilingualResult = await recognise(
+              ["eng", "msa", "chi_sim", "chi_tra"],
+              84,
+              16,
+              highContrastImage,
+              PSM.SPARSE_TEXT,
+            );
+            extraLanguageText = multilingualResult.data.text.trim();
+            extraLanguageConfidence = multilingualResult.data.confidence;
+          } catch {
+            // Some browsers have only the simplified Chinese language pack cached.
+            const simplifiedChineseResult = await recognise(
+              ["eng", "msa", "chi_sim"],
+              84,
+              16,
+              highContrastImage,
+              PSM.SPARSE_TEXT,
+            );
+            extraLanguageText = simplifiedChineseResult.data.text.trim();
+            extraLanguageConfidence = simplifiedChineseResult.data.confidence;
+          }
         }
         source = [
           fullPageResult.data.text.trim(),
           lineItemsResult.data.text.trim(),
+          highContrastResult.data.text.trim(),
           extraLanguageText,
         ].filter(Boolean).join("\n");
-        confidence = Math.max(
-          fullPageResult.data.confidence,
-          lineItemsResult.data.confidence,
-          extraLanguageConfidence,
+        confidence = measuredOcrConfidence(
+          source,
+          Math.max(
+            fullPageResult.data.confidence,
+            lineItemsResult.data.confidence,
+            highContrastResult.data.confidence,
+            extraLanguageConfidence,
+          ),
         );
       }
 
@@ -666,9 +725,8 @@ function BooksWorkspace() {
 
   function updateItemAmount(itemId: string, value: string) {
     const amount = Math.max(0, Number(value) || 0);
-    setDraft((current) => ({
-      ...current,
-      items: current.items.map((item) =>
+    setDraft((current) => {
+      const items = current.items.map((item) =>
         item.id === itemId
           ? {
               ...item,
@@ -676,17 +734,29 @@ function BooksWorkspace() {
               unitPrice: item.quantity > 0 ? amount / item.quantity : amount,
             }
           : item,
-      ),
-      status: "Needs review",
-    }));
+      );
+      const itemTotal = Math.round(items.reduce((sum, item) => sum + item.amount, 0) * 100) / 100;
+      return {
+        ...current,
+        items,
+        // A missing OCR total must never prevent a user-entered line amount from saving.
+        total: current.total > 0 ? current.total : itemTotal,
+        status: "Needs review",
+      };
+    });
   }
 
   function removeDraftItem(itemId: string) {
-    setDraft((current) => ({
-      ...current,
-      items: current.items.filter((item) => item.id !== itemId),
-      status: "Needs review",
-    }));
+    setDraft((current) => {
+      const items = current.items.filter((item) => item.id !== itemId);
+      const itemTotal = Math.round(items.reduce((sum, item) => sum + item.amount, 0) * 100) / 100;
+      return {
+        ...current,
+        items,
+        total: current.total > 0 ? current.total : itemTotal,
+        status: "Needs review",
+      };
+    });
   }
 
   function confirmItemDescription(itemId: string) {
@@ -730,10 +800,18 @@ function BooksWorkspace() {
       setMessage("Some item descriptions are not clear. Please correct and confirm them before saving.");
       return;
     }
-    const fingerprint = documentFingerprint(draft);
+    const savedItemTotal = Math.round(
+      draft.items.reduce((sum, item) => sum + item.amount, 0) * 100,
+    ) / 100;
+    const draftForSaving = {
+      ...draft,
+      // Use the isolated line total only when OCR did not find a printed total.
+      total: draft.total > 0 ? draft.total : savedItemTotal,
+    };
+    const fingerprint = documentFingerprint(draftForSaving);
     const existingDuplicate = documents.find(
       (document) =>
-        document.id !== draft.id &&
+        document.id !== draftForSaving.id &&
         fingerprint &&
         documentFingerprint(document) === fingerprint,
     );
@@ -746,7 +824,7 @@ function BooksWorkspace() {
       return;
     }
     const additions: LearningMap = {};
-    draft.items.forEach((item) => {
+    draftForSaving.items.forEach((item) => {
       if (
         item.source === "learned" &&
         !isNonPurchaseMetadata(item.description)
@@ -754,12 +832,11 @@ function BooksWorkspace() {
         additions[normalise(item.description)] = item.category;
       }
     });
-    const savedItemTotal = draft.items.reduce((sum, item) => sum + item.amount, 0);
     const savedTotalsAgree =
-      Math.abs(savedItemTotal - draft.total) < 0.02 ||
-      Math.abs(savedItemTotal + draft.tax - draft.total) < 0.02;
+      Math.abs(savedItemTotal - draftForSaving.total) < 0.02 ||
+      Math.abs(savedItemTotal + draftForSaving.tax - draftForSaving.total) < 0.02;
     const savedDocument: BookDocument = {
-      ...draft,
+      ...draftForSaving,
       fileName: file?.name ?? draft.fileName,
       status:
         savedTotalsAgree &&
