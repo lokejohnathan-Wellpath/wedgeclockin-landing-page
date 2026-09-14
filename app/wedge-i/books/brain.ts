@@ -142,120 +142,21 @@ export const allCategories: BookCategory[] = [
 ];
 
 const categoryConcepts: Array<{ category: BookCategory; terms: string[] }> = [
-  {
-    category: "TNB / Electricity",
-    terms: [
-      "electricity", "electric", "elektrik", "tenaga nasional", "tnb", "bil elektrik",
-      "电费", "电力", "மின்சாரம்",
-    ],
-  },
-  {
-    category: "Water",
-    terms: [
-      "water bill", "bil air", "syabas", "air selangor", "water utility",
-      "水费", "自来水", "தண்ணீர்",
-    ],
-  },
-  {
-    category: "Gas",
-    terms: [
-      "gas bill", "cooking gas", "lpg", "tong gas", "gas cylinder", "natural gas",
-      "煤气", "燃气", "瓦斯",
-    ],
-  },
-  {
-    category: "Utilities",
-    terms: [
-      "internet", "unifi", "telephone", "telekom", "broadband", "wifi",
-      "网络费", "电话费",
-    ],
-  },
-  {
-    category: "Rent & Premises",
-    terms: [
-      "rent", "rental", "sewa", "premise", "shoplot", "hostel", "租金", "店租",
-      "வாடகை",
-    ],
-  },
-  {
-    category: "Repairs & Maintenance",
-    terms: [
-      "repair", "maintenance", "pembaikan", "baiki", "servicing", "machine repair",
-      "machinery repair", "equipment repair",
-      "维修", "保养", "பழுது", "பராமரிப்பு",
-    ],
-  },
-  {
-    category: "Transport & Delivery",
-    terms: [
-      "petrol", "diesel", "fuel", "toll", "parking", "courier", "delivery",
-      "freight", "lorry", "grab", "油费", "运费", "停车", "எரிபொருள்",
-    ],
-  },
-  {
-    category: "Advertising & Marketing",
-    terms: [
-      "advertising", "advertisement", "advert", "marketing", "promotion", "promotional",
-      "branding", "sponsorship", "signage", "banner", "flyer", "brochure", "social media",
-      "facebook ad", "google ad", "tiktok ad", "广告", "廣告", "宣传", "宣傳", "推广", "推廣",
-      "营销", "行销", "市场推广", "市場推廣", "促销", "促銷", "赞助", "贊助", "招牌", "横幅", "橫幅",
-    ],
-  },
-  {
-    category: "Office & Administration",
-    terms: [
-      "stationery", "office", "printing", "printer", "toner", "ink cartridge",
-      "photostat", "software subscription", "alat tulis", "office upkeep",
-      "office cleaning", "pantry supplies", "janitorial", "pejabat", "文具", "打印",
-      "அலுவலகம்",
-    ],
-  },
-  {
-    category: "Goods for Resale",
-    terms: [
-      "stock purchase", "retail stock", "goods for resale", "product stock", "resale item",
-      "stok jualan", "stok kedai", "barang jualan", "零售库存", "转售商品",
-    ],
-  },
-  {
-    category: "Professional Fees",
-    terms: [
-      "accounting fee", "audit fee", "legal fee", "consultancy", "professional fee",
-      "secretarial fee", "会计费", "律师费",
-    ],
-  },
-  {
-    category: "Equipment / Asset",
-    terms: [
-      "machine", "machinery", "equipment", "computer", "laptop", "freezer",
-      "refrigerator", "fridge", "oven", "air conditioner", "furniture", "mesin",
-      "peralatan", "机器", "设备", "电脑", "இயந்திரம்",
-    ],
-  },
-  {
-    category: "Food Items",
-    terms: [
-      "chicken", "ayam", "beef", "daging", "fish", "ikan", "prawn", "udang",
-      "pork", "pork loin", "babi", "daging babi", "猪肉",
-      "vegetable", "sayur", "tomato", "rice", "beras", "flour", "tepung",
-      "egg", "telur", "milk", "susu", "cooking oil", "minyak masak", "sugar", "gula",
-      "food item", "ingredient", "食品", "食材", "鸡肉", "鱼", "蔬菜", "米",
-    ],
-  },
-  {
-    category: "Packaging",
-    terms: [
-      "packaging", "wrapper", "plastic bag", "paper bag", "container", "takeaway box",
-      "cup", "lid", "straw", "label", "bungkus", "bekas", "塑料袋", "包装", "பை",
-    ],
-  },
-  {
-    category: "Production Overhead",
-    terms: [
-      "factory cleaning", "machine lubricant", "industrial gas", "production supplies",
-      "safety equipment", "factory maintenance",
-    ],
-  },
+  { category: "TNB / Electricity", terms: ["electricity", "electric", "elektrik", "tenaga nasional", "tnb", "bil elektrik", "电费", "电力"] },
+  { category: "Water", terms: ["water bill", "bil air", "syabas", "air selangor", "water utility", "水费", "自来水"] },
+  { category: "Gas", terms: ["gas bill", "cooking gas", "lpg", "tong gas", "gas cylinder", "natural gas", "煤气", "燃气", "瓦斯"] },
+  { category: "Utilities", terms: ["internet", "unifi", "telephone", "telekom", "broadband", "wifi", "网络费", "电话费"] },
+  { category: "Rent & Premises", terms: ["rent", "rental", "sewa", "premise", "shoplot", "hostel", "租金", "店租"] },
+  { category: "Repairs & Maintenance", terms: ["repair", "maintenance", "pembaikan", "baiki", "servicing", "machine repair", "machinery repair", "equipment repair", "维修", "保养"] },
+  { category: "Transport & Delivery", terms: ["petrol", "diesel", "fuel", "ron95", "ron97", "toll", "parking", "courier", "delivery", "freight", "lorry", "grab", "油费", "运费", "停车"] },
+  { category: "Advertising & Marketing", terms: ["advertising", "advertisement", "advert", "marketing", "promotion", "promotional", "branding", "sponsorship", "signage", "banner", "flyer", "brochure", "social media", "facebook ad", "google ad", "tiktok ad", "广告", "廣告", "宣传", "宣傳", "推广", "推廣", "营销", "行销"] },
+  { category: "Office & Administration", terms: ["stationery", "office", "printing", "printer", "toner", "ink cartridge", "photostat", "software subscription", "alat tulis", "office upkeep", "office cleaning", "pantry supplies", "janitorial", "pejabat", "文具", "打印"] },
+  { category: "Goods for Resale", terms: ["stock purchase", "retail stock", "goods for resale", "product stock", "resale item", "stok jualan", "stok kedai", "barang jualan", "零售库存", "转售商品"] },
+  { category: "Professional Fees", terms: ["accounting fee", "audit fee", "legal fee", "consultancy", "professional fee", "secretarial fee", "会计费", "律师费"] },
+  { category: "Equipment / Asset", terms: ["machine", "machinery", "equipment", "computer", "laptop", "freezer", "refrigerator", "fridge", "oven", "air conditioner", "furniture", "mesin", "peralatan", "机器", "设备", "电脑"] },
+  { category: "Food Items", terms: ["chicken", "ayam", "beef", "daging", "fish", "ikan", "prawn", "udang", "pork", "pork loin", "babi", "daging babi", "猪肉", "vegetable", "sayur", "tomato", "rice", "beras", "flour", "tepung", "egg", "telur", "milk", "susu", "cooking oil", "minyak masak", "sugar", "gula", "food item", "ingredient", "食品", "食材", "鸡肉", "鱼", "蔬菜", "米"] },
+  { category: "Packaging", terms: ["packaging", "wrapper", "plastic bag", "paper bag", "container", "takeaway box", "cup", "lid", "straw", "label", "bungkus", "bekas", "塑料袋", "包装"] },
+  { category: "Production Overhead", terms: ["factory cleaning", "machine lubricant", "industrial gas", "production supplies", "safety equipment", "factory maintenance"] },
 ];
 
 const ignoredLine = new RegExp(
@@ -307,13 +208,7 @@ export function documentFingerprint(document: BookDocument) {
   const reference = documentIdentityPart(document.documentNo);
   const total = Math.round(Math.max(0, document.total) * 100);
   if (!merchant || !document.date || !total) return "";
-  return [
-    document.documentType,
-    merchant,
-    document.date,
-    reference || "no-reference",
-    total,
-  ].join("|");
+  return [document.documentType, merchant, document.date, reference || "no-reference", total].join("|");
 }
 
 export function duplicateDocumentIds(documents: BookDocument[]) {
@@ -340,22 +235,12 @@ export function reconcileDocumentCategories(document: BookDocument) {
   const maximumPlausibleLine = Math.max(documentTotal * 1.25, documentTotal + 5);
   const candidates = document.items.filter((item) => {
     const description = normalise(item.description);
-    return (
-      item.amount > 0 &&
-      item.amount <= maximumPlausibleLine &&
-      description.length >= 2 &&
-      !isNonPurchaseMetadata(description)
-    );
+    return item.amount > 0 && item.amount <= maximumPlausibleLine && description.length >= 2 && !isNonPurchaseMetadata(description);
   });
 
-  if (!candidates.length) {
-    return [{ category: "Other Expense", amount: documentTotal }];
-  }
-
+  if (!candidates.length) return [{ category: "Other Expense", amount: documentTotal }];
   const candidateTotal = candidates.reduce((sum, item) => sum + item.amount, 0);
-  if (candidateTotal <= 0) {
-    return [{ category: "Other Expense", amount: documentTotal }];
-  }
+  if (candidateTotal <= 0) return [{ category: "Other Expense", amount: documentTotal }];
 
   let allocated = 0;
   return candidates.map((item, index) => {
@@ -386,10 +271,7 @@ export function classifyBookDescription(
   const learned = Object.entries(learning)
     .sort(([a], [b]) => b.length - a.length)
     .find(([term]) => clean.includes(term));
-
-  if (learned) {
-    return { category: learned[1], confidence: 99, source: "learned" as const };
-  }
+  if (learned) return { category: learned[1], confidence: 99, source: "learned" as const };
 
   for (const concept of categoryConcepts) {
     if (concept.terms.some((term) => clean.includes(normalise(term)))) {
@@ -405,19 +287,22 @@ export function classifyBookDescription(
 }
 
 function findDate(lines: string[]) {
-  const line = lines.find((value) => /date|tarikh|日期|日期|தேதி/i.test(value)) ??
-    lines.find((value) => /\d{1,2}[/-]\d{1,2}[/-]\d{2,4}/.test(value));
-  const value = line?.match(/(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/);
-  if (!value) return "";
-  const [, day, month, rawYear] = value;
-  const year = rawYear.length === 2 ? `20${rawYear}` : rawYear;
-  return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  const joined = lines.join(" ");
+  const labelled = lines.find((value) => /date|tarikh|日期|தேதி/i.test(value));
+  const source = labelled || joined;
+  const dmy = source.match(/\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b/);
+  if (dmy) {
+    const [, day, month, rawYear] = dmy;
+    const year = rawYear.length === 2 ? `20${rawYear}` : rawYear;
+    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+  const ymd = source.match(/\b(20\d{2})[/-](\d{1,2})[/-](\d{1,2})\b/);
+  if (!ymd) return "";
+  return `${ymd[1]}-${ymd[2].padStart(2, "0")}-${ymd[3].padStart(2, "0")}`;
 }
 
 function findExplicitSupplier(lines: string[]) {
-  const index = lines.findIndex((line) =>
-    /^(supplier|vendor|pembekal|supplied\s+by|sold\s+by|供应商)\b/i.test(line.trim()),
-  );
+  const index = lines.findIndex((line) => /^(supplier|vendor|pembekal|supplied\s+by|sold\s+by|供应商)\b/i.test(line.trim()));
   if (index < 0) return "";
   const sameLine = lines[index]
     .replace(/^(supplier|vendor|pembekal|supplied\s+by|sold\s+by|供应商)\s*[:\-]?\s*/i, "")
@@ -426,82 +311,76 @@ function findExplicitSupplier(lines: string[]) {
   return lines[index + 1]?.trim() ?? "";
 }
 
-function findMerchant(
-  lines: string[],
-  ocrConfidence: number | undefined,
-  documentType: DocumentType,
-) {
+function canonicalMerchant(text: string) {
+  const clean = normalise(text);
+  if (/\b99\s*speed\s*mart\b/.test(clean) || /\bspeed\s*mart\b/.test(clean)) return "99 Speedmart";
+  if (/\b7\s*eleven\b/.test(clean)) return "7-Eleven";
+  if (/\bmr\s*diy\b/.test(clean)) return "MR.DIY";
+  if (/\beco\s*shop\b/.test(clean)) return "Eco-Shop";
+  if (/\beconsave\b/.test(clean)) return "Econsave";
+  if (/\bmydin\b/.test(clean)) return "Mydin";
+  if (/\blotus'?s?\b/.test(clean)) return "Lotus's";
+  if (/\baeon\b/.test(clean)) return "AEON";
+  return "";
+}
+
+function looksLikeMetadataCandidate(line: string) {
+  const clean = normalise(line);
+  const letters = clean.match(/\p{L}/gu)?.length ?? 0;
+  const digits = clean.match(/\d/g)?.length ?? 0;
+  const compact = clean.replace(/\s+/g, "");
+  if (!clean || letters < 3) return true;
+  if (/(receipt|resit|invoice|invois|tax|date|time|welcome|cashier|counter|total|amount|qty|item|description|member|terminal|transaction|reference|voucher)/i.test(clean)) return true;
+  if (/(?:^|\s)[a-z]{0,3}voice\s*(?:no|mo|m0|n0)?\b/i.test(clean)) return true;
+  if (/(address|alamat|jalan|jln|taman|tel|phone|fax|www|email)/i.test(clean)) return true;
+  if (compact.length > 0 && digits / compact.length > 0.34) return true;
+  return false;
+}
+
+function findMerchant(lines: string[], ocrConfidence: number | undefined, documentType: DocumentType) {
+  const allText = lines.join(" ");
+  const canonical = canonicalMerchant(allText);
+  if (canonical) return canonical;
+
   const explicitSupplier = findExplicitSupplier(lines);
-  const hasReceiptHeading = lines.some((line) =>
-    /\b(sales\s+receipt|official\s+receipt|resit\s+jualan)\b/i.test(line),
-  );
-  const hasFormalInvoiceHeading = lines.some((line) =>
-    /^\s*(invoice|invois|发票)\b/i.test(line) && !/tax\s+invoice\s*(no|#)/i.test(line),
-  );
-  const hasFormalInvoiceFields = lines.some((line) =>
-    /our\s+d\/?o|your\s+ref|payment\s+terms|^\s*terms\s*[:\-]/i.test(line),
-  );
-  const formalPurchaseInvoice =
-    documentType === "purchase" &&
-    !hasReceiptHeading &&
-    hasFormalInvoiceHeading &&
-    hasFormalInvoiceFields;
+  const hasReceiptHeading = lines.some((line) => /\b(sales\s+receipt|official\s+receipt|resit\s+jualan|receipt)\b/i.test(line));
+  const hasFormalInvoiceHeading = lines.some((line) => /^\s*(invoice|invois|发票)\b/i.test(line) && !/tax\s+invoice\s*(no|#)/i.test(line));
+  const hasFormalInvoiceFields = lines.some((line) => /our\s+d\/?o|your\s+ref|payment\s+terms|^\s*terms\s*[:\-]|bill\s+to/i.test(line));
+  const formalPurchaseInvoice = documentType === "purchase" && !hasReceiptHeading && hasFormalInvoiceHeading && hasFormalInvoiceFields;
+  if (formalPurchaseInvoice && !explicitSupplier) return merchantNotVisible;
 
-  if (formalPurchaseInvoice && !explicitSupplier) {
-    return merchantNotVisible;
-  }
-
-  // Browser OCR can report 0% even when it returns a complete, structured document.
-  // Hide the merchant only when the recognised text itself is too thin to verify.
   if (typeof ocrConfidence === "number" && ocrConfidence < 35) {
     const meaningfulLines = lines.filter((line) => /[\p{L}\p{N}]{3}/u.test(line)).length;
     if (meaningfulLines < 3) return merchantNotVisible;
   }
-
   if (explicitSupplier) return explicitSupplier;
 
-  const candidates = lines.slice(0, 10)
+  const candidates = lines.slice(0, 16)
     .map((line, index) => {
-      const clean = line.replace(/^[^\p{L}]*/u, "").trim();
-      if (
-        clean.length < 3 ||
-        clean.length > 64 ||
-        !/[\p{L}]{3}/u.test(clean) ||
-        /receipt|resit|invoice|tax|date|time|welcome|cashier|counter|total|amount|qty|item|description/i.test(clean) ||
-        /address|alamat|jalan|jln|taman|tel|phone|fax|www\.|@/i.test(clean) ||
-        /^\d[\d\s/.-]+$/.test(clean)
-      ) {
-        return null;
-      }
-
+      const clean = line.replace(/^[^\p{L}]*/u, "").replace(/\s+/g, " ").trim();
+      if (clean.length < 3 || clean.length > 72 || looksLikeMetadataCandidate(clean)) return null;
       const letters = clean.match(/\p{L}/gu)?.length ?? 0;
-      const symbols = clean.replace(/[\p{L}\p{N}\s&.'()-]/gu, "").length;
       const uppercaseLetters = clean.match(/\p{Lu}/gu)?.length ?? 0;
       const wordCount = clean.split(/\s+/).length;
       const shortWords = clean.split(/\s+/).filter((word) => word.replace(/[^\p{L}]/gu, "").length <= 2).length;
-      let score = Math.max(0, 4 - index);
-
+      let score = Math.max(0, 6 - Math.floor(index / 2));
       if (wordCount >= 7 && shortWords / wordCount > 0.35) return null;
-      if (/sdn\s*bhd|enterprise|trading|supplies|market|mart|store|shop|restaurant|cafe|salon|spa|services/i.test(clean)) score += 5;
-      if (letters >= 4 && uppercaseLetters / letters > 0.72) score += 3;
+      if (/sdn\s*bhd|enterprise|trading|supplies|distribution|market|mart|store|shop|restaurant|cafe|salon|spa|services/i.test(clean)) score += 7;
+      if (letters >= 4 && uppercaseLetters / letters > 0.68) score += 2;
       if (wordCount >= 2 && wordCount <= 7) score += 2;
-      if (symbols > 2) score -= 4;
-
       return { clean, score };
     })
     .filter((candidate): candidate is { clean: string; score: number } => Boolean(candidate))
     .sort((a, b) => b.score - a.score);
 
-  return candidates[0]?.score >= 4 ? candidates[0].clean : merchantNotVisible;
+  return candidates[0]?.score >= 5 ? candidates[0].clean : merchantNotVisible;
 }
 
 function findDocumentNo(lines: string[]) {
-  const line = lines.find((value) =>
-    /receipt\s*(no|#)|resit\s*(no|#)|invoice\s*(no|#)|inv\s*(no|#)|bill\s*(no|#)|online\s+voucher|voucher\s*(no|#)|ov\s*(no|#)/i.test(value),
-  );
-  const explicit = line?.match(
-    /(?:receipt\s*(?:no|#)|resit\s*(?:no|#)|invoice\s*(?:no|#)|inv\s*(?:no|#)|bill\s*(?:no|#)|voucher\s*(?:no|#)?|ov\s*(?:no|#)?)\s*[:.#-]?\s*([A-Z0-9][A-Z0-9\s/-]{2,})/i,
-  )?.[1].replace(/\s+/g, " ").trim();
+  const line = lines.find((value) => /receipt\s*(no|#)|resit\s*(no|#)|invoice\s*(no|#)|inv\s*(no|#)|bill\s*(no|#)|online\s+voucher|voucher\s*(no|#)|ov\s*(no|#)/i.test(value));
+  const explicit = line?.match(/(?:receipt\s*(?:no|#)|resit\s*(?:no|#)|invoice\s*(?:no|#)|inv\s*(?:no|#)|bill\s*(?:no|#)|voucher\s*(?:no|#)?|ov\s*(?:no|#)?)\s*[:.#-]?\s*([A-Z0-9][A-Z0-9\s/-]{2,})/i)?.[1]
+    .replace(/\s+/g, " ")
+    .trim();
   return explicit || `AUTO-${Date.now().toString().slice(-6)}`;
 }
 
@@ -540,44 +419,31 @@ function descriptionLooksReadable(description: string) {
 }
 
 function findQuantity(line: string) {
-  const match = line.match(
-    /(?:^|\s)(\d+(?:\.\d+)?)\s*(gulung|papan|bottle|botol|pack|unit|ekor|pcs|pkt|box|bag|kg|litre|liter|tin|pc|g|l)\b/i,
-  );
+  const match = line.match(/(?:^|\s)(\d+(?:\.\d+)?)\s*(gulung|papan|bottle|botol|pack|unit|ekor|pcs|pkt|box|bag|kg|litre|liter|tin|pc|g|l)\b/i);
   if (!match) return { quantity: 1, unit: "unit" };
   return { quantity: parseNumber(match[1]) || 1, unit: match[2].toLowerCase() };
 }
 
 function extractItemLines(lines: string[]) {
   const candidates: Array<{ description: string; raw: string; amount: number }> = [];
-
   for (let index = 0; index < lines.length; index += 1) {
     const current = lines[index].replace(/[|]/g, " ").replace(/\s+/g, " ").trim();
     if (!current || ignoredLine.test(current)) continue;
-
     const currentAmount = findMoneyAtEnd(current, true);
     const hasLetters = /[\p{L}]{2}/u.test(current);
-
     if (currentAmount > 0 && hasLetters) {
       const description = extractDescription(current);
       if (description.length >= 2) candidates.push({ description, raw: current, amount: currentAmount });
       continue;
     }
-
     const next = lines[index + 1]?.replace(/[|]/g, " ").replace(/\s+/g, " ").trim() ?? "";
     const nextAmount = findMoneyAtEnd(next, true);
-    const currentLooksLikeProduct =
-      hasLetters &&
-      current.length >= 3 &&
-      !ignoredLine.test(current) &&
-      !/sdn\s*bhd|enterprise|trading|address|jalan|taman/i.test(current);
-    const nextLooksLikeNumbers = nextAmount > 0 && /\d/.test(next);
-
-    if (currentLooksLikeProduct && nextLooksLikeNumbers && !ignoredLine.test(next)) {
+    const currentLooksLikeProduct = hasLetters && current.length >= 3 && !ignoredLine.test(current) && !/sdn\s*bhd|enterprise|trading|address|jalan|taman/i.test(current);
+    if (currentLooksLikeProduct && nextAmount > 0 && /\d/.test(next) && !ignoredLine.test(next)) {
       candidates.push({ description: current, raw: `${current} ${next}`, amount: nextAmount });
       index += 1;
     }
   }
-
   const seen = new Set<string>();
   return candidates.filter((candidate) => {
     const key = `${normalise(candidate.description)}|${candidate.amount.toFixed(2)}`;
@@ -590,22 +456,18 @@ function extractItemLines(lines: string[]) {
 function findTotal(lines: string[], itemTotal: number) {
   const totalLines = lines
     .map((line, index) => {
-      const amount =
-        findMoneyAtEnd(line, true) ||
-        findMoneyAtEnd(lines[index + 1] ?? "", true) ||
-        findMoneyAtEnd(lines[index + 2] ?? "", true);
-      return {
-        line,
-        amount,
-        score:
-          /total\s*amount|grand\s*total|amount\s*due|net\s*total|jumlah\s*besar/i.test(line)
-          ? 3
-          : /^(?:total|jumlah)\b/i.test(line.trim())
-            ? 2
-            : /\btotal\b/i.test(line)
-              ? 1
-              : 0,
-      };
+      const amount = findMoneyAtEnd(line, true) || findMoneyAtEnd(lines[index + 1] ?? "", true) || findMoneyAtEnd(lines[index + 2] ?? "", true);
+      const clean = normalise(line);
+      const score = /\bnet total\b|\bgrand total\b|\btotal amount\b|\bamount due\b|\bjumlah besar\b/.test(clean)
+        ? 5
+        : /^(total|jumlah)\b/.test(clean)
+          ? 4
+          : /\bnet rm\b|\bamount paid\b/.test(clean)
+            ? 3
+            : /\btotal\b/.test(clean) && !/sub\s*total|subtotal/.test(clean)
+              ? 2
+              : 0;
+      return { amount, score };
     })
     .filter((candidate) => candidate.score > 0 && candidate.amount > 0)
     .sort((first, second) => second.score - first.score);
@@ -617,23 +479,15 @@ function findTax(lines: string[]) {
   return findMoneyAtEnd(taxLine ?? "");
 }
 
-function reconcileItemsToPrintedTotal<T extends { description: string; amount: number }>(
-  items: T[],
-  total: number,
-  tax: number,
-) {
+function reconcileItemsToPrintedTotal<T extends { description: string; amount: number }>(items: T[], total: number, tax: number) {
   if (items.length < 2 || items.length > 20 || total <= 0) return items;
   const itemCents = items.map((item) => Math.round(item.amount * 100));
   const rawCents = itemCents.reduce((sum, amount) => sum + amount, 0);
-  const targets = [...new Set([
-    Math.round(total * 100),
-    tax > 0 ? Math.round((total - tax) * 100) : 0,
-  ].filter((target) => target > 0))];
+  const targets = [...new Set([Math.round(total * 100), tax > 0 ? Math.round((total - tax) * 100) : 0].filter((target) => target > 0))];
   if (targets.includes(rawCents)) return items;
 
   let bestIndices: number[] | null = null;
   let bestScore = -Infinity;
-
   for (const target of targets) {
     const visit = (index: number, sum: number, chosen: number[]) => {
       if (sum === target) {
@@ -656,31 +510,28 @@ function reconcileItemsToPrintedTotal<T extends { description: string; amount: n
     };
     visit(0, 0, []);
   }
-
   return bestIndices ? (bestIndices as number[]).map((index) => items[index]) : items;
 }
 
 function documentContextCategory(text: string): BookCategory | null {
   const clean = normalise(text);
-  if (/\b(poliklinik|klinik|clinic|hospital|medical centre|medical center|pharmacy|farmasi)\b/.test(clean)) {
-    return "Medical / Healthcare";
-  }
-  if (/\b(tenaga nasional|tnb|bil elektrik|electricity bill)\b/.test(clean)) {
-    return "TNB / Electricity";
-  }
-  if (/\b(air selangor|syabas|bil air|water utility|water bill)\b/.test(clean)) {
-    return "Water";
-  }
-  if (/\b(gas malaysia|gas bill|bil gas|lpg invoice)\b/.test(clean)) {
-    return "Gas";
-  }
-  if (/\b(unifi|telekom malaysia|internet bill|broadband bill|telephone bill)\b/.test(clean)) {
-    return "Utilities";
-  }
-  if (/\b(premise rental|shop rental|rental invoice|sewa premis|sewa kedai)\b/.test(clean)) {
-    return "Rent & Premises";
-  }
+  if (/\b(poliklinik|klinik|clinic|hospital|medical centre|medical center|pharmacy|farmasi)\b/.test(clean)) return "Medical / Healthcare";
+  if (/\b(tenaga nasional|tnb|bil elektrik|electricity bill)\b/.test(clean)) return "TNB / Electricity";
+  if (/\b(air selangor|syabas|bil air|water utility|water bill)\b/.test(clean)) return "Water";
+  if (/\b(gas malaysia|gas bill|bil gas|lpg invoice)\b/.test(clean)) return "Gas";
+  if (/\b(unifi|telekom malaysia|internet bill|broadband bill|telephone bill)\b/.test(clean)) return "Utilities";
+  if (/\b(premise rental|shop rental|rental invoice|sewa premis|sewa kedai)\b/.test(clean)) return "Rent & Premises";
+  if (/\b(petrol|diesel|ron95|ron97|fuel|toll|parking)\b/.test(clean)) return "Transport & Delivery";
   return null;
+}
+
+function looksLikeReceipt(lines: string[]) {
+  const clean = normalise(lines.join(" "));
+  const formalInvoice = /\binvoice\b/.test(clean) && /\b(payment terms|bill to|our d o|your ref|due date|terms net)\b/.test(clean);
+  if (formalInvoice) return false;
+  if (/\b(receipt|resit)\b/.test(clean)) return true;
+  if (/\b(net total|cash tendered|change|rounding adjustment)\b/.test(clean)) return true;
+  return /\b(sub total|subtotal)\b/.test(clean) && /\b(cash|change|rounding|paid|payment)\b/.test(clean);
 }
 
 export function inferDocumentType(text: string): DocumentType {
@@ -697,34 +548,17 @@ export function parseBookDocument(args: {
   fileName?: string;
   ocrConfidence?: number;
 }): BookDocument {
-  const lines = args.text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  const extracted = extractItemLines(lines);
+  const lines = args.text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const merchant = findMerchant(lines, args.ocrConfidence, args.documentType);
   const contextCategory = documentContextCategory(args.text);
+  const extracted = extractItemLines(lines);
+
   const parsedItems = extracted.map((candidate, index) => {
-    const decision =
-      args.documentType === "purchase" && contextCategory
-        ? {
-            category: contextCategory,
-            confidence: 96,
-            source: "rule" as const,
-          }
-        : classifyBookDescription(
-            candidate.description,
-            args.businessType,
-            args.documentType,
-            args.learning,
-          );
+    const decision = args.documentType === "purchase" && contextCategory
+      ? { category: contextCategory, confidence: 96, source: "rule" as const }
+      : classifyBookDescription(candidate.description, args.businessType, args.documentType, args.learning);
     const { quantity, unit } = findQuantity(candidate.raw);
-    const readableDescription =
-      descriptionLooksReadable(candidate.description) ||
-      (
-        contextCategory === "Medical / Healthcare" &&
-        /[a-z0-9]{4,}/i.test(candidate.description.replace(/\s+/g, ""))
-      );
+    const readableDescription = descriptionLooksReadable(candidate.description) || (contextCategory === "Medical / Healthcare" && /[a-z0-9]{4,}/i.test(candidate.description.replace(/\s+/g, "")));
     return {
       id: `${Date.now()}-${index}`,
       description: candidate.description,
@@ -733,9 +567,7 @@ export function parseBookDocument(args: {
       unitPrice: candidate.amount / quantity,
       amount: candidate.amount,
       ...decision,
-      confidence: readableDescription
-        ? Math.min(decision.confidence, Math.round(args.ocrConfidence ?? 100))
-        : 25,
+      confidence: readableDescription ? Math.min(decision.confidence, Math.round(args.ocrConfidence ?? 100)) : 25,
       descriptionConfirmed: readableDescription && (args.ocrConfidence ?? 100) >= 65,
     };
   });
@@ -743,41 +575,72 @@ export function parseBookDocument(args: {
   const rawItemTotal = parsedItems.reduce((sum, item) => sum + item.amount, 0);
   const total = findTotal(lines, rawItemTotal);
   const tax = findTax(lines);
-  const items = reconcileItemsToPrintedTotal(parsedItems, total, tax);
-  const finalItems =
-    items.length > 0
-      ? items
-      : total > 0
-        ? [
-            {
-              id: `${Date.now()}-review`,
-              description: "Document total — item details need review",
-              quantity: 1,
-              unit: "document",
-              unitPrice: total,
-              amount: total,
-              category: "Needs Review" as BookCategory,
-              confidence: 25,
-              descriptionConfirmed: false,
-              source: "review" as const,
-            },
-          ]
-        : [];
+  const receipt = looksLikeReceipt(lines);
+
+  if (receipt) {
+    const receiptDecision = args.documentType === "sales"
+      ? { category: "Sales Income" as BookCategory, confidence: 98, source: "rule" as const }
+      : contextCategory
+        ? { category: contextCategory, confidence: 96, source: "rule" as const }
+        : {
+            category: businessProfiles[args.businessType].directCategory,
+            confidence: 95,
+            source: "business-context" as const,
+          };
+    const description = merchant === merchantNotVisible ? "Receipt total" : `${merchant} receipt total`;
+    const items: BookItem[] = total > 0
+      ? [{
+          id: `${Date.now()}-receipt-total`,
+          description,
+          quantity: 1,
+          unit: "receipt",
+          unitPrice: total,
+          amount: total,
+          ...receiptDecision,
+          confidence: merchant !== merchantNotVisible ? 95 : 70,
+          descriptionConfirmed: true,
+        }]
+      : [];
+    return {
+      id: `WB-${Date.now()}`,
+      merchant,
+      date: findDate(lines),
+      documentNo: findDocumentNo(lines),
+      documentType: args.documentType,
+      items,
+      tax,
+      total,
+      status: items.length > 0 && merchant !== merchantNotVisible ? "Ready" : "Needs review",
+      fileName: args.fileName,
+      ocrConfidence: args.ocrConfidence,
+      createdAt: new Date().toISOString(),
+    };
+  }
+
+  const reconciled = reconcileItemsToPrintedTotal(parsedItems, total, tax);
+  const finalItems = reconciled.length > 0
+    ? reconciled
+    : total > 0
+      ? [{
+          id: `${Date.now()}-review`,
+          description: "Document total — item details need review",
+          quantity: 1,
+          unit: "document",
+          unitPrice: total,
+          amount: total,
+          category: "Needs Review" as BookCategory,
+          confidence: 25,
+          descriptionConfirmed: false,
+          source: "review" as const,
+        }]
+      : [];
 
   const confidenceFloor = args.ocrConfidence ?? 100;
-  const merchant = findMerchant(lines, args.ocrConfidence, args.documentType);
   const finalItemTotal = finalItems.reduce((sum, item) => sum + item.amount, 0);
-  const totalsAgree =
-    Math.abs(finalItemTotal - total) < 0.02 ||
-    Math.abs(finalItemTotal + tax - total) < 0.02;
-  const status =
-    finalItems.length > 0 &&
-    finalItems.every((item) => item.confidence >= 70) &&
-    totalsAgree &&
-    confidenceFloor >= 45 &&
-    merchant !== merchantNotVisible
-      ? "Ready"
-      : "Needs review";
+  const totalsAgree = Math.abs(finalItemTotal - total) < 0.02 || Math.abs(finalItemTotal + tax - total) < 0.02;
+  const status = finalItems.length > 0 && finalItems.every((item) => item.confidence >= 70) && totalsAgree && confidenceFloor >= 45 && merchant !== merchantNotVisible
+    ? "Ready"
+    : "Needs review";
 
   return {
     id: `WB-${Date.now()}`,
