@@ -19,7 +19,7 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   turbopack: {
     resolveAlias: {
-      "tesseract.js": "./app/wedge-i/books/tesseract-wrapper.ts",
+      "tesseract.js": "./app/wedge-i/books/tesseract-wrapper.js",
     },
   },
   async headers() {
