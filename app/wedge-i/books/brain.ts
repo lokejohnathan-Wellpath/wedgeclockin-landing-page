@@ -337,23 +337,57 @@ function looksLikeMetadataCandidate(line: string) {
   return false;
 }
 
+function findInvoiceHeaderSupplier(lines: string[]) {
+  const boundaryCandidates = [
+    lines.findIndex((line) => /^\s*(invoice|invois|发票)\b/i.test(line)),
+    lines.findIndex((line) => /^\s*(bill\s+to|billed\s+to|sold\s+to|customer)\b/i.test(line)),
+    12,
+  ].filter((index) => index > 0);
+  const boundary = boundaryCandidates.length ? Math.min(...boundaryCandidates) : Math.min(lines.length, 12);
+
+  const candidates = lines.slice(0, boundary)
+    .map((line, index) => {
+      const clean = line.replace(/^[^\p{L}]*/u, "").replace(/\s+/g, " ").trim();
+      if (clean.length < 3 || clean.length > 90 || looksLikeMetadataCandidate(clean)) return null;
+      const strongCompanyIdentity = /sdn\s*bhd|berhad|enterprise|trading|distribution|supplies|supplier|wholesale|market|mart|store|shop|services/i.test(clean);
+      if (!strongCompanyIdentity) return null;
+      const letters = clean.match(/\p{L}/gu)?.length ?? 0;
+      const digits = clean.match(/\d/g)?.length ?? 0;
+      if (letters < 5 || digits > letters) return null;
+      let score = 20 - index;
+      if (/sdn\s*bhd|berhad|enterprise/i.test(clean)) score += 8;
+      if (/distribution|trading|supplies|supplier|wholesale/i.test(clean)) score += 5;
+      return { clean, score };
+    })
+    .filter((candidate): candidate is { clean: string; score: number } => Boolean(candidate))
+    .sort((a, b) => b.score - a.score);
+
+  return candidates[0]?.clean ?? "";
+}
+
 function findMerchant(lines: string[], ocrConfidence: number | undefined, documentType: DocumentType) {
   const allText = lines.join(" ");
   const canonical = canonicalMerchant(allText);
   if (canonical) return canonical;
 
   const explicitSupplier = findExplicitSupplier(lines);
+  const headerSupplier = findInvoiceHeaderSupplier(lines);
   const hasReceiptHeading = lines.some((line) => /\b(sales\s+receipt|official\s+receipt|resit\s+jualan|receipt)\b/i.test(line));
   const hasFormalInvoiceHeading = lines.some((line) => /^\s*(invoice|invois|发票)\b/i.test(line) && !/tax\s+invoice\s*(no|#)/i.test(line));
   const hasFormalInvoiceFields = lines.some((line) => /our\s+d\/?o|your\s+ref|payment\s+terms|^\s*terms\s*[:\-]|bill\s+to/i.test(line));
   const formalPurchaseInvoice = documentType === "purchase" && !hasReceiptHeading && hasFormalInvoiceHeading && hasFormalInvoiceFields;
-  if (formalPurchaseInvoice && !explicitSupplier) return merchantNotVisible;
+  if (formalPurchaseInvoice) {
+    if (explicitSupplier) return explicitSupplier;
+    if (headerSupplier) return headerSupplier;
+    return merchantNotVisible;
+  }
 
   if (typeof ocrConfidence === "number" && ocrConfidence < 35) {
     const meaningfulLines = lines.filter((line) => /[\p{L}\p{N}]{3}/u.test(line)).length;
     if (meaningfulLines < 3) return merchantNotVisible;
   }
   if (explicitSupplier) return explicitSupplier;
+  if (headerSupplier) return headerSupplier;
 
   const candidates = lines.slice(0, 16)
     .map((line, index) => {
