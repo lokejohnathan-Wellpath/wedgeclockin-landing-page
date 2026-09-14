@@ -177,3 +177,32 @@ test("payment and receipt metadata cannot become learned bookkeeping lines", () 
   assert.equal(isNonPurchaseMetadata("NET RM:"), true);
   assert.equal(isNonPurchaseMetadata("Pork Loin T100"), false);
 });
+
+
+test("online voucher recognises advertising and preserves the printed total", () => {
+  const document = parseBookDocument({
+    text: `
+JUN CUISINE ENTERPRISE SDN BHD (PBB 3214878U)
+Online Voucher
+OV No. PBB 1 2608/4574A
+Paid To: IVAN LEW HAO MEN
+Date: 31/08/2026
+ADVERTISING                         312.67
+Total Amount                        312.67
+`,
+    businessType: "restaurant",
+    documentType: "purchase",
+    learning: {},
+    // Covers browser OCR engines that return text but an unusable 0% confidence value.
+    ocrConfidence: 0,
+  });
+
+  assert.match(document.merchant, /JUN CUISINE ENTERPRISE/i);
+  assert.equal(document.date, "2026-08-31");
+  assert.equal(document.documentNo, "PBB 1 2608/4574A");
+  assert.equal(document.total, 312.67);
+  assert.equal(document.items.length, 1);
+  assert.equal(document.items[0].description, "ADVERTISING");
+  assert.equal(document.items[0].amount, 312.67);
+  assert.equal(document.items[0].category, "Advertising & Marketing");
+});
