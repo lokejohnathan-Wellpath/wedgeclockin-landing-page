@@ -257,6 +257,10 @@ function parseNumber(value?: string) {
   return Number(value.replace(/[,\s]/g, "")) || 0;
 }
 
+function roundMoney(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
 export function classifyBookDescription(
   description: string,
   businessType: BusinessType,
@@ -286,10 +290,7 @@ export function classifyBookDescription(
   };
 }
 
-function findDate(lines: string[]) {
-  const joined = lines.join(" ");
-  const labelled = lines.find((value) => /date|tarikh|日期|தேதி/i.test(value));
-  const source = labelled || joined;
+function dateFromText(source: string) {
   const dmy = source.match(/\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b/);
   if (dmy) {
     const [, day, month, rawYear] = dmy;
@@ -299,6 +300,12 @@ function findDate(lines: string[]) {
   const ymd = source.match(/\b(20\d{2})[/-](\d{1,2})[/-](\d{1,2})\b/);
   if (!ymd) return "";
   return `${ymd[1]}-${ymd[2].padStart(2, "0")}-${ymd[3].padStart(2, "0")}`;
+}
+
+function findDate(lines: string[]) {
+  const labelled = lines.find((value) => /date|tarikh|日期|தேதி/i.test(value));
+  const labelledDate = labelled ? dateFromText(labelled) : "";
+  return labelledDate || dateFromText(lines.join(" "));
 }
 
 function findExplicitSupplier(lines: string[]) {
@@ -322,6 +329,21 @@ function canonicalMerchant(text: string) {
   if (/\blotus'?s?\b/.test(clean)) return "Lotus's";
   if (/\baeon\b/.test(clean)) return "AEON";
   return "";
+}
+
+function cleanMerchantName(value: string) {
+  if (!value || value === merchantNotVisible) return value;
+  let clean = value
+    .replace(/\s+/g, " ")
+    .replace(/\bdis\s+(?:tribution|ribution)\b/gi, "Distribution")
+    .replace(/\bdistri\s+bution\b/gi, "Distribution")
+    .replace(/\bsdn\s*bhd\b/gi, "Sdn Bhd")
+    .trim();
+  const corporateSuffix = clean.match(/\b(Sdn Bhd|Berhad)\b/i);
+  if (corporateSuffix?.index !== undefined) {
+    clean = clean.slice(0, corporateSuffix.index + corporateSuffix[0].length);
+  }
+  return clean.replace(/[^\p{L}\p{N}&.'()\-/ ]+$/gu, "").trim();
 }
 
 function looksLikeMetadataCandidate(line: string) {
@@ -349,14 +371,14 @@ function findInvoiceHeaderSupplier(lines: string[]) {
     .map((line, index) => {
       const clean = line.replace(/^[^\p{L}]*/u, "").replace(/\s+/g, " ").trim();
       if (clean.length < 3 || clean.length > 90 || looksLikeMetadataCandidate(clean)) return null;
-      const strongCompanyIdentity = /sdn\s*bhd|berhad|enterprise|trading|distribution|supplies|supplier|wholesale|market|mart|store|shop|services/i.test(clean);
+      const strongCompanyIdentity = /sdn\s*bhd|berhad|enterprise|trading|distribution|dis\s+ribution|supplies|supplier|wholesale|market|mart|store|shop|services/i.test(clean);
       if (!strongCompanyIdentity) return null;
       const letters = clean.match(/\p{L}/gu)?.length ?? 0;
       const digits = clean.match(/\d/g)?.length ?? 0;
       if (letters < 5 || digits > letters) return null;
       let score = 20 - index;
       if (/sdn\s*bhd|berhad|enterprise/i.test(clean)) score += 8;
-      if (/distribution|trading|supplies|supplier|wholesale/i.test(clean)) score += 5;
+      if (/distribution|dis\s+ribution|trading|supplies|supplier|wholesale/i.test(clean)) score += 5;
       return { clean, score };
     })
     .filter((candidate): candidate is { clean: string; score: number } => Boolean(candidate))
@@ -418,9 +440,15 @@ function findDocumentNo(lines: string[]) {
   return explicit || `AUTO-${Date.now().toString().slice(-6)}`;
 }
 
+function moneyValues(line: string) {
+  return [...line.matchAll(/(?:RM\s*)?(-?(?:\d[\d,]*|\d*)\.\d{2})/gi)]
+    .map((match) => parseNumber(match[1]))
+    .filter((value) => Number.isFinite(value));
+}
+
 function findMoneyAtEnd(line: string, allowOcrCents = false) {
-  const values = [...line.matchAll(/(?:RM\s*)?(-?\d[\d,]*\.\d{2})/gi)];
-  if (values.length) return parseNumber(values[values.length - 1][1]);
+  const values = moneyValues(line);
+  if (values.length) return values[values.length - 1];
   if (!allowOcrCents) return 0;
   const standalone = line.match(/^\s*(?:RM\s*)?(\d{3,10})\s*$/i);
   if (standalone) return parseNumber(standalone[1]) / 100;
@@ -508,6 +536,56 @@ function findTotal(lines: string[], itemTotal: number) {
   return totalLines[0]?.amount || itemTotal;
 }
 
+function nearbyMoney(lines: string[], index: number) {
+  return findMoneyAtEnd(lines[index] ?? "", true) || findMoneyAtEnd(lines[index + 1] ?? "", true);
+}
+
+function findReceiptTotal(lines: string[], itemTotal: number) {
+  const candidates: Array<{ amount: number; weight: number }> = [];
+  const add = (amount: number, weight: number) => {
+    if (Number.isFinite(amount) && amount > 0) candidates.push({ amount: roundMoney(amount), weight });
+  };
+
+  add(findTotal(lines, itemTotal), 10);
+
+  let subtotal = 0;
+  let rounding: number | null = null;
+  lines.forEach((line, index) => {
+    const clean = normalise(line);
+    const amount = nearbyMoney(lines, index);
+    if (/\bsub\s*total\b|\bsubtotal\b/.test(clean)) {
+      subtotal = amount;
+      add(amount, 5);
+    }
+    if (/\brounding(?: adjustment)?\b/.test(clean)) {
+      const ownValues = moneyValues(line);
+      rounding = ownValues.length ? ownValues[ownValues.length - 1] : 0;
+    }
+    if (/\b(amount paid|net rm|mykasih|duitnow|visa|mastercard|master card|debit|credit|ewallet|e wallet|touch n go|tng|grabpay)\b/.test(clean)) {
+      add(amount, 7);
+    }
+    if (/\bcash\b/.test(clean) && !/change|cashier/.test(clean)) {
+      add(amount, /tendered|received/.test(clean) ? 2 : 5);
+    }
+  });
+
+  if (subtotal > 0 && rounding !== null) add(subtotal + rounding, 11);
+  if (itemTotal > 0) add(itemTotal, 3);
+  if (!candidates.length) return itemTotal;
+
+  const scored = candidates.map((candidate, index) => {
+    let score = candidate.weight;
+    candidates.forEach((other, otherIndex) => {
+      if (index === otherIndex) return;
+      const tolerance = Math.max(0.02, candidate.amount * 0.002);
+      if (Math.abs(candidate.amount - other.amount) <= tolerance) score += other.weight * 0.8;
+    });
+    return { ...candidate, score };
+  }).sort((a, b) => b.score - a.score || b.weight - a.weight);
+
+  return scored[0].amount;
+}
+
 function findTax(lines: string[]) {
   const taxLine = lines.find((line) => /^(tax|sst|gst|cukai|service\s*tax)/i.test(line.trim()));
   return findMoneyAtEnd(taxLine ?? "");
@@ -583,7 +661,7 @@ export function parseBookDocument(args: {
   ocrConfidence?: number;
 }): BookDocument {
   const lines = args.text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const merchant = findMerchant(lines, args.ocrConfidence, args.documentType);
+  const merchant = cleanMerchantName(findMerchant(lines, args.ocrConfidence, args.documentType));
   const contextCategory = documentContextCategory(args.text);
   const extracted = extractItemLines(lines);
 
@@ -607,9 +685,9 @@ export function parseBookDocument(args: {
   });
 
   const rawItemTotal = parsedItems.reduce((sum, item) => sum + item.amount, 0);
-  const total = findTotal(lines, rawItemTotal);
-  const tax = findTax(lines);
   const receipt = looksLikeReceipt(lines);
+  const total = receipt ? findReceiptTotal(lines, rawItemTotal) : findTotal(lines, rawItemTotal);
+  const tax = findTax(lines);
 
   if (receipt) {
     const receiptDecision = args.documentType === "sales"
