@@ -30,6 +30,7 @@ export type BookCategory =
   | "Repairs & Maintenance"
   | "Transport & Delivery"
   | "Office & Administration"
+  | "Advertising & Marketing"
   | "Equipment / Asset"
   | "Professional Fees"
   | "Other Expense"
@@ -133,6 +134,7 @@ export const allCategories: BookCategory[] = [
   "Repairs & Maintenance",
   "Transport & Delivery",
   "Office & Administration",
+  "Advertising & Marketing",
   "Equipment / Asset",
   "Professional Fees",
   "Other Expense",
@@ -188,6 +190,15 @@ const categoryConcepts: Array<{ category: BookCategory; terms: string[] }> = [
     terms: [
       "petrol", "diesel", "fuel", "toll", "parking", "courier", "delivery",
       "freight", "lorry", "grab", "油费", "运费", "停车", "எரிபொருள்",
+    ],
+  },
+  {
+    category: "Advertising & Marketing",
+    terms: [
+      "advertising", "advertisement", "advert", "marketing", "promotion", "promotional",
+      "branding", "sponsorship", "signage", "banner", "flyer", "brochure", "social media",
+      "facebook ad", "google ad", "tiktok ad", "广告", "廣告", "宣传", "宣傳", "推广", "推廣",
+      "营销", "行销", "市场推广", "市場推廣", "促销", "促銷", "赞助", "贊助", "招牌", "横幅", "橫幅",
     ],
   },
   {
@@ -440,8 +451,11 @@ function findMerchant(
     return merchantNotVisible;
   }
 
-  if (typeof ocrConfidence === "number" && ocrConfidence < 65) {
-    return merchantNotVisible;
+  // Browser OCR can report 0% even when it returns a complete, structured document.
+  // Hide the merchant only when the recognised text itself is too thin to verify.
+  if (typeof ocrConfidence === "number" && ocrConfidence < 35) {
+    const meaningfulLines = lines.filter((line) => /[\p{L}\p{N}]{3}/u.test(line)).length;
+    if (meaningfulLines < 3) return merchantNotVisible;
   }
 
   if (explicitSupplier) return explicitSupplier;
@@ -483,9 +497,11 @@ function findMerchant(
 
 function findDocumentNo(lines: string[]) {
   const line = lines.find((value) =>
-    /receipt\s*(no|#)|resit\s*(no|#)|invoice\s*(no|#)|inv\s*(no|#)|bill\s*(no|#)/i.test(value),
+    /receipt\s*(no|#)|resit\s*(no|#)|invoice\s*(no|#)|inv\s*(no|#)|bill\s*(no|#)|online\s+voucher|voucher\s*(no|#)|ov\s*(no|#)/i.test(value),
   );
-  const explicit = line?.match(/(?:no|#|:)\s*([A-Z0-9][A-Z0-9/-]{2,})/i)?.[1];
+  const explicit = line?.match(
+    /(?:receipt\s*(?:no|#)|resit\s*(?:no|#)|invoice\s*(?:no|#)|inv\s*(?:no|#)|bill\s*(?:no|#)|voucher\s*(?:no|#)?|ov\s*(?:no|#)?)\s*[:.#-]?\s*([A-Z0-9][A-Z0-9\s/-]{2,})/i,
+  )?.[1].replace(/\s+/g, " ").trim();
   return explicit || `AUTO-${Date.now().toString().slice(-6)}`;
 }
 
