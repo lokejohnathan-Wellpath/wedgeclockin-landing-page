@@ -6,22 +6,17 @@ const contentSecurityPolicy = [
   "object-src 'none'",
   "frame-ancestors 'none'",
   "form-action 'self'",
-  "script-src 'self' 'unsafe-inline'",
+  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdn.jsdelivr.net",
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self' data:",
   "img-src 'self' data: blob: https:",
   "connect-src 'self' https://wedgeclockin-api.onrender.com https://nominatim.openstreetmap.org https://cdn.jsdelivr.net https://tessdata.projectnaptha.com",
-  "worker-src 'self' blob:",
+  "worker-src 'self' blob: https://cdn.jsdelivr.net",
   "frame-src 'self' https://www.openstreetmap.org",
 ].join("; ");
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
-  turbopack: {
-    resolveAlias: {
-      "tesseract.js": "./app/wedge-i/books/tesseract-safe.js",
-    },
-  },
   async headers() {
     return [
       {
