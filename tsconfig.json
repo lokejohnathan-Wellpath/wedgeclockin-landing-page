@@ -19,9 +19,7 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"],
-      "tesseract.js": ["./app/wedge-i/books/tesseract-wrapper.ts"],
-      "tesseract-real": ["./node_modules/tesseract.js/src/index.js"]
+      "@/*": ["./*"]
     }
   },
   "include": [
