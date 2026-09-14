@@ -1,16 +1,27 @@
 // Wedge AI Eye OCR adapter.
 //
-// The existing books page intentionally keeps Tesseract in the browser. Dense supplier
-// invoices can still return a false 0% when a watermark/table overwhelms the page layout.
-// This adapter keeps the normal fast pass, then only for weak results retries an
-// adaptive-threshold copy and (for portrait invoices) dedicated header/footer crops.
-// That gives the parser clean supplier, invoice and total text without changing the
-// original source image saved for audit evidence.
+// Dense supplier invoices can make a normal Tesseract pass return a false 0% when
+// watermarks, shadows and table borders dominate the image. This adapter keeps the
+// normal pass, then only for weak results retries an adaptive-threshold copy and,
+// for portrait invoices, separate header/footer crops. The original source file is
+// never altered and remains the audit evidence stored by WedgeBooks.
 
-// @ts-ignore - this path deliberately bypasses the tsconfig alias back to this adapter.
-import * as RealTesseract from "tesseract-real";
-
-export const PSM = RealTesseract.PSM as Record<string, string>;
+export const PSM = {
+  OSD_ONLY: "0",
+  AUTO_OSD: "1",
+  AUTO_ONLY: "2",
+  AUTO: "3",
+  SINGLE_COLUMN: "4",
+  SINGLE_BLOCK_VERT_TEXT: "5",
+  SINGLE_BLOCK: "6",
+  SINGLE_LINE: "7",
+  SINGLE_WORD: "8",
+  CIRCLE_WORD: "9",
+  SINGLE_CHAR: "10",
+  SPARSE_TEXT: "11",
+  SPARSE_TEXT_OSD: "12",
+  RAW_LINE: "13",
+} as const;
 
 type OcrResult = {
   data?: {
@@ -21,7 +32,62 @@ type OcrResult = {
   [key: string]: unknown;
 };
 
+type TesseractRuntime = {
+  createWorker: (...args: unknown[]) => Promise<any>;
+};
+
 type Region = { x: number; y: number; width: number; height: number };
+
+const runtimeUrl = "https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js";
+let runtimePromise: Promise<TesseractRuntime> | null = null;
+
+function browserRuntime() {
+  return (window as typeof window & { Tesseract?: TesseractRuntime }).Tesseract;
+}
+
+async function loadRuntime() {
+  if (typeof window === "undefined") {
+    throw new Error("Wedge AI Eye OCR is only available in the browser.");
+  }
+  const existing = browserRuntime();
+  if (existing?.createWorker) return existing;
+  if (runtimePromise) return runtimePromise;
+
+  runtimePromise = new Promise<TesseractRuntime>((resolve, reject) => {
+    const ready = browserRuntime();
+    if (ready?.createWorker) {
+      resolve(ready);
+      return;
+    }
+
+    const previous = document.querySelector<HTMLScriptElement>(`script[data-wedge-tesseract="7"]`);
+    const finish = () => {
+      const runtime = browserRuntime();
+      if (runtime?.createWorker) resolve(runtime);
+      else reject(new Error("The OCR runtime loaded but did not initialise."));
+    };
+
+    if (previous) {
+      previous.addEventListener("load", finish, { once: true });
+      previous.addEventListener("error", () => reject(new Error("The OCR runtime could not be loaded.")), { once: true });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = runtimeUrl;
+    script.async = true;
+    script.crossOrigin = "anonymous";
+    script.dataset.wedgeTesseract = "7";
+    script.addEventListener("load", finish, { once: true });
+    script.addEventListener("error", () => reject(new Error("The OCR runtime could not be loaded.")), { once: true });
+    document.head.appendChild(script);
+  }).catch((error) => {
+    runtimePromise = null;
+    throw error;
+  });
+
+  return runtimePromise;
+}
 
 function normalisedLine(value: string) {
   return value
@@ -89,7 +155,6 @@ function shouldRescue(result: OcrResult) {
   if (!text) return true;
   if (confidence < 48) return true;
   if (text.length < 90) return true;
-  // A business invoice with no recognisable amount is almost always an incomplete pass.
   if (!/(?:RM\s*)?\d[\d,]*[.,]\d{2}\b/i.test(text) && /invoice|receipt|resit|invois/i.test(text)) {
     return true;
   }
@@ -113,7 +178,6 @@ async function adaptiveThresholdBlob(source: Blob, region?: Region) {
     const sw = Math.max(1, Math.round((region?.width ?? 1) * image.width));
     const sh = Math.max(1, Math.round((region?.height ?? 1) * image.height));
 
-    // Keep enough pixels for tiny invoice print but cap memory on mobile/tablet browsers.
     const targetWidth = Math.max(sw, Math.min(2800, Math.round(sw * 2.25)));
     const scale = targetWidth / sw;
     const width = Math.max(1, Math.round(sw * scale));
@@ -134,8 +198,6 @@ async function adaptiveThresholdBlob(source: Blob, region?: Region) {
     const gray = new Uint8Array(count);
     const integral = new Uint32Array((width + 1) * (height + 1));
 
-    // Integral-image adaptive thresholding removes broad coloured watermarks/shadows while
-    // retaining the small dark strokes used by invoice text and table numbers.
     for (let y = 0; y < height; y += 1) {
       let rowSum = 0;
       const integralRow = (y + 1) * (width + 1);
@@ -192,7 +254,8 @@ function bestResult(results: OcrResult[]) {
 }
 
 export async function createWorker(...args: unknown[]) {
-  const worker = await (RealTesseract.createWorker as (...values: unknown[]) => Promise<any>)(...args);
+  const runtime = await loadRuntime();
+  const worker = await runtime.createWorker(...args);
   const originalRecognize = worker.recognize.bind(worker);
   const originalSetParameters = worker.setParameters.bind(worker);
   let activeParameters: Record<string, unknown> = {};
