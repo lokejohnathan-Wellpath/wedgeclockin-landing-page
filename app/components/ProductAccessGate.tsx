@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState, type ReactNode } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   clearProductToken,
   productConfig,
@@ -28,7 +28,17 @@ type Session = {
   subscription: ProductSubscription;
 };
 
-export default function ProductAccessGate({
+export default function ProductAccessGate(props: { product: PaidProduct; children: ReactNode }) {
+  return <Suspense fallback={<main>Opening product records…</main>}><ProductAccessRouter {...props} /></Suspense>;
+}
+
+function ProductAccessRouter(props: { product: PaidProduct; children: ReactNode }) {
+  const searchParams = useSearchParams();
+  const businessId = searchParams.get("businessId") || "";
+  return <ScopedProductAccessGate key={`${props.product}:${businessId}`} {...props} />;
+}
+
+function ScopedProductAccessGate({
   product,
   children,
 }: {
@@ -65,6 +75,10 @@ export default function ProductAccessGate({
     }
 
     async function ensureToken() {
+      // Always bind Founder access to the selected business, even with a valid old token.
+      if (product === "books" && currentBusinessId() && founderAvailable()) {
+        return prepareFounderBooksAccess();
+      }
       if (productToken(product)) return true;
       try {
         return await prepareFounderBooksAccess();
@@ -96,7 +110,8 @@ export default function ProductAccessGate({
           return;
         }
 
-        if (product === "books") await bootstrapBooksCloudState();
+        if (cancelled) return;
+        if (product === "books") await bootstrapBooksCloudState(result.account.id);
         if (!cancelled) setSession(result);
       } catch (caught) {
         if (cancelled) return;

@@ -400,7 +400,8 @@ function findMerchant(lines: string[], ocrConfidence: number | undefined, docume
   const formalPurchaseInvoice = documentType === "purchase" && !hasReceiptHeading && hasFormalInvoiceHeading && hasFormalInvoiceFields;
   if (formalPurchaseInvoice) {
     if (explicitSupplier) return explicitSupplier;
-    if (headerSupplier) return headerSupplier;
+    // A purchase invoice header may identify the customer, not the supplier.
+    // Require an explicit supplier label rather than silently guessing.
     return merchantNotVisible;
   }
 
@@ -433,11 +434,12 @@ function findMerchant(lines: string[], ocrConfidence: number | undefined, docume
 }
 
 function findDocumentNo(lines: string[]) {
-  const line = lines.find((value) => /receipt\s*(no|#)|resit\s*(no|#)|invoice\s*(no|#)|inv\s*(no|#)|bill\s*(no|#)|online\s+voucher|voucher\s*(no|#)|ov\s*(no|#)/i.test(value));
-  const explicit = line?.match(/(?:receipt\s*(?:no|#)|resit\s*(?:no|#)|invoice\s*(?:no|#)|inv\s*(?:no|#)|bill\s*(?:no|#)|voucher\s*(?:no|#)?|ov\s*(?:no|#)?)\s*[:.#-]?\s*([A-Z0-9][A-Z0-9\s/-]{2,})/i)?.[1]
-    .replace(/\s+/g, " ")
-    .trim();
-  return explicit || `AUTO-${Date.now().toString().slice(-6)}`;
+  const reference = /(?:receipt\s*(?:no|#)|resit\s*(?:no|#)|invoice\s*(?:no|#)|inv\s*(?:no|#)|bill\s*(?:no|#)|(?:online\s+)?voucher\s*(?:no|#)|ov\s*(?:no|#))\s*[:.#-]?\s*([A-Z0-9][A-Z0-9\s/-]{2,})/i;
+  for (const line of lines) {
+    const explicit = line.match(reference)?.[1]?.replace(/\s+/g, " ").trim();
+    if (explicit) return explicit;
+  }
+  return `AUTO-${Date.now().toString().slice(-6)}`;
 }
 
 function moneyValues(line: string) {
