@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-// @ts-expect-error Node 24 runs this regression file directly with type stripping.
 import {
   documentFingerprint,
   duplicateDocumentIds,
@@ -8,7 +7,7 @@ import {
   merchantNotVisible,
   parseBookDocument,
   reconcileDocumentCategories,
-} from "./brain.ts";
+} from "./brain";
 
 test("retail purchase receipt becomes one bookkeeping total", () => {
   const document = parseBookDocument({

@@ -1,5 +1,11 @@
 import { getBooksCloudSource, saveBooksCloudSource } from "./books-cloud";
 
+function sourceCacheKey(documentId: string) {
+  const accountId = localStorage.getItem("wedgebooks.cacheAccountId");
+  if (!accountId) throw new Error("Open a bookkeeping account before accessing source files.");
+  return `${accountId}:${documentId}`;
+}
+
 const databaseName = "wedgebooks-source-documents";
 const storeName = "source-files";
 
@@ -25,11 +31,12 @@ function openSourceDatabase() {
 }
 
 async function saveLocalSource(source: StoredSourceFile) {
+  const cacheKey = sourceCacheKey(source.documentId);
   const database = await openSourceDatabase();
   try {
     await new Promise<void>((resolve, reject) => {
       const transaction = database.transaction(storeName, "readwrite");
-      transaction.objectStore(storeName).put(source);
+      transaction.objectStore(storeName).put({ ...source, documentId: cacheKey });
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error ?? new Error("Source document could not be saved."));
       transaction.onabort = () => reject(transaction.error ?? new Error("Source document storage was interrupted."));
@@ -40,12 +47,13 @@ async function saveLocalSource(source: StoredSourceFile) {
 }
 
 async function getLocalSource(documentId: string) {
+  const cacheKey = sourceCacheKey(documentId);
   const database = await openSourceDatabase();
   try {
     return await new Promise<StoredSourceFile | null>((resolve, reject) => {
       const transaction = database.transaction(storeName, "readonly");
-      const request = transaction.objectStore(storeName).get(documentId);
-      request.onsuccess = () => resolve((request.result as StoredSourceFile | undefined) ?? null);
+      const request = transaction.objectStore(storeName).get(cacheKey);
+      request.onsuccess = () => resolve(request.result ? { ...(request.result as StoredSourceFile), documentId } : null);
       request.onerror = () => reject(request.error ?? new Error("Source document could not be opened."));
     });
   } finally {
@@ -97,11 +105,12 @@ export async function getSourceFile(documentId: string) {
 }
 
 export async function deleteSourceFile(documentId: string) {
+  const cacheKey = sourceCacheKey(documentId);
   const database = await openSourceDatabase();
   try {
     await new Promise<void>((resolve, reject) => {
       const transaction = database.transaction(storeName, "readwrite");
-      transaction.objectStore(storeName).delete(documentId);
+      transaction.objectStore(storeName).delete(cacheKey);
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error ?? new Error("Source document could not be removed."));
     });

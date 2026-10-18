@@ -1,5 +1,7 @@
+import { productToken } from "../../lib/productAccess";
 import type { BookDocument, LearningMap } from "./brain";
 import {
+  bindBooksCloudSession,
   deleteBooksCloudDocument,
   loadBooksCloudState,
   migrateBooksBrowserState,
@@ -31,6 +33,9 @@ type SyncBaseline = {
 
 let baseline: SyncBaseline | null = null;
 let syncing = false;
+let generation = 0;
+let baselineToken = "";
+export const BOOKS_CACHE_ACCOUNT_KEY = "wedgebooks.cacheAccountId";
 
 function parseJson<T>(value: string | null, fallback: T): T {
   if (!value) return fallback;
@@ -116,55 +121,77 @@ function hasCloudData(cloud: CloudState) {
   );
 }
 
-/**
- * Cloud is authoritative for a signed-in WedgeBooks customer. Existing browser
- * data is migrated exactly once when the cloud account is empty, then the
- * browser becomes a fast local cache of the cloud account.
- */
-export async function bootstrapBooksCloudState() {
-  const cloud = await loadBooksCloudState();
+/** Cloud and browser caches must always belong to the same signed-in account. */
+export async function bootstrapBooksCloudState(accountId: string) {
+  if (!accountId) throw new Error("A bookkeeping account is required.");
+  const run = ++generation;
+  const token = productToken("books");
+  bindBooksCloudSession(token);
+  baseline = null;
+  baselineToken = "";
+  const previousAccount = localStorage.getItem(BOOKS_CACHE_ACCOUNT_KEY);
   const browser = readBrowserState();
-
-  if (!hasCloudData(cloud) && hasBrowserData(browser) && !cloud.workspace?.migratedFromBrowserAt) {
-    await migrateBooksBrowserState(browser.setup, browser.learning, browser.customColumns, browser.documents);
-    const migratedCloud = await loadBooksCloudState();
-    writeCloudToBrowser(migratedCloud);
-    setBaseline(cloudAsBrowserState(migratedCloud));
-    return migratedCloud;
+  const sameAccount = previousAccount === accountId;
+  if (!sameAccount) {
+    // Preserve offline/legacy data for manual recovery, never migrate it into another client.
+    if (hasBrowserData(browser)) {
+      localStorage.setItem(`wedgebooks.recovery.${previousAccount || "unassigned"}`, JSON.stringify(browser));
+    }
+    Object.values(keys).forEach((key) => localStorage.removeItem(key));
+    localStorage.removeItem(BOOKS_CACHE_ACCOUNT_KEY);
   }
-
+  const current = () => run === generation && token === productToken("books");
+  let cloud = await loadBooksCloudState();
+  if (!current()) throw new Error("Bookkeeping account changed. Reopen the selected business.");
+  if (sameAccount && !hasCloudData(cloud) && hasBrowserData(browser) && !cloud.workspace?.migratedFromBrowserAt) {
+    await migrateBooksBrowserState(browser.setup, browser.learning, browser.customColumns, browser.documents);
+    if (!current()) throw new Error("Bookkeeping account changed during migration.");
+    cloud = await loadBooksCloudState();
+    if (!current()) throw new Error("Bookkeeping account changed during migration.");
+  }
   writeCloudToBrowser(cloud);
+  localStorage.setItem(BOOKS_CACHE_ACCOUNT_KEY, accountId);
   setBaseline(cloudAsBrowserState(cloud));
+  baselineToken = token;
   return cloud;
 }
 
 export async function syncBooksBrowserStateToCloud() {
-  if (syncing || !baseline) return;
+  if (syncing || !baseline || baselineToken !== productToken("books")) return;
+  const run = generation;
+  const activeBaseline = baseline;
+  const token = baselineToken;
+  const current = () => run === generation && token === productToken("books");
   syncing = true;
 
   try {
     const browser = readBrowserState();
     const nextWorkspace = workspaceFingerprint(browser);
 
-    if (nextWorkspace !== baseline.workspace) {
+    if (nextWorkspace !== activeBaseline.workspace) {
       await saveBooksCloudWorkspace(browser.setup, browser.learning, browser.customColumns);
-      baseline.workspace = nextWorkspace;
+      if (!current()) return;
+      activeBaseline.workspace = nextWorkspace;
     }
 
     const currentIds = new Set(browser.documents.map((document) => document.id));
 
     for (const document of browser.documents) {
+      if (!current()) return;
       const nextFingerprint = documentFingerprint(document);
-      if (baseline.documents.get(document.id) !== nextFingerprint) {
+      if (activeBaseline.documents.get(document.id) !== nextFingerprint) {
         await saveBooksCloudDocument(document);
-        baseline.documents.set(document.id, nextFingerprint);
+        if (!current()) return;
+        activeBaseline.documents.set(document.id, nextFingerprint);
       }
     }
 
-    for (const documentId of [...baseline.documents.keys()]) {
+    for (const documentId of [...activeBaseline.documents.keys()]) {
+      if (!current()) return;
       if (!currentIds.has(documentId)) {
         await deleteBooksCloudDocument(documentId);
-        baseline.documents.delete(documentId);
+        if (!current()) return;
+        activeBaseline.documents.delete(documentId);
       }
     }
   } finally {
@@ -191,6 +218,9 @@ export function startBooksCloudMirror() {
     window.clearInterval(interval);
     window.removeEventListener("focus", flush);
     window.removeEventListener("online", flush);
-    flush();
+    // Do not flush unmounted business data using a newly selected client token.
+    generation += 1;
+    baseline = null;
+    baselineToken = "";
   };
 }

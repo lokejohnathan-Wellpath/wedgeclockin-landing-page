@@ -1,16 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 
 import { FOUNDER_TOKEN_KEY, founderRequest } from "../lib/founderApi";
 
 export default function WedgeILayout({ children }: { children: React.ReactNode }) {
+  return <Suspense fallback={<main>Opening internal workspace…</main>}><InternalLayout>{children}</InternalLayout></Suspense>;
+}
+
+function InternalLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [ready, setReady] = useState(false);
-  const [businessId, setBusinessId] = useState("");
+  const searchParams = useSearchParams();
+  const businessId = searchParams.get("businessId") || "";
 
   useEffect(() => {
     let cancelled = false;
@@ -19,7 +24,6 @@ export default function WedgeILayout({ children }: { children: React.ReactNode }
       router.replace("/founder-john-control");
       return;
     }
-    setBusinessId(new URLSearchParams(window.location.search).get("businessId") || "");
     founderRequest<{ success: true }>("/api/founder/control/businesses")
       .then(() => { if (!cancelled) setReady(true); })
       .catch(() => { if (!cancelled) router.replace("/founder-john-control"); });
