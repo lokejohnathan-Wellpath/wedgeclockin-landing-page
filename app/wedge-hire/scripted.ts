@@ -4,19 +4,19 @@ export type InterviewState = { status: 'active'|'completed'|'timed_out'; transcr
 export function questions(roleId: string, language: string) {
   const role=roles.find(r=>r.id===roleId);if(!role)throw new Error('Choose a supported role.');
   const ms:Record<string,[string,string]>={
-    retail:['Pelanggan tidak dapat mencari produk dan mula marah. Apakah tindakan anda?','Jumlah belian RM18.50 dan RM12.90, dibayar RM50. Berapakah baki?'],
-    sales:['Ceritakan cara anda menangani pelanggan yang mengatakan harga terlalu mahal.','Apakah mesej susulan anda kepada pelanggan yang meminta sebut harga semalam?'],
-    supervisor:['Dua pekerja tidak hadir sebelum syif sibuk. Bagaimanakah anda mengatur pasukan?','Apakah tiga tindakan pertama jika kiraan stok berbeza daripada rekod sistem?'],
-    service:['Pelanggan menerima makanan yang bukan pesanannya. Apakah tindakan anda?','Pelanggan memberitahu anda tentang alahan makanan. Apakah yang anda lakukan sebelum mengambil pesanan?'],
-    cashier:['Wang tunai kurang pada akhir syif. Apakah langkah anda?','Bil RM37.60, dibayar RM50. Berapakah baki?'],
-    storekeeper:['Barang diterima rosak dan kurang daripada nota penghantaran. Apakah tindakan anda?','Stok awal 120 unit, terima 45 dan keluarkan 38. Berapakah baki stok?'],
-    driver:['Anda mendapati tayar rosak sebelum perjalanan tetapi penghantaran segera. Apakah tindakan anda?','Bagaimanakah anda mengurus kelewatan penghantaran tanpa menjejaskan keselamatan?']
+    retail:['Kalau pelanggan tak jumpa barang yang dia cari dan dah mula marah, macam mana awak nak bantu?','Pelanggan beli barang harga lapan belas ringgit lima puluh sen dan dua belas ringgit sembilan puluh sen. Dia bayar lima puluh ringgit. Berapa baki yang perlu dipulangkan?'],
+    sales:['Kalau pelanggan kata harga kita mahal, macam mana awak nak jawab? Boleh bagi satu contoh?','Pelanggan minta sebut harga semalam tapi belum balas. Apa mesej susulan yang awak akan hantar?'],
+    supervisor:['Kalau dua orang staf tak datang masa kedai tengah sibuk, macam mana awak nak susun pasukan?','Kalau kiraan stok tak sama dengan rekod sistem, apa tiga perkara pertama yang awak akan buat?'],
+    service:['Kalau makanan yang sampai bukan pesanan pelanggan, apa yang awak akan buat?','Pelanggan cakap dia ada alahan makanan. Sebelum ambil pesanan, apa yang awak perlu buat?'],
+    cashier:['Masa tutup kaunter, awak dapati duit tunai tak cukup. Macam mana awak nak semak dan laporkan?','Jumlah bil tiga puluh tujuh ringgit enam puluh sen. Pelanggan bayar lima puluh ringgit. Berapa baki yang perlu dipulangkan?'],
+    storekeeper:['Barang yang sampai ada yang rosak, dan jumlah pun kurang daripada nota penghantaran. Apa awak akan buat?','Stok mula-mula seratus dua puluh unit. Lepas itu terima empat puluh lima unit dan keluarkan tiga puluh lapan unit. Berapa baki stok?'],
+    driver:['Sebelum jalan, awak nampak tayar lori rosak. Tapi barang kena hantar cepat. Apa yang awak akan buat dulu?','Kalau penghantaran dah lewat, macam mana awak nak urus keadaan itu sambil jaga keselamatan?']
   };
   return language==='ms' ? [
-    'Sila ceritakan pengalaman kerja atau tugas yang berkaitan dengan jawatan pilihan anda.',
+    'Hai, selamat datang. Kita borak sekejap, ya. Boleh cerita sikit tentang pengalaman kerja awak? Kalau belum pernah bekerja, cerita tentang tugas yang awak pernah buat.',
     ms[roleId][0], ms[roleId][1],
-    roleId==='driver'?'Apakah jenis lori yang pernah anda pandu, lesen yang anda miliki, dan pemeriksaan sebelum perjalanan yang anda lakukan? Jangan sebut nombor kad pengenalan atau lesen.':'Ceritakan satu contoh anda menjaga ketepatan, keselamatan atau kerjasama dalam kerja.',
-    'Di kawasan manakah anda ingin bekerja, apakah syif yang sesuai, jangkaan gaji dan bila anda boleh mula bekerja?'
+    roleId==='driver'?'Awak pernah bawa lori jenis apa, dan ada lesen kelas apa? Sebelum jalan, biasanya awak periksa apa dulu? Tak perlu sebut nombor kad pengenalan atau nombor lesen, ya.':'Boleh bagi satu contoh macam mana awak pastikan kerja dibuat dengan betul, selamat, atau bekerjasama dengan pasukan?',
+    'Akhir sekali, awak nak kerja dekat kawasan mana? Syif macam mana yang sesuai, berapa gaji yang awak harapkan, dan bila boleh mula kerja?'
   ] : [
     `Tell me about your experience or tasks relevant to working as a ${role.name}.`,role.question,role.task,
     roleId==='driver'?'What lorry types have you driven, which licence classes do you hold, and what pre-trip checks do you make? Do not give identity or licence numbers.':'Give one example of how you maintained accuracy, safety or teamwork at work.',
