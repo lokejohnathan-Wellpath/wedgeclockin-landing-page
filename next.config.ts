@@ -56,6 +56,14 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      {
+        source: "/wedge-hire/:path*",
+        headers: [
+          { key: "Permissions-Policy", value: "camera=(self), microphone=(self), geolocation=(), payment=()" },
+          { key: "Cache-Control", value: "no-store" },
+          { key: "X-Robots-Tag", value: "noindex, nofollow" },
+        ],
+      },
     ];
   },
 };
