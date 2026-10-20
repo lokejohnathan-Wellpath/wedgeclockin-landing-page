@@ -1,48 +1,29 @@
-# Wedge Hire candidate-first intake
+# Wedge Hire — scripted voice pilot
 
-Candidates can join without an employer or a vacancy. New route: `/wedge-hire/join`.
+## Available without API billing
 
-## Before activation
+`/wedge-hire/try` provides a browser-only practice interview. Five role-specific questions, English or Bahasa Malaysia, five-minute maximum, spoken questions using browser speech synthesis, optional browser speech recognition and editable typed answers. No OpenAI or other paid model APIs are called. Optional camera is a local preview only.
 
-Intake deliberately fails closed unless ALL server-side variables are set:
+Practice answers remain in page memory. They are NOT collected by Wedge, are not recoverable after refresh, and do not enter a candidate pool. Users may download a plain-text transcript. This is visibly labelled practice, not an application. Browser speech recognition may use the browser vendor's remote service; it is not guaranteed offline or available in every browser. The UI requires a separate speech opt-in and always offers typed answers. No audio/video recording or facial analysis.
 
-- `HIRE_DATABASE_URL`: dedicated PostgreSQL connection string with provider-required TLS and certificate validation. Do not use a public browser variable or disable TLS validation.
-- `OPENAI_API_KEY`: server-side project key with an explicit budget.
-- `HIRE_CHAT_MODEL`: a model available to that project supporting Chat Completions and `max_completion_tokens`.
-- `HIRE_TRANSCRIBE_MODEL`: an available Audio Transcriptions model.
-- `HIRE_INTAKE_ENABLED=true`: set last, after testing.
+## Candidate pool activation — still closed
 
-Run `migrations/wedge-hire.sql` against that database first. Never commit credentials.
-The public availability endpoint checks database access and table presence. It does not verify OpenAI billing or model access; a real pilot interview must do that before enabling public intake.
+To persist real candidates, configure a dedicated PostgreSQL connection in `HIRE_DATABASE_URL`, run `migrations/wedge-hire.sql`, verify database access and privacy/retention handling, then set `HIRE_INTAKE_ENABLED=true`. Do not configure or enable paid AI. Infrastructure costs remain subject to the hosting/database plan.
 
-## Delivered behavior
+`/wedge-hire/join` checks availability. Without storage, the form is not displayed and a practice link is shown. Candidate intake requires data processing consent and separate unchecked future employer-discovery permission. Same-browser opaque HttpOnly cookie grants access only to that candidate's own record. Contact/licence details are unverified. Cross-device recovery and employer access remain unimplemented.
 
-- Seven supported role templates, no vacancy requirement.
-- Profile and transcript in PostgreSQL; contact and licence details are self-declared.
-- Required processing consent; separate unchecked employer-discovery opt-in.
-- Opaque 256-bit HttpOnly candidate cookie, hashed in storage; same-origin writes and no public candidate listing API.
-- Candidate can view/delete their own record from the same browser. Cross-device recovery is not implemented. Losing the cookie requires operator support; do not advertise a full candidate account system.
-- Turn-by-turn spoken interview: browser MediaRecorder → server transcription → conversational follow-up → browser speech synthesis. This is not continuous full-duplex Realtime audio. Browser voice availability varies.
-- Optional local camera preview only: no upload, recording, identity recognition or facial assessment.
-- Server checks 9:30 deadline before and after provider work. The model starts closing after 7:30; maximum 12 submitted answers. Early finish and short answers can make sessions shorter than six minutes.
-- Each answer is limited to 60 seconds client-side and 2.8 MB server-side. Database row locks serialize turns. Failed turns roll back and show an error; candidates may need to repeat that answer.
-- Provider fetch timeout 25 seconds per call; maximum route duration 60 seconds.
-- Daily intake ceilings: 5 per hashed Vercel IP bucket; 100 globally. These are temporary cost controls, not verified candidate identity or complete bot protection.
-- Records expire after 180 days and are excluded from access queries. Physical purge occurs on next registration; provision a daily maintenance job for prompt physical deletion, including expired rate-limit buckets. Document backup retention with the selected database provider before launch.
+Persisted interview API accepts text answers only and selects the next question on the server. Five-minute limit and valid answers are enforced on the server, with database row locking for concurrent submissions. No public listing exposes candidate data. Daily intake ceilings: 5 per hashed Vercel IP bucket and 100 globally. These are pilot cost controls, not identity verification.
 
-## Required pilot verification
+Records expire after 180 days and are excluded from reads. Physical purge occurs on subsequent registration; configure a daily maintenance job and backup retention before opening real intake.
 
-Use sample data with intake initially restricted to the pilot deployment. Check:
-1. Consent, driver licence declaration, language and sharing preference validation.
-2. Successful profile persistence across a refresh, cookie ownership isolation, deletion and expired-record handling.
-3. Actual provider credentials/models/billing, microphone permission, transcription and spoken follow-up in English and Bahasa Malaysia.
-4. Silent audio, provider outage, concurrent turns, refresh/resume, deadline and early finish.
-5. Optional camera preview and browser navigation release media tracks.
-6. No profile data in page HTML, logs or public responses. Confirm deployed privacy/consent text with the operator.
-7. Configure retention maintenance and test database backups/access controls.
+## Verification
 
-## Still outside this release
+- Production build including TypeScript.
+- Tests: input/consent validation, supported role/language questions, progression, blank/oversized answers, five-minute boundary.
+- Pilot browser: choose role → start → hear question → enter sample answer → advance → finish → download transcript. Check optional camera release on end/unmount.
+- A real microphone test requires a supported browser, permission and a human speaker. If unsupported or denied, typed answers remain functional.
+- Secure database persistence, ownership isolation, deletion and recovery errors need live database testing before activation.
 
-Authenticated employer browsing, automated job matching, employer reports, verified identities/licences, video recordings, continuous live avatars, offers and onboarding. Employer discovery permission is stored for future use; no employer data-sharing endpoint is enabled.
+## Future upgrade
 
-No existing attendance routes are modified. Microphone permissions are enabled only for Wedge Hire pages.
+Paid generative follow-ups, streamed full-duplex voice, video recording, employer browsing, matching, reports and hiring/onboarding are outside this pilot. No automatic suitability or IQ score is claimed.

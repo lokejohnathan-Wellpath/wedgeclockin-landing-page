@@ -11,6 +11,6 @@ test('requires consent and driver licence declaration',()=>{
 test('rejects unknown roles, unbounded experience and invalid sharing values',()=>{
   assert.throws(()=>validateProfile({...profile,role:'unknown'}));assert.throws(()=>validateProfile({...profile,experience:'x'.repeat(2001)}));assert.throws(()=>validateProfile({...profile,discoverable:'true'}));
 });
-test('server deadline expires precisely at 9:30',()=>{
-  assert.equal(expired(new Date(0),569999),false);assert.equal(expired(new Date(0),570000),true);
+test('server deadline expires precisely at 5:00',()=>{
+  assert.equal(expired(new Date(0),299999),false);assert.equal(expired(new Date(0),300000),true);
 });

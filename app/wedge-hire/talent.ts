@@ -20,5 +20,5 @@ export function validateProfile(v: unknown): Profile {
   return { name, phone, role, language, area: field('area', 160), experience: field('experience', 2000), salary: field('salary', 80), availability: field('availability', 160), licence: field('licence', 160, role === 'driver'), consent: true, discoverable: p.discoverable };
 }
 export function expired(started: string | Date, now = Date.now()) {
-  return now - new Date(started).getTime() >= 570000;
+  return now - new Date(started).getTime() >= 300000;
 }

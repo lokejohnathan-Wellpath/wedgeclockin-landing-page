@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
       if (r.rows[0].count > maximum) { await client.query('ROLLBACK'); return NextResponse.json({ error: 'Registration limit reached. Please try another day.' }, { status: 429 }); }
     }
     const token = randomBytes(32).toString('hex');
-    await client.query('INSERT INTO hire_candidates(id,token_hash,profile,consent_version) VALUES($1,$2,$3,$4)', [randomUUID(), hash(token), JSON.stringify(profile), 'talent-v1']);
+    await client.query('INSERT INTO hire_candidates(id,token_hash,profile,consent_version) VALUES($1,$2,$3,$4)', [randomUUID(), hash(token), JSON.stringify(profile), 'talent-scripted-v1']);
     await client.query('COMMIT');
     const res = NextResponse.json({ saved: true }, { status: 201, headers: privateHeaders });
     res.cookies.set(cookieName, token, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict', path: '/api/wedge-hire', maxAge: 60 * 60 * 24 * 180 });

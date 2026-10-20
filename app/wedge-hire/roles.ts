@@ -7,5 +7,5 @@ export const roles = [
   { id: "storekeeper", name: "Storekeeper", skills: "Receiving, stock records, safe storage", question: "A delivery contains damaged cartons and fewer units than the delivery order. What would you do?", task: "Opening stock is 120 units. You receive 45 and issue 38. What should the closing balance be?", answer: "127 units" },
   { id: "driver", name: "Lorry driver", skills: "Pre-trip checks, safe driving, delivery records", question: "During a pre-trip check you find a tyre defect, but the delivery is urgent. What would you do?", task: "Explain how you would handle a delivery delay while keeping the journey safe.", answer: "Employer reviews safe stopping, communication and realistic rescheduling. Licence eligibility requires separate employer verification." },
 ] as const;
-export const INTERVIEW_TARGET_SECONDS = 8 * 60;
-export const INTERVIEW_HARD_STOP_SECONDS = 9 * 60 + 30;
+export const INTERVIEW_TARGET_SECONDS = 5 * 60;
+export const INTERVIEW_HARD_STOP_SECONDS = 5 * 60;
