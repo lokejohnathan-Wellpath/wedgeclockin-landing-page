@@ -18,7 +18,7 @@ export default function Home() {
         <div className="mx-auto max-w-[1280px] overflow-hidden rounded-[22px] border border-[#e8dfd0] bg-[#fffdfa] shadow-[0_28px_90px_rgba(78,58,28,.13)]">
           <header className="relative z-20 mx-auto flex max-w-[1180px] items-center justify-between px-6 py-6 sm:px-10">
             <a href="#top" className="flex items-center gap-3"><span className="text-3xl font-black leading-none tracking-[-.18em] text-[#ae7d2b]">W</span><span className="text-base font-bold tracking-tight">Wedge Works</span></a>
-            <nav className="hidden items-center gap-7 text-sm font-medium text-[#53606b] md:flex"><a href="#how" className="hover:text-[#a77528]">How it works</a><a href="#service" className="hover:text-[#a77528]">Managed service</a></nav>
+            <nav className="hidden items-center gap-7 text-sm font-medium text-[#53606b] md:flex"><a href="/wedge-hire" className="font-semibold text-[#a77528]">Wedge Hire</a><a href="#how" className="hover:text-[#a77528]">How it works</a><a href="#service" className="hover:text-[#a77528]">Managed service</a></nav>
             <a href="/manager-login" className="rounded-xl bg-[#ae7d2b] px-4 py-2.5 text-sm font-bold text-white shadow-[0_8px_18px_rgba(174,125,43,.18)] transition hover:bg-[#91651f] sm:px-5">Business Login</a>
           </header>
 
@@ -30,7 +30,7 @@ export default function Home() {
               <p className="text-xs font-black tracking-[.22em] text-[#a77528]">MANAGED BACK OFFICE FOR SMEs</p>
               <h1 className="mt-4 text-4xl font-semibold leading-[1.04] tracking-[-.055em] sm:text-6xl lg:text-7xl">You run the business. <span className="text-[#a77528]">Wedge runs the back office.</span></h1>
               <p className="mt-6 max-w-[600px] text-base leading-7 text-[#66717b] sm:text-lg">Your team handles daily operations. Wedge helps organise source documents, payroll information, bookkeeping, reconciliation and monthly management reporting behind the scenes.</p>
-              <div className="mt-8 flex flex-wrap gap-3"><a href="/manager-login" className="rounded-xl bg-[#ae7d2b] px-6 py-3.5 text-sm font-bold text-white shadow-[0_10px_22px_rgba(174,125,43,.2)] hover:bg-[#91651f]">Business Operations Login →</a><a href="/employee-clockin" className="rounded-xl border border-[#c69b54] px-6 py-3.5 text-sm font-bold text-[#6e5938] hover:bg-[#fbf4e8]">Employee Clock-In</a></div>
+              <div className="mt-8 flex flex-wrap gap-3"><a href="/manager-login" className="rounded-xl bg-[#ae7d2b] px-6 py-3.5 text-sm font-bold text-white shadow-[0_10px_22px_rgba(174,125,43,.2)] hover:bg-[#91651f]">Business Operations Login →</a><a href="/employee-clockin" className="rounded-xl border border-[#c69b54] px-6 py-3.5 text-sm font-bold text-[#6e5938] hover:bg-[#fbf4e8]">Employee Clock-In</a><a href="/wedge-hire" className="rounded-xl bg-[#20282c] px-6 py-3.5 text-sm font-bold text-white hover:bg-[#354147]">Wedge Hire →</a></div>
             </div>
           </section>
 
